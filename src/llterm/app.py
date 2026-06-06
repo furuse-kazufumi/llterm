@@ -58,18 +58,34 @@ class App:
         out.flush()
         self.host.spawn()
         try:
-            while self.host.isalive() and self.rotate_requested is None:
+            while self.rotate_requested is None:
                 wrote = False
+                alive = self.host.isalive()
                 data = self.host.read(65536)
                 if data:
                     out.write(data)                          # 素通し (上部領域)
                     wrote = True
-                for ev in self.console.poll_events():
+                elif not alive:
+                    # EOF drain (レビュー finding): isalive() を先に評価してループを
+                    # 抜けると reader thread が直前に積んだ最終チャンクを取りこぼす。
+                    # 「死んでいて、かつ残データなし」で初めて脱出する。
+                    break
+                keys, responses = self.vtfilter.feed(self.console.poll_events())
+                if responses:
+                    # 実端末からの端末クエリ応答 (DA1/OSC 等) は子へそのまま転送
+                    # (実機バグ 2026-06-07: 入力欄汚染 + 子の能力検出不全の根治)
+                    self.host.write_raw("".join(responses))
+                for ev in keys:
                     action, arg = decode(ev)
                     if action is Action.NONE:
                         # VK_CONTROL/VK_SHIFT 単独 keydown はキーリピートで洪水になる
                         # (spike Task6 実測 + ユーザー指摘 2026-06-06)。NONE で再描画すると
                         # Ctrl 押下中ずっと再描画が走る (R4 に逆行) ため skip する。
+                        continue
+                    if not self.buf.text and action in (Action.MOVE, Action.NEWLINE):
+                        # 空欄パススルー: 選択 UI 操作のため plain 矢印/Enter を子へ
+                        self.host.write_raw(_VT_ARROWS[arg] if action is Action.MOVE
+                                            else "\r")
                         continue
                     if action is Action.INSERT:
                         self.buf.insert(arg)
