@@ -56,7 +56,15 @@ class App:
     # ---- メインループ ----
     def run(self) -> int:
         out = sys.stdout
-        out.write(f"\x1b[1;{self.rows - RESERVE}r\x1b[H")   # 上部 scroll region
+        # alternate screen (実機知見 2026-06-07): メインバッファ上で動かすと
+        # スクロール時に古い描画 (入力欄含む) がスクロールバック履歴へ押し上げられ
+        # 「残骸が上に流れる」。alternate screen はスクロールバック無しの固定
+        # グリッドなので構造的に起きない (tmux/vim と同じ方式)。終了時に復帰。
+        out.write("\x1b[?1049h")
+        out.write(f"\x1b[2J\x1b[1;{self.rows - RESERVE}r\x1b[H")   # クリア + 上部 scroll region
+        # 初回から入力欄を見せる (子の最初の出力を待たない)
+        out.write(render_input_area(self.buf, term_rows=self.rows,
+                                    term_cols=self.cols, reserve=RESERVE))
         out.flush()
         self.host.spawn()
         try:
