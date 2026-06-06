@@ -43,6 +43,9 @@ def main() -> None:
                 sys.stdout.write(data)
                 sys.stdout.flush()
                 draw_input_area()  # 毎フレーム入力欄を再描画して侵食を検出しやすく
+            # 最小のキー転送 (pwsh 対話用)。spike なので素朴に msvcrt で。
+            while msvcrt.kbhit():
+                pty.write(msvcrt.getwch())
     finally:
         sys.stdout.write("\x1b[r")  # スクロール領域解除
         print("\n[spike done]")
