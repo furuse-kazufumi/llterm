@@ -6,6 +6,8 @@ results/  — finish() の書き戻し (Claude が次ターンで読む)
 rejected/ — 壊れた JSON / parse 失敗の隔離 (fail-closed: 実行しない・消さない)
 
 順序は zero-pad した連番 prefix で FIFO を保証。重複 id は submit 時に拒否。
+quarantine は ledger に "quarantined" として残す (レビュー finding: 監査盲点の解消 —
+敵対的な壊れコマンドも痕跡ゼロで消えない)。
 """
 from __future__ import annotations
 
@@ -13,16 +15,18 @@ import json
 import time
 from pathlib import Path
 
+from llterm.ctl.ledger import Ledger
 from llterm.ctl.schema import CtlCommand, ParseError
 
 
 class CtlQueue:
-    def __init__(self, root: Path | str) -> None:
+    def __init__(self, root: Path | str, *, ledger: Ledger | None = None) -> None:
         self.root = Path(root)
         self.qdir = self.root / "queue"
         self.inflight = self.root / "inflight"
         self.results = self.root / "results"
         self.rejected = self.root / "rejected"
+        self._ledger = ledger              # consumer 側のみ注入 (producer は不要)
 
     def _ensure(self) -> None:
         for d in (self.qdir, self.inflight, self.results, self.rejected):
