@@ -74,7 +74,7 @@ class CtlWatcher:
             task = {"title": cmd.args.get("title", "(untitled)"),
                     "description": cmd.args.get("description", cmd.reason),
                     "priority": int(cmd.args.get("priority", "50")),
-                    "constraints": list(cmd.constraints) or ["no-push", "needs-human-judgment"],
+                    "constraints": sorted(set(cmd.constraints) | SAFETY_FLOOR_CONSTRAINTS),
                     "id": cmd.id, "created_at": cmd.created_at}
             (self.loop_queue_dir / f"{cmd.id}.json").write_text(
                 json.dumps(task, ensure_ascii=False, indent=1), encoding="utf-8")
