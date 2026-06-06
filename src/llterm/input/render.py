@@ -23,13 +23,19 @@ def _disp_width(s: str) -> int:
 
 def render_input_area(buf: InputBuffer, *, term_rows: int, term_cols: int, reserve: int) -> str:
     top = term_rows - reserve + 1          # 入力欄の先頭スクリーン行 (1-origin)
+    row, col = buf.cursor
+    # 縦スクロール窓 (レビュー finding 反映): バッファが reserve 行を超えても
+    # カーソル行が必ず窓内に入るよう表示開始行をずらす。これによりカーソルの
+    # スクリーン Y は常に top..term_rows に収まり、上部 scroll region へ侵入しない。
+    start = max(0, row - reserve + 1)
     out: list[str] = []
     out.append("\x1b[?25l")                # 描画中はカーソル非表示 (ちらつき抑制)
     for i in range(reserve):
         out.append(f"\x1b[{top + i};1H\x1b[2K")
-        if i < len(buf.lines):
-            prefix = PROMPT if i == 0 else CONT
-            line = buf.lines[i]
+        li = start + i                     # バッファ上の論理行
+        if li < len(buf.lines):
+            prefix = PROMPT if li == 0 else CONT
+            line = buf.lines[li]
             # 桁あふれは末尾切り (v1: 横スクロールは v2)
             avail = term_cols - len(prefix)
             shown, w = "", 0
@@ -39,10 +45,9 @@ def render_input_area(buf: InputBuffer, *, term_rows: int, term_cols: int, reser
                     break
                 shown += ch
                 w += cw
-            out.append(f"\x1b[7m{prefix}\x1b[0m{shown}" if i == 0 else f"{prefix}{shown}")
-    row, col = buf.cursor
+            out.append(f"\x1b[7m{prefix}\x1b[0m{shown}" if li == 0 else f"{prefix}{shown}")
     prefix = PROMPT if row == 0 else CONT
     cur_x = len(prefix) + _disp_width(buf.lines[row][:col]) + 1
     out.append("\x1b[?25h")                # カーソル再表示
-    out.append(f"\x1b[{top + row};{cur_x}H")
+    out.append(f"\x1b[{top + (row - start)};{cur_x}H")
     return "".join(out)
