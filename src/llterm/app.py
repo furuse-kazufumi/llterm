@@ -16,12 +16,18 @@ from pathlib import Path
 from llterm.ctl.queue import CtlQueue
 from llterm.host.console import ConsoleInput
 from llterm.host.pty_host import PtyHost
+from llterm.host.vtbridge import VtResponseFilter
 from llterm.host.watcher import CtlWatcher
 from llterm.input.buffer import InputBuffer
 from llterm.input.keys import Action, decode
 from llterm.input.render import render_input_area
 
 RESERVE = 4
+
+# 空欄パススルー (実機知見 2026-06-07): claude の選択 UI (信頼確認・メニュー) は
+# 矢印/Enter の直接キーを期待する。入力欄が空のときだけ plain キーを VT で子へ転送。
+# 入力欄に内容があるときは R12/R13 (Enter=改行・矢印=カーソル移動) を維持。
+_VT_ARROWS = {"up": "\x1b[A", "down": "\x1b[B", "right": "\x1b[C", "left": "\x1b[D"}
 
 
 class App:
