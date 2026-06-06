@@ -75,6 +75,22 @@ def test_inject_task_forwards_to_loop_queue(tmp_path: Path):
     assert "no-push" in task["constraints"]          # 既定制約 (危険操作は人間確認)
 
 
+def test_inject_task_safety_floor_survives_caller_constraints(tmp_path: Path):
+    # レビュー finding (high/fail-closed): caller が任意の constraints を渡しても
+    # 安全床 (no-push / needs-human-judgment) は剥がせない (union 強制)
+    q = CtlQueue(tmp_path / ".llterm")
+    q.submit(CtlCommand(id="ctl-7", action="inject-task", reason="r",
+                        args={"title": "t"}, constraints=("custom-only",)))
+    loop_dir = tmp_path / "loop-queue"
+    w = CtlWatcher(q, FakeHost(), ledger_path=tmp_path / ".llterm" / "ledger.jsonl",
+                   loop_queue_dir=loop_dir)
+    w.tick()
+    task = json.loads((loop_dir / "ctl-7.json").read_text(encoding="utf-8"))
+    assert "no-push" in task["constraints"]
+    assert "needs-human-judgment" in task["constraints"]
+    assert "custom-only" in task["constraints"]
+
+
 def test_inject_task_without_loop_dir_errors_gracefully(tmp_path: Path):
     # loop_queue_dir 未設定なら error として results に ok=false (ループは死なない)
     q = CtlQueue(tmp_path / ".llterm")
