@@ -30,3 +30,10 @@
   → **本実装 (Task 11 PtyHost) は reader thread 版に計画修正済**: blocking read を daemon スレッドに
   隔離し、メインループは non-blocking read + EOF フラグで確実に抜ける。spike は throwaway のため
   修正しない (Ctrl+C で抜ける / 画面が乱れたら cls で復旧)。
+- **既知問題 2 (ユーザー実機 2026-06-06 夜): `ls` と打っても表示されない = 入力飢餓**。同根の構造欠陥:
+  単一スレッドで `pty.read()` がブロック中はキー転送 (`while msvcrt.kbhit()`) に到達できない。
+  キーが転送されない → pwsh が何も出力しない → read が返らない → **デッドロック (鶏と卵)**。
+  起動直後はプロンプト出力で偶然回っていただけ。
+  → **本実装で解消済の設計**: PTY 出力は reader thread が常時 drain (Task 11)、コンソール入力は
+  App メインループが ReadConsoleInputW で独立に処理 (Task 13) — 出力と入力が互いをブロックしない。
+  spike 3 知見 (侵食なし / 終了ハング / 入力飢餓) はいずれも Task 11/13 設計に反映済。
