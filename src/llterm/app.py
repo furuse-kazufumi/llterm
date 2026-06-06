@@ -127,7 +127,7 @@ class App:
                 else:
                     time.sleep(0.01)
         finally:
-            out.write("\x1b[r\x1b[?25h")                      # scroll region 解除
+            out.write("\x1b[r\x1b[?25h\x1b[?1049l")           # region 解除 → 元画面へ復帰
             out.flush()
             self.host.close()
         if self.rotate_requested is not None:
