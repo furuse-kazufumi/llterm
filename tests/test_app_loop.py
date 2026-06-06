@@ -6,12 +6,13 @@ from llterm.input.keys import KeyEvent
 
 
 class FakePty:
-    def __init__(self, max_ticks: int = 50, final_chunk: str = ""):
+    def __init__(self, max_ticks: int = 50, final_chunk: str = "", chunks: list | None = None):
         self.sent = []
         self.raw = []
         self._alive = True
         self._ticks = max_ticks          # 無限ループ保険: 一定周回で自然死
         self._final_chunk = final_chunk  # 死亡後に 1 回だけ返す残データ (EOF drain 検証)
+        self._chunks = list(chunks or [])  # alive 中に順に返す出力 (素通し検証)
     def spawn(self): pass
     def isalive(self):
         self._ticks -= 1
@@ -19,6 +20,8 @@ class FakePty:
             self._alive = False
         return self._alive
     def read(self, n):
+        if self._alive and self._chunks:
+            return self._chunks.pop(0)
         if not self._alive and self._final_chunk:
             chunk, self._final_chunk = self._final_chunk, ""
             return chunk
