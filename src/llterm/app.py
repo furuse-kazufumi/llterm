@@ -13,6 +13,7 @@ import sys
 import time
 from pathlib import Path
 
+from llterm.ctl.ledger import Ledger
 from llterm.ctl.queue import CtlQueue
 from llterm.host.console import ConsoleInput
 from llterm.host.pty_host import PtyHost
