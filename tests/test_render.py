@@ -7,7 +7,9 @@ def test_render_contains_prompt_and_text():
     out = render_input_area(b, term_rows=30, term_cols=80, reserve=4)
     assert "hello" in out
     assert "\x1b[27;1H" in out            # 入力欄先頭行 = rows-reserve+1 = 27 行目
-    assert out.endswith("\x1b[27;9H")     # カーソル復帰: prompt "llterm> " 8 桁 + col0 → 9
+    # paste 後 cursor=(0,5)。prompt "llterm> " 8 桁 + width("hello")=5 + 1 → 14
+    # (計画 doc の期待値 27;9H は col0 前提の誤り。実バッファは末尾 col5 — 最小修正)
+    assert out.endswith("\x1b[27;14H")
 
 
 def test_render_clears_reserved_lines():
