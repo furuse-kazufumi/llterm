@@ -39,8 +39,9 @@ class App:
         self.buf = InputBuffer()
         self.console = ConsoleInput()
         self.vtfilter = VtResponseFilter()
-        self.queue = CtlQueue(ctl_root)
-        self.watcher = CtlWatcher(self.queue, self, ledger_path=ctl_root / "ledger.jsonl")
+        ledger_path = ctl_root / "ledger.jsonl"
+        self.queue = CtlQueue(ctl_root, ledger=Ledger(ledger_path))   # quarantine も監査に残す
+        self.watcher = CtlWatcher(self.queue, self, ledger_path=ledger_path)
         self.rotate_requested: str | None = None
         self._session = 1
 
