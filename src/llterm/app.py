@@ -37,6 +37,7 @@ class App:
         self.host = PtyHost(child_argv, rows=self.rows - RESERVE, cols=self.cols)
         self.buf = InputBuffer()
         self.console = ConsoleInput()
+        self.vtfilter = VtResponseFilter()
         self.queue = CtlQueue(ctl_root)
         self.watcher = CtlWatcher(self.queue, self, ledger_path=ctl_root / "ledger.jsonl")
         self.rotate_requested: str | None = None
