@@ -37,3 +37,32 @@
   → **本実装で解消済の設計**: PTY 出力は reader thread が常時 drain (Task 11)、コンソール入力は
   App メインループが ReadConsoleInputW で独立に処理 (Task 13) — 出力と入力が互いをブロックしない。
   spike 3 知見 (侵食なし / 終了ハング / 入力飢餓) はいずれも Task 11/13 設計に反映済。
+
+## 実機スモーク第 1 回 (2026-06-07, claude 実走) — 発見 2 件と対処
+
+ユーザー実機 (デスクトップショートカット経由、子 = claude) で初回起動した結果:
+
+### 発見 1: 端末クエリ応答が入力欄を汚染 + 子に届かない
+- 症状: 入力欄に `[?61;4;6;7;...c` `]11;rgb:0c0c/...` が**何も打っていないのに**出現。
+- 機序: claude は起動時に端末能力クエリ (DA1 `CSI c` / OSC 11 背景色) を発する。llterm は
+  それを素通しで実端末へ書く → 実端末は**応答をコンソール入力に書き戻す** → llterm が
+  キー入力と誤認して入力欄に INSERT (ESC は isprintable=False で落ち、残りが入る)。
+  さらに応答が子へ転送されないため claude の能力検出も不全。
+- 対処: `VtResponseFilter` (host/vtbridge.py) — KeyEvent 列から CSI/OSC 応答シーケンスを
+  状態機械で分離し `write_raw()` で子へ転送。分割到着 (バッチ跨ぎ) 対応。8 tests。
+
+### 発見 2: claude の選択 UI が操作不能
+- 症状: 初回の信頼確認 (`> 1. Yes, I trust this folder`) を矢印/Enter で選択できない
+  (全キーが入力欄に行く設計のため)。
+- 対処: **空欄パススルー** (ユーザー承認 2026-06-07) — 入力欄が空のときだけ plain 矢印/Enter
+  を VT シーケンス (`CSI A-D` / CR) で子へ直接転送。入力欄に内容があれば R12/R13 を維持。
+
+### 併せて修正 (敵対レビュー confirmed findings 6 件)
+- EOF drain: `isalive()` 先行チェックで子の最終出力チャンクを取りこぼす競合 → 「死亡 かつ
+  残データなし」までドレインしてから脱出 (app.py)。
+- render 縦スクロール窓: 入力 5 行以上でカーソルが scroll region 内へ飛ぶ → カーソル行を
+  必ず含む末尾 reserve 行窓で描画 (render.py)。
+- inject-task 安全床: caller constraints で no-push/needs-human-judgment が消える →
+  強制 union (watcher.py)。
+- quarantine 監査: 壊れ JSON の隔離が ledger に痕跡ゼロ → "quarantined" イベント記録 +
+  OSError/UnicodeDecodeError 耐性 + 隔離先同名は unique suffix (queue.py)。
