@@ -74,6 +74,10 @@ class App:
                 data = self.host.read(65536)
                 if data:
                     out.write(data)                          # 素通し (上部領域)
+                    # 子ストリームに CSI r (region リセット) や全画面系の制御が
+                    # 含まれると柵が外れるため、毎回 DECSTBM を再主張する。
+                    # DECSTBM はカーソルを Home に飛ばすので DECSC/DECRC で包む。
+                    out.write(f"\x1b7\x1b[1;{self.rows - RESERVE}r\x1b8")
                     wrote = True
                 elif not alive:
                     # EOF drain (レビュー finding): isalive() を先に評価してループを
