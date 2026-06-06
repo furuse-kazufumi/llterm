@@ -20,7 +20,13 @@
 - 未確認 (本実装スモークで再確認): IME 確定文字が `char` にどう届くか (変換確定時のイベント形)。
   R10 の受け入れ確認 (Task 13 Step 5) で必ず見る。
 
-## Task 7: 縮小 PTY + DECSTBM 入力欄分離 (spike_ptyrows.py) — 未実施
+## Task 7: 縮小 PTY + DECSTBM 入力欄分離 (spike_ptyrows.py) — ✅ 判定成立 (2026-06-06 夜, ユーザー実機)
 
-- 実行待ち: `py -3.11 spikes/spike_ptyrows.py -- pwsh -NoLogo`
-- 判定基準: 子の出力・全画面再描画が下 4 行の `[LLTERM INPUT AREA]` を上書きしないこと。
+- **判定 OK: `[LLTERM INPUT AREA]` は侵食されず残り続けた** (ユーザー実機確認「残ります」) =
+  縮小 PTY (rows-4) + DECSTBM で表示と入力欄の分離が成立。**案(b) の技術前提が全て確定**。
+- **既知問題: 子 (pwsh) を exit しても spike が終了しない**。原因 = `pty.read()` がブロッキング読みで、
+  子終了後も read が返らず `while pty.isalive()` 判定に戻れない (ConPTY drain 問題 —
+  node-pty #375/#1810 と同根、ccr/claude-auto.mjs が同じ罠を踏んだ前歴あり)。
+  → **本実装 (Task 11 PtyHost) は reader thread 版に計画修正済**: blocking read を daemon スレッドに
+  隔離し、メインループは non-blocking read + EOF フラグで確実に抜ける。spike は throwaway のため
+  修正しない (Ctrl+C で抜ける / 画面が乱れたら cls で復旧)。
