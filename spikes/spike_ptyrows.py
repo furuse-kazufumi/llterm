@@ -9,6 +9,7 @@
   - 下 4 行に描いた [LLTERM INPUT AREA] が残り続けること
 終了: 子プロセスを exit させる (pwsh なら `exit`)。
 """
+import msvcrt
 import shutil
 import sys
 
