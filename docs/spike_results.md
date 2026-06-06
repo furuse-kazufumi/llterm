@@ -13,6 +13,10 @@
   - 観察事項: **Ctrl/Shift 押下中は vk=17/16 (VK_CONTROL/VK_SHIFT) 単独 keydown がキーリピートで連続発生**。
     → 本実装 (input/keys.py decode) では非印字 char + 対象外 vk として Action.NONE に落ちるため無害
     (test_control_chars_ignored でカバー)。console.py の wRepeatCount 展開でも同様に NONE。
+  - **運用注意 (ユーザー指摘 2026-06-06)**: 実際は「Ctrl を押してから Enter」なので、Enter が来るまで
+    char='\x00' の VK_CONTROL イベントが**流れ続ける**。防御 2 段: ①decode が NONE に落とす (バッファ混入
+    なし・実装済) ②App ループは **NONE で再描画しない** (洪水中の無駄再描画 = ちらつき種を排除。
+    計画 Task 13 に反映済)。
 - 未確認 (本実装スモークで再確認): IME 確定文字が `char` にどう届くか (変換確定時のイベント形)。
   R10 の受け入れ確認 (Task 13 Step 5) で必ず見る。
 
