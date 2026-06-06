@@ -14,6 +14,11 @@ from llterm.ctl.ledger import Ledger
 from llterm.ctl.queue import CtlQueue
 from llterm.ctl.schema import CtlCommand
 
+# inject-task の安全床: caller の constraints に関わらず常に強制 union する
+# (schema.py の HUMAN_REQUIRED_ACTIONS と同じ fail-closed パターン。レビュー finding:
+#  旧実装 `list(...) or [既定]` は caller が 1 件でも渡すと安全制約が丸ごと消えた)
+SAFETY_FLOOR_CONSTRAINTS: frozenset[str] = frozenset({"no-push", "needs-human-judgment"})
+
 
 class CtlWatcher:
     def __init__(self, queue: CtlQueue, host, *, ledger_path: Path,
