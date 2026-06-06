@@ -48,15 +48,35 @@ class CtlQueue:
     def poll(self) -> CtlCommand | None:
         self._ensure()
         for path in sorted(self.qdir.glob("*.json")):
-            raw = path.read_text(encoding="utf-8")
             try:
+                raw = path.read_text(encoding="utf-8")
                 cmd = CtlCommand.from_json(raw)
-            except ParseError:
-                path.rename(self.rejected / path.name)  # 隔離 (実行しない・消さない)
+            except (ParseError, OSError, UnicodeDecodeError) as e:
+                # 読めない/解釈できないエントリで tick を殺さない (レビュー finding medium)
+                self._quarantine(path, e)
                 continue
-            path.rename(self.inflight / path.name)
+            try:
+                path.rename(self.inflight / path.name)
+            except OSError as e:
+                self._quarantine(path, e)
+                continue
             return cmd
         return None
+
+    def _quarantine(self, path: Path, err: Exception) -> None:
+        """壊れたエントリを rejected/ へ隔離し ledger に痕跡を残す (fail-closed)."""
+        detail = f"{type(err).__name__}: {err}"
+        target = self.rejected / path.name
+        if target.exists():
+            # 同名既存でも上書きしない (消さない原則): unique suffix で並置
+            target = self.rejected / f"{path.stem}-{time.monotonic_ns()}{path.suffix}"
+        try:
+            path.rename(target)
+            event = "quarantined"
+        except OSError:
+            event = "quarantine_failed"    # 移動も失敗: 次 poll で再試行される
+        if self._ledger is not None:
+            self._ledger.append(event=event, cmd_id=path.stem, action="", detail=detail)
 
     def finish(self, cmd: CtlCommand, *, ok: bool, result: dict | str) -> Path:
         self._ensure()
