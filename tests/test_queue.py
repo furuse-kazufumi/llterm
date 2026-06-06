@@ -23,8 +23,9 @@ def test_poll_consumes_in_order_and_moves_to_inflight(tmp_path: Path):
     q.submit(CtlCommand(id="ctl-b", action="rotate", reason="r"))
     got = q.poll()
     assert got is not None and got.id == "ctl-a"          # FIFO
-    assert not list((tmp_path / ".llterm" / "queue").glob("ctl-a*"))
-    assert list((tmp_path / ".llterm" / "inflight").glob("ctl-a*"))
+    # ファイル名は <seq>-ctl-a.json (連番 prefix) なので glob は *ctl-a* で照合する
+    assert not list((tmp_path / ".llterm" / "queue").glob("*ctl-a*"))
+    assert list((tmp_path / ".llterm" / "inflight").glob("*ctl-a*"))
 
 
 def test_poll_empty_returns_none(tmp_path: Path):
