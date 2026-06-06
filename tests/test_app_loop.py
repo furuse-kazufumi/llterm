@@ -107,6 +107,32 @@ def test_empty_buffer_plain_arrow_and_enter_passthrough(tmp_path: Path):
     assert app.buf.text == ""                     # 入力欄は動かない
 
 
+def test_run_uses_alternate_screen_and_restores(tmp_path: Path, capsys):
+    # 実機知見 2026-06-07: メインバッファだと残骸がスクロールバックへ流れる
+    app = App(["dummy"], ctl_root=tmp_path / ".llterm")
+    app.host = FakePty(max_ticks=2)
+    app.console = FakeConsole([])
+    app.run()
+    out = capsys.readouterr().out
+    assert "\x1b[?1049h" in out                       # alternate screen へ
+    assert "\x1b[?1049l" in out                       # 終了時に元画面へ復帰
+    assert out.index("\x1b[?1049h") < out.index("\x1b[?1049l")
+    assert "llterm>" in out.split("\x1b[?1049h", 1)[1]  # 初回から入力欄を描画
+
+
+def test_scroll_region_reasserted_after_child_output(tmp_path: Path, capsys):
+    # 子ストリームの CSI r 等で柵が外れても、出力のたびに DECSTBM を再主張する
+    app = App(["dummy"], ctl_root=tmp_path / ".llterm")
+    app.host = FakePty(max_ticks=4, chunks=["hello\x1b[r"])   # 子が region をリセット
+    app.console = FakeConsole([])
+    app.run()
+    out = capsys.readouterr().out
+    region = f"\x1b[1;{app.rows - 4}r"
+    # 子出力 ("hello...") の後にカーソル保存付き再主張が続く
+    after_child = out.split("hello\x1b[r", 1)[1]
+    assert after_child.startswith(f"\x1b7{region}\x1b8")
+
+
 def test_nonempty_buffer_keeps_local_editing(tmp_path: Path):
     # 入力欄に内容があるときは R12/R13 どおりローカル編集 (パススルーしない)
     app = App(["dummy"], ctl_root=tmp_path / ".llterm")
