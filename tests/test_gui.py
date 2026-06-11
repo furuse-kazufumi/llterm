@@ -13,8 +13,9 @@ pytest.importorskip("PySide6", reason="GUI テストは PySide6 が要る (pip i
 
 from PySide6 import QtCore, QtWidgets  # noqa: E402
 
-from llterm.gui.app import MainWindow  # noqa: E402
+from llterm.gui.app import MainWindow, discover_projects  # noqa: E402
 from llterm.gui.virtual import VirtualClaudeRunner  # noqa: E402
+from llterm.host.loop import ClaudeRunner  # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -25,6 +26,7 @@ def qapp() -> QtWidgets.QApplication:
 
 def _make_window(tmp_path: Path, **loop_kw: object) -> MainWindow:
     return MainWindow(
+        projects_root=tmp_path,
         workdir=tmp_path,
         runner_factory=lambda: VirtualClaudeRunner(delay=0.0),
         **loop_kw,
@@ -44,6 +46,55 @@ def _run_until_finished(qapp: QtWidgets.QApplication, win: MainWindow, timeout_m
         loop.exec()
     win.worker.wait(2000)
     qapp.processEvents()  # 残った queued slot (on_event / on_finished) を流し切る
+
+
+# ─── プロジェクト探索 / コンボボックス ───────────────────────────
+
+
+def test_discover_projects_filters_by_marker(tmp_path: Path) -> None:
+    (tmp_path / "alpha").mkdir()
+    (tmp_path / "alpha" / ".git").mkdir()
+    (tmp_path / "beta").mkdir()
+    (tmp_path / "beta" / "pyproject.toml").write_text("", encoding="utf-8")
+    (tmp_path / "gamma").mkdir()  # マーカー無し → 除外
+    (tmp_path / ".hidden").mkdir()  # 隠し → 除外
+    names = {name for name, _ in discover_projects(tmp_path)}
+    assert names == {"alpha", "beta"}
+
+
+def test_discover_projects_missing_root_is_empty(tmp_path: Path) -> None:
+    assert discover_projects(tmp_path / "nope") == []
+
+
+def test_combobox_lists_projects_and_selects_workdir(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    (tmp_path / "proj1").mkdir()
+    (tmp_path / "proj1" / "CLAUDE.md").write_text("x", encoding="utf-8")
+    sub = tmp_path / "proj1"
+    win = MainWindow(projects_root=tmp_path, workdir=sub)
+    assert win.cmb_project.count() >= 1
+    assert win._selected_workdir() == sub
+
+
+# ─── 実行モード切替 (実 claude=サブスク / 仮想) ────────────────────
+
+
+def test_build_runner_real_uses_subscription_claude(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path)  # override なし
+    win.chk_real.setChecked(True)
+    runner = win._build_runner()
+    assert isinstance(runner, ClaudeRunner)
+    assert runner.use_subscription is True  # サブスク認証 (API キーを外す)
+    win.chk_real.setChecked(False)
+    assert isinstance(win._build_runner(), VirtualClaudeRunner)
+
+
+def test_real_default_checks_the_box(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, real_default=True)
+    assert win.chk_real.isChecked() is True
 
 
 # ─── 描画スロット (スレッドなし・直接呼び出し) ─────────────────────
@@ -83,18 +134,19 @@ def test_loop_runs_end_to_end_with_virtual_claude(
     win.start_loop()
     _run_until_finished(qapp, win)
     text = win.output.toPlainText()
-    assert "loop 開始" in text
+    assert "loop 開始 [仮想claude]" in text
     assert "session #1 開始" in text
     assert "rotate" in text                      # 70% 超で rotate した
     assert "stopped: max_sessions" in text       # 2 セッションで停止
     assert "[virtual claude]" in text            # 仮想 claude の出力が描画された
     assert win.btn_start.isEnabled()             # 終了後 Start が再び有効
     assert not win.btn_stop.isEnabled()
+    assert win.cmb_project.isEnabled()           # 終了後コンボボックス再有効
 
 
 def test_stop_button_halts_loop(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
-    # delay を入れて、走行中に Stop を要求 → 早期 stopped で終わる
     win = MainWindow(
+        projects_root=tmp_path,
         workdir=tmp_path,
         runner_factory=lambda: VirtualClaudeRunner(delay=0.05),
         max_sessions=100,  # 放置すれば長時間 → Stop が効くことの検証
@@ -108,6 +160,7 @@ def test_stop_button_halts_loop(qapp: QtWidgets.QApplication, tmp_path: Path) ->
 
 def test_auth_stops_loop_end_to_end(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
     win = MainWindow(
+        projects_root=tmp_path,
         workdir=tmp_path,
         runner_factory=lambda: VirtualClaudeRunner(delay=0.0, auth_after=1),
         max_sessions=5,
