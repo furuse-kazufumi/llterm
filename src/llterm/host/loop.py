@@ -260,6 +260,17 @@ class SessionLoop:
         except Exception:  # noqa: BLE001
             return False
 
+    def _continue_prompt(self) -> str:
+        """継続ターンの prompt。GUI が inject したタスクがあれば優先する (一度だけ)。"""
+        if self.next_prompt is not None:
+            try:
+                injected = self.next_prompt()
+            except Exception:  # noqa: BLE001
+                injected = None
+            if injected:
+                return injected
+        return self.continue_prompt
+
     def used_pct(self, res: TurnResult) -> float:
         if self.window_tokens <= 0:
             return 0.0
