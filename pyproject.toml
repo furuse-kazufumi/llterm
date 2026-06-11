@@ -11,9 +11,12 @@ dependencies = ["pywinpty>=2.0; sys_platform == 'win32'"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+gui = ["PySide6>=6.6"]
 
 [project.scripts]
 llterm = "llterm.app:main"
+llterm-loop = "llterm.host.loop:main"
+llterm-gui = "llterm.gui.app:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
