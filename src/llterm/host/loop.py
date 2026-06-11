@@ -358,7 +358,7 @@ class SessionLoop:
                                used_pct=used, session_turns=session_turns)
                     break  # → 新セッションへ rotate
 
-                prompt, resume = self.continue_prompt, True  # 閾値未満: 同セッション継続
+                prompt, resume = self._continue_prompt(), True  # 閾値未満: 同セッション継続
 
             sessions += 1
 
