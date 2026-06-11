@@ -34,6 +34,17 @@ from typing import Protocol
 
 from llterm.ctl.ledger import Ledger
 
+
+def _ensure_utf8_stdout() -> None:
+    """Windows cp932 コンソールでも日本語/記号を化けさせない (feedback_cli_utf8_stdout_pattern)。"""
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
+            except (OSError, ValueError):
+                pass
+
+
 DEFAULT_WINDOW_TOKENS = 200_000
 DEFAULT_THRESHOLD = 0.70
 DEFAULT_MAX_TURNS_PER_SESSION = 50
