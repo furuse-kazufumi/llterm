@@ -27,17 +27,16 @@ PySide6 GUI へ。会話で壊れ続けた問題は全部 terminal_io 由来 (wi
 - GUI は **offscreen で main() rc=0**(`show()` まで起動確認)。`--real` 課金ガード rc=2 確認。
 - entry points: `llterm-loop` / `llterm-gui` 登録済(editable 再インストール済)。
 
-## 朝の起動方法
+## 起動方法
 ```powershell
-# 仮想 claude で GUI を見る (課金ゼロ・推奨。ループが窓で自走・70% rotate が見える)
-llterm-gui --workdir D:\projects\llterm
-#   または  py -3.11 -m llterm.gui --workdir D:\projects\llterm
-
-# 実 claude で自走 (課金あり。上限必須=課金保護)
-llterm-gui --real --workdir <対象プロジェクト> --max-sessions 5
-# CLI のみ(GUI なし)で回す場合:
-llterm-loop --workdir <対象> --dry-run --max-sessions 2   # 仮想
+llterm-gui            # GUI 起動 → コンボボックスでプロジェクトを選び Start
+llterm-gui --real     # 起動時に「実 claude (サブスク認証)」を選択状態にする
+#   py -3.11 -m llterm.gui でも可
 ```
+- GUI = プロジェクト選択コンボボックス(D:/projects 探索)+ 実/仮想トグル + 最大 session。
+- **実 claude は claude.ai サブスク認証(`ClaudeRunner` が ANTHROPIC_API_KEY 系 env を外す)→ 従量課金なし**
+  (Max 定額の範囲。制約は $ でなくレート制限)。仮想 claude(トグル off=既定)は課金ゼロのプレビュー。
+- CLI 単体: `llterm-loop --workdir <対象> --dry-run --max-sessions 2`(仮想)。
 
 ## 次にやるべきこと(要ユーザー判断 → 私が実装)
 1. **課金モデルの確定**: 連続 headless `-p` ループが API 従量課金か claude.ai サブスク認証で回るか。
