@@ -264,3 +264,19 @@ def test_cli_dry_run_wires_end_to_end(tmp_path: Path) -> None:
     rc = main(["--workdir", str(tmp_path), "--dry-run", "--max-sessions", "1"])
     assert rc == 0
     assert (tmp_path / ".llterm" / "loop_ledger.jsonl").exists()
+
+
+def test_next_prompt_injection_overrides_continue(tmp_path: Path) -> None:
+    injected = ["割り込みタスク X"]
+
+    def nxt() -> str | None:
+        return injected.pop(0) if injected else None
+
+    runner = FakeRunner()  # 常に閾値未満
+    loop = _loop(runner, tmp_path, window_tokens=200_000, threshold=0.70,
+                 max_sessions=1, max_turns_per_session=3, next_prompt=nxt)
+    loop.run()
+    work = [c for c in runner.calls if c[0] != DEFAULT_EXIT_PREP_PROMPT]
+    assert work[0][0] == DEFAULT_RESUME_PROMPT       # 1 回目=新セッションの再開 prompt
+    assert work[1][0] == "割り込みタスク X"           # 2 回目=注入タスクが優先される
+    assert work[2][0] != "割り込みタスク X"           # 注入は一度だけ (以降は continue)
