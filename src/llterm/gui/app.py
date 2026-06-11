@@ -1,9 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
 """llterm GUI (L3) — Claude Code 自走ループの窓口。
 
-端末を捨てた GUI。出力ビュー (リングバッファ) / コンテキスト使用率バー / コスト /
-セッション番号 / Start・Stop / タスク注入欄 (Ctrl+Enter 送信) を持つ。
-既定は **仮想 claude** で駆動 (課金ゼロ・反復デバッグ用)。``--real`` で実 claude。
+端末を捨てた GUI。プロジェクト選択(コンボボックス)→ Start で自走開始。
+出力ビュー(リングバッファ)/ コンテキスト使用率バー / コスト(報告値)/ セッション番号 /
+Start・Stop / タスク注入欄(Ctrl+Enter 送信)/ セッション上限。
+
+実行モード:
+- **仮想 claude**(既定, チェックを外す): 実 claude を呼ばない。課金ゼロのデバッグ/プレビュー。
+- **実 claude(claude.ai サブスク認証)**: ``ClaudeRunner(use_subscription=True)`` が API キー env を外して
+  OAuth サブスクで回す → **新たな従量課金なし**(Max 定額の範囲。制約はレート制限)。
 """
 from __future__ import annotations
 
@@ -17,6 +22,23 @@ from llterm.gui.virtual import VirtualClaudeRunner
 from llterm.gui.worker import LoopWorker
 from llterm.host.loop import TurnRunner, _ensure_utf8_stdout
 
+DEFAULT_PROJECTS_ROOT = Path("D:/projects")
+_PROJECT_MARKERS = (".git", "pyproject.toml", "CLAUDE.md", "package.json", "Cargo.toml")
+
+
+def discover_projects(root: Path) -> list[tuple[str, Path]]:
+    """projects root 直下の「プロジェクトらしい」ディレクトリを (名前, パス) で列挙する。"""
+    found: list[tuple[str, Path]] = []
+    try:
+        for child in sorted(root.iterdir(), key=lambda p: p.name.lower()):
+            if not child.is_dir() or child.name.startswith("."):
+                continue
+            if any((child / marker).exists() for marker in _PROJECT_MARKERS):
+                found.append((child.name, child))
+    except OSError:
+        pass
+    return found
+
 
 class MainWindow(QtWidgets.QMainWindow):
     """ループ駆動の主ウィンドウ。L2 (SessionLoop) を QThread で回し進捗を描画する。"""
@@ -24,36 +46,58 @@ class MainWindow(QtWidgets.QMainWindow):
     def __init__(
         self,
         *,
-        workdir: Path,
-        runner_factory: Callable[[], TurnRunner],
+        projects_root: Path = DEFAULT_PROJECTS_ROOT,
+        workdir: Path | None = None,
+        real_default: bool = False,
+        runner_factory: Callable[[], TurnRunner] | None = None,
         **loop_kw: object,
     ) -> None:
         super().__init__()
-        self.workdir = Path(workdir)
-        self.runner_factory = runner_factory
+        self.projects_root = Path(projects_root)
+        self.runner_factory_override = runner_factory  # tests/仮想を強制注入する穴
         self.loop_kw = dict(loop_kw)
         self.worker: LoopWorker | None = None
-        self._build_ui()
+        self._build_ui(initial_workdir=Path(workdir) if workdir else None, real_default=real_default)
 
     # ---- UI 構築 ----
-    def _build_ui(self) -> None:
+    def _build_ui(self, *, initial_workdir: Path | None, real_default: bool) -> None:
         self.setWindowTitle("llterm — Claude Code 自走ループ (GUI)")
         central = QtWidgets.QWidget()
         self.setCentralWidget(central)
         vbox = QtWidgets.QVBoxLayout(central)
 
-        row = QtWidgets.QHBoxLayout()
+        # プロジェクト選択行
+        proj_row = QtWidgets.QHBoxLayout()
+        proj_row.addWidget(QtWidgets.QLabel("プロジェクト:"))
+        self.cmb_project = QtWidgets.QComboBox()
+        self.cmb_project.setMinimumWidth(360)
+        self._populate_projects(initial_workdir)
+        proj_row.addWidget(self.cmb_project, 1)
+        self.chk_real = QtWidgets.QCheckBox("実 claude (claude.ai サブスク認証)")
+        self.chk_real.setChecked(real_default)
+        self.chk_real.setToolTip("off = 仮想 claude (課金ゼロ)。on = サブスク認証で実走 (従量課金なし・レート制限内)")
+        proj_row.addWidget(self.chk_real)
+        proj_row.addWidget(QtWidgets.QLabel("最大session:"))
+        self.spin_sessions = QtWidgets.QSpinBox()
+        self.spin_sessions.setRange(1, 100000)
+        default_sessions = self.loop_kw.get("max_sessions")
+        self.spin_sessions.setValue(int(default_sessions) if default_sessions else 8)
+        proj_row.addWidget(self.spin_sessions)
+        vbox.addLayout(proj_row)
+
+        # ステータス行
+        status_row = QtWidgets.QHBoxLayout()
         self.lbl_state = QtWidgets.QLabel("idle")
         self.lbl_session = QtWidgets.QLabel("session: -")
         self.ctx_bar = QtWidgets.QProgressBar()
         self.ctx_bar.setRange(0, 100)
         self.ctx_bar.setFormat("ctx %p%")
-        self.lbl_cost = QtWidgets.QLabel("cost: $0.0000")
-        row.addWidget(self.lbl_state)
-        row.addWidget(self.lbl_session)
-        row.addWidget(self.ctx_bar, 1)
-        row.addWidget(self.lbl_cost)
-        vbox.addLayout(row)
+        self.lbl_cost = QtWidgets.QLabel("cost(報告値): $0.0000")
+        status_row.addWidget(self.lbl_state)
+        status_row.addWidget(self.lbl_session)
+        status_row.addWidget(self.ctx_bar, 1)
+        status_row.addWidget(self.lbl_cost)
+        vbox.addLayout(status_row)
 
         self.output = QtWidgets.QPlainTextEdit()
         self.output.setReadOnly(True)
@@ -68,18 +112,18 @@ class MainWindow(QtWidgets.QMainWindow):
         self.input.setMaximumHeight(90)
         vbox.addWidget(self.input)
 
-        btnrow = QtWidgets.QHBoxLayout()
+        btn_row = QtWidgets.QHBoxLayout()
         self.btn_start = QtWidgets.QPushButton("Start")
         self.btn_stop = QtWidgets.QPushButton("Stop")
         self.btn_stop.setEnabled(False)
         self.btn_send = QtWidgets.QPushButton("Send (Ctrl+Enter)")
-        btnrow.addWidget(self.btn_start)
-        btnrow.addWidget(self.btn_stop)
-        btnrow.addStretch(1)
-        btnrow.addWidget(self.btn_send)
-        vbox.addLayout(btnrow)
+        btn_row.addWidget(self.btn_start)
+        btn_row.addWidget(self.btn_stop)
+        btn_row.addStretch(1)
+        btn_row.addWidget(self.btn_send)
+        vbox.addLayout(btn_row)
 
-        self.resize(900, 620)
+        self.resize(940, 640)
         self.btn_start.clicked.connect(self.start_loop)
         self.btn_stop.clicked.connect(self.stop_loop)
         self.btn_send.clicked.connect(self.send_input)
@@ -87,26 +131,63 @@ class MainWindow(QtWidgets.QMainWindow):
         QtGui.QShortcut(QtGui.QKeySequence("Ctrl+Return"), self.input, self.send_input)
         QtGui.QShortcut(QtGui.QKeySequence("Ctrl+Enter"), self.input, self.send_input)
 
+    def _populate_projects(self, initial_workdir: Path | None) -> None:
+        self.cmb_project.clear()
+        for name, path in discover_projects(self.projects_root):
+            self.cmb_project.addItem(name, str(path))
+        # 明示指定の workdir は (root 配下でなくても) 必ず候補に入れて選択する
+        if initial_workdir is not None:
+            target = str(initial_workdir)
+            idx = self.cmb_project.findData(target)
+            if idx < 0:
+                self.cmb_project.insertItem(0, initial_workdir.name, target)
+                idx = 0
+            self.cmb_project.setCurrentIndex(idx)
+
     def _append(self, text: str) -> None:
         self.output.appendPlainText(text)
+
+    def _selected_workdir(self) -> Path | None:
+        data = self.cmb_project.currentData()
+        return Path(str(data)) if data else None
+
+    def _build_runner(self) -> TurnRunner:
+        """実行モードに応じた TurnRunner を返す (テスト override 優先)。"""
+        if self.runner_factory_override is not None:
+            return self.runner_factory_override()
+        if self.chk_real.isChecked():
+            from llterm.host.loop import ClaudeRunner
+
+            return ClaudeRunner(use_subscription=True)  # API キーを外しサブスク認証で実走
+        return VirtualClaudeRunner()
 
     # ---- 操作 ----
     @QtCore.Slot()
     def start_loop(self) -> None:
         if self.worker is not None and self.worker.isRunning():
             return
-        runner = self.runner_factory()
-        ledger_path = self.workdir / ".llterm" / "loop_ledger.jsonl"
+        workdir = self._selected_workdir()
+        if workdir is None or not workdir.is_dir():
+            self._append("error: プロジェクトが選択されていません (コンボボックスから選んでください)")
+            return
+        real = self.runner_factory_override is None and self.chk_real.isChecked()
+        runner = self._build_runner()
+        loop_kw = dict(self.loop_kw)
+        loop_kw["max_sessions"] = self.spin_sessions.value()  # 常に上限つき (暴走/レート保護)
+        ledger_path = workdir / ".llterm" / "loop_ledger.jsonl"
         self.worker = LoopWorker(
-            runner=runner, workdir=self.workdir, ledger_path=ledger_path, loop_kw=self.loop_kw,
+            runner=runner, workdir=workdir, ledger_path=ledger_path, loop_kw=loop_kw,
         )
         self.worker.event.connect(self._on_event)
         self.worker.finished_outcome.connect(self._on_finished)
         self.worker.start()
         self.btn_start.setEnabled(False)
         self.btn_stop.setEnabled(True)
+        self.cmb_project.setEnabled(False)
+        self.chk_real.setEnabled(False)
         self.lbl_state.setText("running")
-        self._append("=== loop 開始 ===")
+        mode = "実claude(サブスク)" if real else "仮想claude"
+        self._append(f"=== loop 開始 [{mode}] workdir={workdir} max_session={loop_kw['max_sessions']} ===")
 
     @QtCore.Slot()
     def stop_loop(self) -> None:
@@ -136,7 +217,7 @@ class MainWindow(QtWidgets.QMainWindow):
         elif kind == "turn":
             pct = int(round(float(data.get("used_pct", 0.0)) * 100))
             self.ctx_bar.setValue(min(pct, 100))
-            self.lbl_cost.setText(f"cost: ${float(data.get('total_cost', 0.0)):.4f}")
+            self.lbl_cost.setText(f"cost(報告値): ${float(data.get('total_cost', 0.0)):.4f}")
             err = data.get("error_kind")
             head = f"[turn {data.get('turn')}] ctx {pct}%" + (f"  ERR={err}" if err else "")
             self._append(f"{head}\n{data.get('text') or ''}")
@@ -147,7 +228,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self._append(
                 f"\n=== stopped: {data.get('stop_reason')} "
                 f"(sessions={data.get('sessions')}, turns={data.get('turns')}, "
-                f"cost=${float(data.get('total_cost', 0.0)):.4f}) ==="
+                f"cost(報告値)=${float(data.get('total_cost', 0.0)):.4f}) ==="
             )
 
     @QtCore.Slot(dict)
@@ -156,9 +237,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.lbl_state.setText(f"done: {reason}")
         self.btn_start.setEnabled(True)
         self.btn_stop.setEnabled(False)
+        self.cmb_project.setEnabled(True)
+        self.chk_real.setEnabled(True)
         if reason == "auth_required":
-            self._append("⚠ 再ログインが必要です。認証後に Start で再開してください "
-                         "(構造的に唯一の人間介在点)。")
+            self._append("⚠ 再ログインが必要です (claude /login)。認証後に Start で再開してください "
+                         "— 構造的に唯一の人間介在点。")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -169,31 +252,22 @@ def main(argv: list[str] | None = None) -> int:
         prog="llterm-gui",
         description="llterm GUI: Claude Code 自走ループの窓口 (端末非依存)。既定は仮想 claude (課金ゼロ)。",
     )
-    parser.add_argument("--workdir", default=".", help="claude を起動する対象プロジェクト")
+    parser.add_argument("--projects-root", default=str(DEFAULT_PROJECTS_ROOT),
+                        help="コンボボックスに出すプロジェクトの親ディレクトリ (既定 D:/projects)")
+    parser.add_argument("--workdir", default=None, help="初期選択するプロジェクト (任意)")
     parser.add_argument("--real", action="store_true",
-                        help="実 claude を使う (既定は仮想 claude = 課金ゼロのデバッグ)")
+                        help="起動時に『実 claude(サブスク認証)』を選択状態にする")
     parser.add_argument("--threshold", type=float, default=0.70)
     parser.add_argument("--window-tokens", type=int, default=200_000)
     parser.add_argument("--max-sessions", type=int, default=None)
     parser.add_argument("--max-cost", type=float, default=None)
     args = parser.parse_args(argv)
 
-    workdir = Path(args.workdir).resolve()
-    runner_factory: Callable[[], TurnRunner]
-    if args.real:
-        from llterm.host.loop import ClaudeRunner
-
-        if args.max_sessions is None and args.max_cost is None:
-            print("error: --real は --max-sessions か --max-cost が必要 (課金保護)", file=sys.stderr)
-            return 2
-        runner_factory = ClaudeRunner
-    else:
-        runner_factory = VirtualClaudeRunner
-
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv)
     win = MainWindow(
-        workdir=workdir,
-        runner_factory=runner_factory,
+        projects_root=Path(args.projects_root),
+        workdir=Path(args.workdir).resolve() if args.workdir else None,
+        real_default=args.real,
         window_tokens=args.window_tokens,
         threshold=args.threshold,
         max_sessions=args.max_sessions,
