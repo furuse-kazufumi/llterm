@@ -280,3 +280,25 @@ def test_next_prompt_injection_overrides_continue(tmp_path: Path) -> None:
     assert work[0][0] == DEFAULT_RESUME_PROMPT       # 1 回目=新セッションの再開 prompt
     assert work[1][0] == "割り込みタスク X"           # 2 回目=注入タスクが優先される
     assert work[2][0] != "割り込みタスク X"           # 注入は一度だけ (以降は continue)
+
+
+# ─── サブスク認証 (API キー env を外す) ───────────────────────────
+
+
+def test_subscription_env_strips_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """claude.ai サブスク認証を使わせるため API キー系 env を外す (従量課金回避)。"""
+    from llterm.host.loop import _subscription_env
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-should-be-stripped")
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "tok-should-be-stripped")
+    monkeypatch.setenv("LLTERM_KEEP_ME", "yes")
+    env = _subscription_env()
+    assert "ANTHROPIC_API_KEY" not in env
+    assert "ANTHROPIC_AUTH_TOKEN" not in env
+    assert env.get("LLTERM_KEEP_ME") == "yes"  # 他の env は保持される
+
+
+def test_claude_runner_defaults_to_subscription() -> None:
+    from llterm.host.loop import ClaudeRunner
+
+    assert ClaudeRunner().use_subscription is True
