@@ -241,6 +241,7 @@ class SessionLoop:
     max_turns_per_session: int = DEFAULT_MAX_TURNS_PER_SESSION
     on_event: Callable[[str, dict], None] | None = None
     should_stop: Callable[[], bool] | None = None  # GUI の Stop ボタン等 (協調停止)
+    next_prompt: Callable[[], str | None] | None = None  # GUI のタスク注入 (継続ターンで一度だけ優先)
 
     def _emit(self, kind: str, **data: object) -> None:
         """観測者 (GUI 等) へ進捗通知。observer の例外で自走を殺さない (fail-safe)。"""
