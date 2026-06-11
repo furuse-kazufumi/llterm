@@ -399,6 +399,7 @@ class _DryRunner:
 
 
 def main(argv: list[str] | None = None) -> int:
+    _ensure_utf8_stdout()
     parser = argparse.ArgumentParser(
         prog="llterm-loop",
         description="llterm L2: 公式 headless protocol で Claude Code を自走ループ駆動 (端末を通らない)",
