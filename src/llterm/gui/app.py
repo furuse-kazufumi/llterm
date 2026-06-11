@@ -162,6 +162,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
 
 def main(argv: list[str] | None = None) -> int:
+    _ensure_utf8_stdout()
     import argparse
 
     parser = argparse.ArgumentParser(
