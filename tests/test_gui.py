@@ -32,16 +32,18 @@ def _make_window(tmp_path: Path, **loop_kw: object) -> MainWindow:
 
 
 def _run_until_finished(qapp: QtWidgets.QApplication, win: MainWindow, timeout_ms: int = 15000) -> None:
-    """worker の finished シグナルが来るまでイベントループを回す (offscreen)。"""
-    loop = QtCore.QEventLoop()
+    """worker スレッドが終わるまでイベントループを回す (offscreen, 競合に耐性)。"""
     assert win.worker is not None
-    win.worker.finished_outcome.connect(lambda _o: loop.quit())
+    loop = QtCore.QEventLoop()
+    win.worker.finished.connect(loop.quit)  # QThread 標準シグナル (必ず発火)
     guard = QtCore.QTimer()
     guard.setSingleShot(True)
     guard.timeout.connect(loop.quit)
     guard.start(timeout_ms)
-    loop.exec()
+    if not win.worker.isFinished():
+        loop.exec()
     win.worker.wait(2000)
+    qapp.processEvents()  # 残った queued slot (on_event / on_finished) を流し切る
 
 
 # ─── 描画スロット (スレッドなし・直接呼び出し) ─────────────────────
