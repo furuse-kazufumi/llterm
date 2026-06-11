@@ -173,6 +173,22 @@ def _as_float(v: object) -> float:
         return 0.0
 
 
+_SUBSCRIPTION_STRIP_VARS = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
+
+
+def _subscription_env() -> dict[str, str]:
+    """claude.ai サブスク認証 (OAuth) を使わせるため API キー系 env を外して返す。
+
+    ANTHROPIC_API_KEY 等が残っていると claude が従量課金 API を優先しうる。これを外すと
+    OAuth (claude.ai サブスク) にフォールバックする = ccr が課金回避に使うのと同じ手法。
+    結果、連続自走しても **新たな従量課金は発生しない** (Max 定額の範囲。制約はレート制限)。
+    """
+    env = dict(os.environ)
+    for key in _SUBSCRIPTION_STRIP_VARS:
+        env.pop(key, None)
+    return env
+
+
 class TurnRunner(Protocol):
     """1 ターンを実行して結果を返す抽象 (テスト/GUI は mock や仮想 claude を注入する)。"""
 
