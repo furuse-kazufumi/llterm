@@ -208,6 +208,7 @@ class ClaudeRunner:
     exe: str = "claude"
     timeout: float = 1800.0
     skip_permissions: bool = True
+    use_subscription: bool = True  # True: API キー env を外し claude.ai サブスク認証で回す (課金回避)
     extra_args: Sequence[str] = ()
 
     def run_turn(self, *, prompt: str, session_id: str, resume: bool, cwd: Path) -> TurnResult:
@@ -234,6 +235,7 @@ class ClaudeRunner:
                 encoding="utf-8",
                 errors="replace",
                 timeout=self.timeout,
+                env=_subscription_env() if self.use_subscription else None,
             )
         except FileNotFoundError:
             return TurnResult(session_id, 0, 0, 0, 0.0, "", True, "other", 0, 127)
