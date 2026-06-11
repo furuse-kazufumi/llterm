@@ -15,14 +15,10 @@ ccr / lll を苦しめてきた terminal_io 由来の破綻 (Enter 化け / orph
 5. 1 へ戻る (新セッションへ rotate)。
 
 唯一の人間介在点 = **再ログイン (認証切れ)**。spec §5.5 の構造的上限であり、
-検知したら fail-closed で停止し人間を待つ (``.rotate-signal`` も書かず暴走しない)。
+検知したら fail-closed で停止し人間を待つ。
 
-安全 (FullSense / RAPTOR 哲学):
-- 子プロセスは ``stdin=DEVNULL`` (自走ループの子は stdin を待ってはならない。llloop 2026-06-11
-  orphan-reader hang の教訓を構造的に踏襲)。
-- list-based subprocess args (shell 不使用 = コマンド注入面を作らない)。
-- 無制限自走は fail-closed (CLI が ``--max-sessions`` か ``--max-cost`` を要求。課金暴走防止)。
-- 全ターンを append-only ledger に監査記録 (コスト / 使用量 / エラー種別)。
+このモジュールは表示層に依存しない (headless)。GUI (L3) は ``on_event`` コールバックで
+進捗を購読し、Qt シグナルへ marshalled して描画する。
 """
 from __future__ import annotations
 
@@ -31,7 +27,7 @@ import json
 import subprocess
 import sys
 import uuid
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -166,7 +162,7 @@ def _as_float(v: object) -> float:
 
 
 class TurnRunner(Protocol):
-    """1 ターンを実行して結果を返す抽象 (テストは mock を注入する)。"""
+    """1 ターンを実行して結果を返す抽象 (テスト/GUI は mock や仮想 claude を注入する)。"""
 
     def run_turn(self, *, prompt: str, session_id: str, resume: bool, cwd: Path) -> TurnResult: ...
 
@@ -220,7 +216,7 @@ class ClaudeRunner:
 
 @dataclass(frozen=True)
 class Outcome:
-    stop_reason: str  # "max_sessions" | "max_cost" | "auth_required" | "circuit_open"
+    stop_reason: str  # "max_sessions" | "max_cost" | "auth_required" | "circuit_open" | "stopped"
     sessions: int
     turns: int
     total_cost_usd: float
@@ -229,7 +225,7 @@ class Outcome:
 
 @dataclass
 class SessionLoop:
-    """L2 ループ駆動本体。閾値到達でセッションを rotate する自走エンジン。"""
+    """L2 ループ駆動本体。閾値到達でセッションを rotate する自走エンジン (表示層に非依存)。"""
 
     runner: TurnRunner
     workdir: Path
@@ -243,6 +239,25 @@ class SessionLoop:
     max_total_cost_usd: float | None = None
     max_consecutive_errors: int = 3
     max_turns_per_session: int = DEFAULT_MAX_TURNS_PER_SESSION
+    on_event: Callable[[str, dict], None] | None = None
+    should_stop: Callable[[], bool] | None = None  # GUI の Stop ボタン等 (協調停止)
+
+    def _emit(self, kind: str, **data: object) -> None:
+        """観測者 (GUI 等) へ進捗通知。observer の例外で自走を殺さない (fail-safe)。"""
+        if self.on_event is None:
+            return
+        try:
+            self.on_event(kind, dict(data))
+        except Exception:  # noqa: BLE001 — 表示側の失敗を loop に波及させない
+            pass
+
+    def _stop_requested(self) -> bool:
+        if self.should_stop is None:
+            return False
+        try:
+            return bool(self.should_stop())
+        except Exception:  # noqa: BLE001
+            return False
 
     def used_pct(self, res: TurnResult) -> float:
         if self.window_tokens <= 0:
@@ -260,29 +275,38 @@ class SessionLoop:
         consec_err = 0
 
         while self.max_sessions is None or sessions < self.max_sessions:
+            if self._stop_requested():
+                return self._finish("stopped", sessions, turns, total_cost, "stop requested")
             sid = self._new_session_id()
             self.ledger.append(
                 event="session_start", cmd_id=sid, action="rotate",
                 detail=f"session#{sessions + 1}",
             )
+            self._emit("session_start", session_id=sid, session_index=sessions + 1)
             prompt = self.resume_prompt
             resume = False
             session_turns = 0
 
             while True:
+                if self._stop_requested():
+                    return self._finish("stopped", sessions, turns, total_cost, "stop requested")
                 if self.max_total_cost_usd is not None and total_cost >= self.max_total_cost_usd:
-                    return Outcome("max_cost", sessions, turns, total_cost, "cost cap reached")
+                    return self._finish("max_cost", sessions, turns, total_cost, "cost cap reached")
 
                 res = self.runner.run_turn(prompt=prompt, session_id=sid, resume=resume, cwd=self.workdir)
                 turns += 1
                 session_turns += 1
                 total_cost += res.cost_usd
+                used = self.used_pct(res)
                 self.ledger.append(
                     event="turn", cmd_id=sid, action="query-state",
-                    detail=(
-                        f"ctx={res.context_tokens} used={self.used_pct(res):.0%} "
-                        f"cost={res.cost_usd:.4f} err={res.error_kind or '-'}"
-                    ),
+                    detail=f"ctx={res.context_tokens} used={used:.0%} cost={res.cost_usd:.4f} "
+                           f"err={res.error_kind or '-'}",
+                )
+                self._emit(
+                    "turn", session_id=sid, session_index=sessions + 1, turn=turns,
+                    context_tokens=res.context_tokens, used_pct=used, cost_usd=res.cost_usd,
+                    total_cost=total_cost, text=res.text, error_kind=res.error_kind,
                 )
 
                 # 認証切れ = 構造的上限。fail-closed で停止 (暴走させない / 人間を待つ)。
@@ -291,7 +315,8 @@ class SessionLoop:
                         event="auth_required", cmd_id=sid, action="shutdown",
                         detail="re-login required — fail-closed stop (human needed)",
                     )
-                    return Outcome("auth_required", sessions, turns, total_cost, "re-login required")
+                    return self._finish("auth_required", sessions, turns, total_cost,
+                                        "re-login required")
 
                 if res.is_error:
                     consec_err += 1
@@ -300,13 +325,13 @@ class SessionLoop:
                             event="circuit_open", cmd_id=sid, action="shutdown",
                             detail=f"{consec_err} consecutive errors",
                         )
-                        return Outcome("circuit_open", sessions, turns, total_cost,
-                                       f"{consec_err} consecutive errors")
+                        return self._finish("circuit_open", sessions, turns, total_cost,
+                                            f"{consec_err} consecutive errors")
                     prompt, resume = self.continue_prompt, True
                     continue
                 consec_err = 0
 
-                rotate = self.used_pct(res) >= self.threshold or session_turns >= self.max_turns_per_session
+                rotate = used >= self.threshold or session_turns >= self.max_turns_per_session
                 if rotate:
                     # exit準備: handoff (SESSION_SUMMARY / next_plan) を書かせてから畳む。
                     self.runner.run_turn(
@@ -315,16 +340,39 @@ class SessionLoop:
                     turns += 1
                     self.ledger.append(
                         event="exit_prep", cmd_id=sid, action="rotate",
-                        detail=f"used={self.used_pct(res):.0%} turns={session_turns} → rotate",
+                        detail=f"used={used:.0%} turns={session_turns} → rotate",
                     )
+                    self._emit("rotate", session_id=sid, session_index=sessions + 1,
+                               used_pct=used, session_turns=session_turns)
                     break  # → 新セッションへ rotate
 
                 prompt, resume = self.continue_prompt, True  # 閾値未満: 同セッション継続
 
             sessions += 1
 
-        return Outcome("max_sessions", sessions, turns, total_cost,
-                       f"reached max_sessions={self.max_sessions}")
+        return self._finish("max_sessions", sessions, turns, total_cost,
+                            f"reached max_sessions={self.max_sessions}")
+
+    def _finish(self, reason: str, sessions: int, turns: int, cost: float, detail: str) -> Outcome:
+        outcome = Outcome(reason, sessions, turns, cost, detail)
+        self._emit("stopped", stop_reason=reason, sessions=sessions, turns=turns,
+                   total_cost=cost, detail=detail)
+        return outcome
+
+
+@dataclass
+class _DryRunner:
+    """--dry-run / 仮想 claude: claude を呼ばず使用率が増えていく擬似結果を返す (課金ゼロ)。"""
+
+    window_tokens: int = DEFAULT_WINDOW_TOKENS
+    threshold: float = DEFAULT_THRESHOLD
+    _calls: int = 0
+
+    def run_turn(self, *, prompt: str, session_id: str, resume: bool, cwd: Path) -> TurnResult:
+        self._calls += 1
+        # resume の度に文脈が増える擬似。新セッション (resume=False) でリセット。
+        ctx = 10_000 if not resume else int(self.window_tokens * (self.threshold + 0.05))
+        return TurnResult(session_id, ctx, 500, ctx, 0.0, "(dry-run turn)", False, "", 1, 0)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -340,9 +388,10 @@ def main(argv: list[str] | None = None) -> int:
                         help="rotate するコンテキスト使用率 (既定 0.70 = 70%%)")
     parser.add_argument("--max-sessions", type=int, default=None)
     parser.add_argument("--max-cost", type=float, default=None, help="累計コスト上限 (USD)")
-    parser.add_argument("--ledger", default=None, help="監査 ledger のパス (既定 <workdir>/.llterm/loop_ledger.jsonl)")
+    parser.add_argument("--ledger", default=None,
+                        help="監査 ledger のパス (既定 <workdir>/.llterm/loop_ledger.jsonl)")
     parser.add_argument("--dry-run", action="store_true",
-                        help="claude を呼ばず mock で配線確認 (課金ゼロ)")
+                        help="claude を呼ばず仮想 claude で配線確認 (課金ゼロ)")
     args = parser.parse_args(argv)
 
     workdir = Path(args.workdir).resolve()
@@ -350,7 +399,6 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: --workdir が存在しません: {workdir}", file=sys.stderr)
         return 2
 
-    # fail-closed: 無制限自走は課金保護のため拒否 (dry-run は除く)。
     if not args.dry_run and args.max_sessions is None and args.max_cost is None:
         print("error: --max-sessions か --max-cost のどちらかを指定してください "
               "(無制限自走は課金保護のため拒否)", file=sys.stderr)
@@ -363,7 +411,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.dry_run:
         runner = _DryRunner(window_tokens=args.window_tokens, threshold=args.threshold)
         if max_sessions is None:
-            max_sessions = 2  # dry-run は既定 2 セッションで配線を見せて終了
+            max_sessions = 2
     else:
         runner = ClaudeRunner()
 
@@ -386,22 +434,7 @@ def main(argv: list[str] | None = None) -> int:
         f"detail: {outcome.detail}\nledger: {ledger_path}",
         flush=True,
     )
-    return 0 if outcome.stop_reason in ("max_sessions", "max_cost") else 1
-
-
-@dataclass
-class _DryRunner:
-    """--dry-run 用: claude を呼ばずに使用率が増えていく擬似結果を返す (課金ゼロ)。"""
-
-    window_tokens: int = DEFAULT_WINDOW_TOKENS
-    threshold: float = DEFAULT_THRESHOLD
-    _calls: int = 0
-
-    def run_turn(self, *, prompt: str, session_id: str, resume: bool, cwd: Path) -> TurnResult:
-        self._calls += 1
-        # resume の度に文脈が増える擬似。新セッション (resume=False) でリセット。
-        ctx = 10_000 if not resume else int(self.window_tokens * (self.threshold + 0.05))
-        return TurnResult(session_id, ctx, 500, ctx, 0.0, "(dry-run)", False, "", 1, 0)
+    return 0 if outcome.stop_reason in ("max_sessions", "max_cost", "stopped") else 1
 
 
 if __name__ == "__main__":
