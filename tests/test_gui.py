@@ -712,8 +712,7 @@ def test_model_empty_selects_claude_default(
 
 def _provider_names(win) -> tuple[str, list[str]]:
     primary, fallbacks = win._resolve_providers()
-    name = lambda r: type(r).__name__
-    return name(primary), [name(f) for f in fallbacks]
+    return type(primary).__name__, [type(f).__name__ for f in fallbacks]
 
 
 def test_default_chain_is_claude_primary(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
