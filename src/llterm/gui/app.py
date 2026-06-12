@@ -367,12 +367,37 @@ class MainWindow(QtWidgets.QMainWindow):
         event.accept()
 
     # ---- ワーカーからのイベント (メインスレッドで実行) ----
+    @QtCore.Slot(dict)
+    def _on_stream(self, item: dict) -> None:
+        """ターン内のリアルタイム表示 — 応答・ツール実行をターン完了を待たずに描画する。"""
+        kind = item.get("kind")
+        if kind == "init":
+            sid = str(item.get("session_id", ""))[:8]
+            self._append(f"⏵ model={item.get('model')} session={sid}", PALETTE["dim"])
+        elif kind == "text":
+            self._streamed_text += 1
+            self._append(str(item.get("text") or ""))
+        elif kind == "thinking":
+            self._append(f"… thinking … {item.get('preview') or ''}", PALETTE["dim"])
+        elif kind == "tool_use":
+            detail = str(item.get("detail") or "")
+            self._append(f"⚙ {item.get('name')}" + (f": {detail}" if detail else ""), PALETTE["tool"])
+        elif kind == "tool_result":
+            preview = str(item.get("preview") or "")
+            if item.get("is_error"):
+                self._append(f"  ↳ エラー: {preview}", PALETTE["err"])
+            elif preview:
+                self._append(f"  ↳ {preview}", PALETTE["dim"])
+        # kind == "result" はターン完了メトリクス (turn イベント側が正) — ここでは描画しない
+
     @QtCore.Slot(str, dict)
     def _on_event(self, kind: str, data: dict) -> None:
         if kind == "session_start":
             sid = str(data.get("session_id", ""))[:8]
             self.lbl_session.setText(f"session: #{data.get('session_index')} ({sid})")
-            self._append(f"\n--- session #{data.get('session_index')} 開始 ---")
+            self._append(f"\n--- session #{data.get('session_index')} 開始 ---",
+                         PALETTE["session"], bold=True)
+            self._streamed_text = 0
         elif kind == "turn":
             pct = int(round(float(data.get("used_pct", 0.0)) * 100))
             self.ctx_bar.setValue(min(pct, 100))
@@ -380,15 +405,22 @@ class MainWindow(QtWidgets.QMainWindow):
             self.lbl_session.setText(f"session: #{data.get('session_index')} · turn {data.get('turn')}")
             err = data.get("error_kind")
             head = f"[turn {data.get('turn')}] ctx {pct}%" + (f"  ERR={err}" if err else "")
-            self._append(f"{head}\n{data.get('text') or ''}")
+            self._append(head, PALETTE["err"] if err else PALETTE["turn"], bold=bool(err))
+            text = str(data.get("text") or "")
+            if text and self._streamed_text == 0:  # ストリーム済みなら再表示しない (二重表示防止)
+                self._append(text)
+            self._streamed_text = 0
         elif kind == "rotate":
             pct = int(round(float(data.get("used_pct", 0.0)) * 100))
-            self._append(f"--- rotate (ctx {pct}%) → exit準備 & 新セッションへ ---")
+            self._append(f"--- rotate (ctx {pct}%) → exit準備 & 新セッションへ ---",
+                         PALETTE["rotate"])
+            self._streamed_text = 0
         elif kind == "stopped":
             self._append(
                 f"\n=== stopped: {data.get('stop_reason')} "
                 f"(sessions={data.get('sessions')}, turns={data.get('turns')}, "
-                f"cost(報告値)=${float(data.get('total_cost', 0.0)):.4f}) ==="
+                f"cost(報告値)=${float(data.get('total_cost', 0.0)):.4f}) ===",
+                PALETTE["session"], bold=True,
             )
 
     @QtCore.Slot(dict)
