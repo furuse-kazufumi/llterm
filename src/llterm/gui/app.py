@@ -100,11 +100,16 @@ class MainWindow(QtWidgets.QMainWindow):
         # effort 既定: CLI 明示 > 保存値 > "max" (ユーザー方針「とりあえず max」2026-06-12)
         effort_default = self._effort_cli if self._effort_cli is not None else str(
             saved.get("effort", "max"))
-        for kw_key, saved_key in (("max_sessions", "max_sessions"), ("threshold", "threshold"),
-                                  ("window_tokens", "window_tokens"),
-                                  ("max_total_cost_usd", "max_cost")):
-            if self.loop_kw.get(kw_key) is None and saved.get(saved_key) is not None:
-                self.loop_kw[kw_key] = saved[saved_key]
+        # 数値項目は型検証してから取り込む。手編集/外部破損で型不正な値が入っても、
+        # _build_ui の int()/float() を直撃させて GUI 起動不能にしない (fail-safe 契約)。
+        for kw_key, saved_key, cast in (("max_sessions", "max_sessions", int),
+                                        ("threshold", "threshold", float),
+                                        ("window_tokens", "window_tokens", int),
+                                        ("max_total_cost_usd", "max_cost", float)):
+            if self.loop_kw.get(kw_key) is None:
+                num = _coerce_number(saved.get(saved_key), cast)
+                if num is not None:
+                    self.loop_kw[kw_key] = num
 
         self._build_ui(initial_workdir=Path(workdir) if workdir else None,
                        real_default=real_default, rad_default=rad_default,
