@@ -75,6 +75,12 @@ DEFAULT_EXIT_PREP_PROMPT = (
 )
 DEFAULT_CONTINUE_PROMPT = "前回の続きを自律継続せよ。確認は求めない。"
 
+DEFAULT_RAD_HINT = (
+    "【RAD 研究接地】新規の設計・実装・調査に着手する前に、まず RAD コーパス "
+    "(D:/docs/<分野>_corpus_v2/ および D:/docs/hacker_corpus_v2/) を grep して "
+    "既存手法・先行研究・差別化軸を確認せよ(車輪の再発明を防ぐ)。該当が無ければ通常どおり進めてよい。"
+)
+
 
 @dataclass(frozen=True)
 class TurnResult:
