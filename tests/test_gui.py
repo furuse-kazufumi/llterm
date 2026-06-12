@@ -707,6 +707,95 @@ def test_model_empty_selects_claude_default(
     assert runner.model == ""
 
 
+# ─── token 節約ルーティング (Codex 優先 / テンプレ別) ─────────────
+
+
+def _provider_names(win) -> tuple[str, list[str]]:
+    primary, fallbacks = win._resolve_providers()
+    name = lambda r: type(r).__name__
+    return name(primary), [name(f) for f in fallbacks]
+
+
+def test_default_chain_is_claude_primary(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    """既定 (general テンプレ・トグル OFF) は従来どおり Claude 主・fallback なし。"""
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    win.chk_real.setChecked(True)
+    primary, fallbacks = _provider_names(win)
+    assert primary == "ClaudeRunner"
+    assert fallbacks == []
+
+
+def test_codex_fallback_toggle_appends_codex(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    """Codex フォールバック ON: Claude 主 + Codex を保険に。"""
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    win.chk_real.setChecked(True)
+    win.chk_codex_fallback.setChecked(True)
+    primary, fallbacks = _provider_names(win)
+    assert primary == "ClaudeRunner"
+    assert fallbacks == ["CodexRunner"]
+
+
+def test_codex_first_toggle_makes_codex_primary(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    """Codex 優先 ON: Codex 主・Claude を保険に (token をほぼ Codex へ寄せる)。"""
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    win.chk_real.setChecked(True)
+    win.chk_codex_first.setChecked(True)
+    primary, fallbacks = _provider_names(win)
+    assert primary == "CodexRunner"
+    assert fallbacks == ["ClaudeRunner"]
+
+
+def test_mechanical_template_auto_prefers_codex(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    """機械的テンプレ (green_keeper) はトグル OFF でも自動で Codex 主になる。"""
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    win.chk_real.setChecked(True)
+    win.cmb_template.setCurrentIndex(win.cmb_template.findData("green_keeper"))
+    primary, fallbacks = _provider_names(win)
+    assert primary == "CodexRunner"
+    assert fallbacks == ["ClaudeRunner"]
+
+
+def test_general_template_stays_claude(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    """general テンプレは prefer なし → Claude 主のまま。"""
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    win.chk_real.setChecked(True)
+    win.cmb_template.setCurrentIndex(win.cmb_template.findData("general"))
+    assert _provider_names(win)[0] == "ClaudeRunner"
+
+
+def test_virtual_mode_never_uses_codex(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    """仮想モードは Codex 優先 ON でも Codex を使わない (課金/サブスク不要のプレビュー)。"""
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    win.chk_real.setChecked(False)
+    win.chk_codex_first.setChecked(True)
+    primary, fallbacks = _provider_names(win)
+    assert primary == "VirtualClaudeRunner"
+    assert fallbacks == []
+
+
+def test_codex_first_persists(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    sp = tmp_path / "s.json"
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=sp)
+    win.chk_codex_first.setChecked(True)
+    win._save_settings()
+    win2 = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=sp)
+    assert win2.chk_codex_first.isChecked() is True
+
+
+def test_mechanical_template_prefer_codex_metadata() -> None:
+    """テンプレ registry の prefer メタデータ (ルーティングの根拠) を固定する。"""
+    from llterm import templates as tmpl
+    assert tmpl.get("green_keeper").prefer == "codex"
+    assert tmpl.get("rad_expand").prefer == "codex"
+    assert tmpl.get("doc_update").prefer == "codex"
+    assert tmpl.get("security_audit").prefer == "codex"
+    assert tmpl.get("general").prefer == ""
+
+
 def test_explicit_args_override_saved_settings(
     qapp: QtWidgets.QApplication, tmp_path: Path
 ) -> None:
