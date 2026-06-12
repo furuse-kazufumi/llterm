@@ -337,7 +337,7 @@ class SessionLoop:
                 detail=f"session#{sessions + 1}",
             )
             self._emit("session_start", session_id=sid, session_index=sessions + 1)
-            prompt = self.resume_prompt
+            prompt = self._augment(self.resume_prompt)
             resume = False
             session_turns = 0
 
