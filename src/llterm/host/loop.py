@@ -734,10 +734,28 @@ class SessionLoop:
         turns = 0
         total_cost = 0.0
         consec_err = 0
+        prev_idx = -1
 
         while self.max_sessions is None or sessions < self.max_sessions:
             if self._stop_requested():
                 return self._finish("stopped", sessions, turns, total_cost, "stop requested")
+
+            # セッション開始時に利用可能な最優先プロバイダを選ぶ (primary 復活を優先)。
+            # 全プロバイダがレート制限中なら最も早い解除まで待つ (中断可能)。
+            active_idx = self._select_available(self.now_fn())
+            if active_idx is None:
+                if not self._wait_until(int(self._earliest_unblock())):
+                    return self._finish("stopped", sessions, turns, total_cost,
+                                        "stop during rate-limit wait")
+                active_idx = self._select_available(self.now_fn()) or 0
+            active = self._chain[active_idx]
+            if prev_idx >= 0 and active_idx != prev_idx:
+                self.ledger.append(event="provider_switch", cmd_id="-", action="rotate",
+                                   detail=f"{self.provider_name(self._chain[prev_idx])} "
+                                          f"→ {self.provider_name(active)}")
+                self._emit("provider_switch", provider=self.provider_name(active), index=active_idx)
+            prev_idx = active_idx
+
             sid = self._new_session_id()
             self.ledger.append(
                 event="session_start", cmd_id=sid, action="rotate",
