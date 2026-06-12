@@ -236,6 +236,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _append(self, text: str, color: str | None = None, *, bold: bool = False) -> None:
         """出力ビューへ 1 エントリ追記する (色つき HTML。色未指定は本文色)。"""
+        # CR 正規化: Qt は残留 \r も改行扱いするため CRLF 入りテキストが二重改行になる
+        text = text.replace("\r\n", "\n").replace("\r", "\n")
         esc = html.escape(text).replace("\n", "<br/>")
         style = f"color:{color or PALETTE['text']};white-space:pre-wrap"
         if bold:
