@@ -127,6 +127,8 @@ def parse_stream_json(stdout: str, *, exit_code: int, stderr: str = "") -> TurnR
     is_error = False
     num_turns = 0
     result_seen = False
+    context_window = 0
+    plain_lines: list[str] = []  # JSON でない行 = claude の診断/エラー出力 (auth 判定に使う)
 
     for line in stdout.splitlines():
         line = line.strip()
@@ -135,6 +137,7 @@ def parse_stream_json(stdout: str, *, exit_code: int, stderr: str = "") -> TurnR
         try:
             ev = json.loads(line)
         except json.JSONDecodeError:
+            plain_lines.append(line)
             continue
         if not isinstance(ev, dict):
             continue
@@ -151,6 +154,11 @@ def parse_stream_json(stdout: str, *, exit_code: int, stderr: str = "") -> TurnR
             is_error = bool(ev.get("is_error", False)) or subtype.startswith("error")
             if isinstance(ev.get("result"), str):
                 text = ev["result"]
+            mu = ev.get("modelUsage")
+            if isinstance(mu, dict):  # 実窓サイズ (例: fable-5 は 1,000,000) — used_pct の分母に使う
+                for v in mu.values():
+                    if isinstance(v, dict):
+                        context_window = max(context_window, _as_int(v.get("contextWindow")))
 
     input_tokens = _as_int(usage.get("input_tokens"))
     output_tokens = _as_int(usage.get("output_tokens"))
@@ -163,7 +171,11 @@ def parse_stream_json(stdout: str, *, exit_code: int, stderr: str = "") -> TurnR
     error_kind = ""
     if exit_code != 0 or is_error or not result_seen:
         is_error = True
-        blob = (stdout + "\n" + stderr).lower()
+        # auth 判定は制御系チャネル (stderr / 非 JSON 診断行 / result 本文) に限定する。
+        # stdout の JSON transcript 全文を検索すると、エージェントが読んだファイル内容
+        # (tool_result) 中の "authentication" 等の語彙で偶発エラーが auth に誤分類され、
+        # 自走ループ全体が不要に auth_required 停止してしまう (2026-06-12 レビュー所見)。
+        blob = "\n".join((text, stderr, *plain_lines)).lower()
         error_kind = "auth" if any(sig in blob for sig in _AUTH_SIGNALS) else "other"
 
     return TurnResult(
@@ -177,6 +189,7 @@ def parse_stream_json(stdout: str, *, exit_code: int, stderr: str = "") -> TurnR
         error_kind=error_kind,
         num_turns=num_turns,
         raw_exit=exit_code,
+        context_window=context_window,
     )
 
 
