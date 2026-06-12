@@ -310,11 +310,11 @@ class MainWindow(QtWidgets.QMainWindow):
         if not text:
             return
         self.input.clear()
-        self._append(f">> [注入] {text}")
+        self._append(f">> [注入] {text}", PALETTE["inject"])
         if self.worker is not None and self.worker.isRunning():
             self.worker.inject(text)
         else:
-            self._append("  (loop 未起動: Start 後に反映されます)")
+            self._append("  (loop 未起動: Start 後に反映されます)", PALETTE["dim"])
 
     @QtCore.Slot()
     def _on_template_changed(self) -> None:
