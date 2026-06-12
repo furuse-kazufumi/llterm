@@ -271,7 +271,34 @@ class MainWindow(QtWidgets.QMainWindow):
         mono = QtGui.QFont("Consolas")
         mono.setStyleHint(QtGui.QFont.StyleHint.Monospace)
         self.output.setFont(mono)
-        vbox.addWidget(self.output, 1)
+
+        # 進捗サマリ パネル (右側・全文スクロール可・選択コピー可)。claude が書く
+        # docs/SESSION_SUMMARY.md の全文を表示する。ここから単語を選んでタスク注入に流用できる。
+        # スプリッタでドラッグ収納できるので普段は邪魔にならない。
+        summary_panel = QtWidgets.QWidget()
+        sp_box = QtWidgets.QVBoxLayout(summary_panel)
+        sp_box.setContentsMargins(0, 0, 0, 0)
+        sp_head = QtWidgets.QHBoxLayout()
+        sp_head.addWidget(QtWidgets.QLabel("進捗サマリ (SESSION_SUMMARY)"))
+        sp_head.addStretch(1)
+        self.btn_refresh_summary = QtWidgets.QPushButton("↻ 更新")
+        self.btn_refresh_summary.setToolTip("docs/SESSION_SUMMARY.md を再読込 (走行中でも最新を取得)")
+        self.btn_refresh_summary.clicked.connect(self._refresh_summary)
+        sp_head.addWidget(self.btn_refresh_summary)
+        sp_box.addLayout(sp_head)
+        self.summary_view = QtWidgets.QPlainTextEdit()
+        self.summary_view.setReadOnly(True)  # 読取専用でも選択 + Ctrl+C は可 (単語をタスク注入へ)
+        self.summary_view.setPlaceholderText("docs/SESSION_SUMMARY.md がまだありません")
+        self.summary_view.setFont(mono)
+        sp_box.addWidget(self.summary_view, 1)
+
+        self.split_main = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
+        self.split_main.addWidget(self.output)
+        self.split_main.addWidget(summary_panel)
+        self.split_main.setStretchFactor(0, 3)  # ログを広めに
+        self.split_main.setStretchFactor(1, 2)
+        self.split_main.setSizes([620, 380])
+        vbox.addWidget(self.split_main, 1)
 
         self.input = QtWidgets.QPlainTextEdit()
         self.input.setPlaceholderText("タスク注入 / 指示 (Ctrl+Enter で送信)")
