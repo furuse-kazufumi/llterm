@@ -280,6 +280,7 @@ def main(argv: list[str] | None = None) -> int:
         projects_root=Path(args.projects_root),
         workdir=Path(args.workdir).resolve() if args.workdir else None,
         real_default=args.real,
+        rad_default=args.rad,
         window_tokens=args.window_tokens,
         threshold=args.threshold,
         max_sessions=args.max_sessions,
