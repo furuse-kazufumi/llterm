@@ -536,11 +536,17 @@ class MainWindow(QtWidgets.QMainWindow):
             mode = t("gui.mode.real_billed") if self._cost_billed else t("gui.mode.real_subscription")
         else:
             mode = t("gui.mode.virtual")
-        effort_note = f" effort={effort}" if real and effort else ""
-        # 実モデルは init イベントで確定するが、選択値を暫定表示する (空=claude 既定は "…")
-        model_sel = str(self.cmb_model.currentData() or "")
-        model_hint = model_sel if real and model_sel else "…"
-        self.lbl_model.setText(f"model: {model_hint}{('  effort=' + effort) if real and effort else ''}")
+        # 実モデルは init イベントで確定するが、主プロバイダ/選択値を暫定表示する。
+        # Codex 主のランは effort/Claude モデルが無関係なので "codex" と出す (混乱回避)。
+        codex_primary = real and self._codex_is_primary()
+        effort_note = f" effort={effort}" if real and effort and not codex_primary else ""
+        if codex_primary:
+            model_hint = "codex"
+        else:
+            model_sel = str(self.cmb_model.currentData() or "")
+            model_hint = model_sel if real and model_sel else "…"
+        self.lbl_model.setText(
+            f"model: {model_hint}{('  effort=' + effort) if real and effort and not codex_primary else ''}")
         self.lbl_state.setText(t("gui.state.running", mode=mode, template=tmpl.key))
         self._run_effort = effort if real else ""  # init で model と併記するため保持
         self._append(t("gui.msg.loop_start", mode=mode, template=tmpl.key, workdir=workdir,
