@@ -293,6 +293,16 @@ MESSAGES: dict[str, dict[str, str]] = {
         "ja": "進捗サマリ (SESSION_SUMMARY)",
         "en": "Progress summary (SESSION_SUMMARY)",
     },
+    "gui.check.summary_raw": {
+        "ja": "生",
+        "en": "Raw",
+    },
+    "gui.tip.summary_raw": {
+        "ja": "OFF (既定): 現在地/直近の成果/次の一手 に要約した人間向けダイジェスト。"
+              "ON: SESSION_SUMMARY.md の生全文 (agent 再取込向けの高密度テキスト)。",
+        "en": "OFF (default): human digest condensed into current state / recent results / "
+              "next step. ON: the raw full SESSION_SUMMARY.md (dense text meant for agent re-ingest).",
+    },
     "gui.btn.refresh": {
         "ja": "↻ 更新",
         "en": "↻ Refresh",
