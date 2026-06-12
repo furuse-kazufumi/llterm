@@ -69,21 +69,47 @@ class MainWindow(QtWidgets.QMainWindow):
         workdir: Path | None = None,
         real_default: bool = False,
         rad_default: bool = False,
-        template_default: str = "general",
+        template_default: str | None = None,
         rad_docs_root: Path = rad.RAD_DOCS_ROOT,
         runner_factory: Callable[[], TurnRunner] | None = None,
+        settings_path: Path | None = None,
         **loop_kw: object,
     ) -> None:
         super().__init__()
         self.projects_root = Path(projects_root)
         self.rad_docs_root = Path(rad_docs_root)
         self.runner_factory_override = runner_factory  # tests/仮想を強制注入する穴
+        self.settings_path = Path(settings_path) if settings_path else DEFAULT_SETTINGS_PATH
         self.loop_kw = dict(loop_kw)
         self.worker: LoopWorker | None = None
         self._streamed_text = 0  # 現ターン中にリアルタイム表示した応答数 (turn 完了時の二重表示防止)
+
+        # 前回設定の復元: CLI 明示指定 > 保存値 > 組込み既定
+        saved = gui_settings.load_settings(self.settings_path)
+        if workdir is None and saved.get("workdir"):
+            wd = Path(str(saved["workdir"]))
+            workdir = wd if wd.is_dir() else None  # 消えたプロジェクトは復元しない (fail-safe)
+        real_default = real_default or bool(saved.get("real", False))
+        rad_default = rad_default or bool(saved.get("rad", False))
+        autonomy_default = bool(saved.get("autonomy", False))
+        template_default = template_default or str(saved.get("template") or "general")
+        for kw_key, saved_key in (("max_sessions", "max_sessions"), ("threshold", "threshold"),
+                                  ("window_tokens", "window_tokens"),
+                                  ("max_total_cost_usd", "max_cost")):
+            if self.loop_kw.get(kw_key) is None and saved.get(saved_key) is not None:
+                self.loop_kw[kw_key] = saved[saved_key]
+
         self._build_ui(initial_workdir=Path(workdir) if workdir else None,
                        real_default=real_default, rad_default=rad_default,
-                       template_default=template_default)
+                       template_default=template_default,
+                       autonomy_default=autonomy_default,
+                       param_default=str(saved.get("param") or ""))
+        geo = saved.get("geometry")
+        if isinstance(geo, str) and geo:  # ウィンドウ位置/サイズの復元 (壊れた値は無視)
+            try:
+                self.restoreGeometry(QtCore.QByteArray.fromHex(geo.encode("ascii")))
+            except (ValueError, TypeError):
+                pass
 
     # ---- UI 構築 ----
     def _build_ui(self, *, initial_workdir: Path | None, real_default: bool, rad_default: bool,
