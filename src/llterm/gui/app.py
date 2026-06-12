@@ -369,9 +369,12 @@ class MainWindow(QtWidgets.QMainWindow):
         for widget in self._run_widgets:
             widget.setEnabled(False)
         mode = "実claude(サブスク)" if real else "仮想claude"
+        effort = str(self.cmb_effort.currentData() or "")
+        effort_note = f" effort={effort}" if real and effort else ""
         self.lbl_state.setText(f"running [{mode}] {tmpl.key}")
         self._append(f"=== loop 開始 [{mode}] template={tmpl.key} workdir={workdir} "
-                     f"max_session={loop_kw['max_sessions']} ===", PALETTE["session"], bold=True)
+                     f"max_session={loop_kw['max_sessions']}{effort_note} ===",
+                     PALETTE["session"], bold=True)
         self._save_settings()  # クラッシュしても Start 時点の設定が次回復元される
 
     @QtCore.Slot()
