@@ -384,6 +384,35 @@ def test_settings_persist_across_windows(qapp: QtWidgets.QApplication, tmp_path:
     assert win2.edit_param.text() == "robotics"
 
 
+def test_effort_default_is_max_and_feeds_real_runner(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    """既定 effort は max (ユーザー方針)、実 claude runner に --effort として渡る。"""
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    assert win.cmb_effort.currentData() == "max"
+    win.chk_real.setChecked(True)
+    runner = win._build_runner()
+    assert runner.effort == "max"
+
+
+def test_effort_persists_and_restores(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    sp = tmp_path / "s.json"
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=sp)
+    win.cmb_effort.setCurrentIndex(win.cmb_effort.findData("high"))
+    win._save_settings()
+    win2 = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=sp)
+    assert win2.cmb_effort.currentData() == "high"
+
+
+def test_effort_cli_overrides_saved(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    from llterm.gui import settings as gs
+
+    sp = tmp_path / "s.json"
+    gs.save_settings(sp, {"effort": "low"})
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=sp, effort_default="xhigh")
+    assert win.cmb_effort.currentData() == "xhigh"  # CLI 明示指定が保存値に勝つ
+
+
 def test_explicit_args_override_saved_settings(
     qapp: QtWidgets.QApplication, tmp_path: Path
 ) -> None:
