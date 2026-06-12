@@ -25,6 +25,9 @@ def _gen_id() -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from llterm.host.loop import _ensure_utf8_stdout
+
+    _ensure_utf8_stdout()  # ja メッセージを cp932 console でも化けさせない
     ap = argparse.ArgumentParser(prog="llterm-ctl")
     sub = ap.add_subparsers(dest="subcmd", required=True)
     em = sub.add_parser("emit", help="制御コマンドを投函する")
