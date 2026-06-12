@@ -709,9 +709,9 @@ class SessionLoop:
                     )
                     self._emit("rotate", session_id=sid, session_index=sessions + 1,
                                used_pct=used, session_turns=session_turns)
-                    break  # → 新セッションへ rotate
+                    break  # → 新セッローへ rotate
 
-                prompt, resume = self._continue_prompt(), True  # 閾値未満: 同セッション継続
+                (prompt, injected), resume = self._continue_prompt(), True  # 閾値未満: 同セッション継続
 
             sessions += 1
 
