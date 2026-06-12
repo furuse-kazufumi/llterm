@@ -166,6 +166,11 @@ class MainWindow(QtWidgets.QMainWindow):
         # Enter=改行のまま / 送信は Ctrl+Enter (R12: 誤送信の構造的防止)
         QtGui.QShortcut(QtGui.QKeySequence("Ctrl+Return"), self.input, self.send_input)
         QtGui.QShortcut(QtGui.QKeySequence("Ctrl+Enter"), self.input, self.send_input)
+        # 走行中に無効化する設定系ウィジェット (途中変更で worker と不整合にしない)
+        self._run_widgets: list[QtWidgets.QWidget] = [
+            self.cmb_project, self.chk_real, self.chk_rad, self.spin_sessions,
+            self.spin_threshold, self.spin_window, self.spin_maxcost,
+        ]
 
     def _populate_projects(self, initial_workdir: Path | None) -> None:
         self.cmb_project.clear()
