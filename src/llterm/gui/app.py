@@ -434,7 +434,7 @@ class MainWindow(QtWidgets.QMainWindow):
             widget.setEnabled(True)
         if reason == "auth_required":
             self._append("⚠ 再ログインが必要です (claude /login)。認証後に Start で再開してください "
-                         "— 構造的に唯一の人間介在点。")
+                         "— 構造的に唯一の人間介在点。", PALETTE["err"], bold=True)
 
 
 def main(argv: list[str] | None = None) -> int:
