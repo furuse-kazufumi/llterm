@@ -26,10 +26,19 @@ class VirtualClaudeRunner:
     auth_after: int = 0  # >0 なら N ターン目で認証切れを模擬
     _ctx: dict[str, int] = field(default_factory=dict)
     _n: int = 0
+    _cancelled: bool = False
+
+    def cancel(self) -> None:
+        self._cancelled = True
 
     def run_turn(self, *, prompt: str, session_id: str, resume: bool, cwd: Path) -> TurnResult:
-        if self.delay > 0:
-            time.sleep(self.delay)
+        waited = 0.0
+        while waited < self.delay and not self._cancelled:  # 中断可能な擬似 sleep
+            step = min(0.05, self.delay - waited)
+            time.sleep(step)
+            waited += step
+        if self._cancelled:
+            return TurnResult(session_id, 0, 0, 0, 0.0, "", True, "cancelled", 0, 1)
         self._n += 1
         if self.auth_after and self._n == self.auth_after:
             return TurnResult(session_id, 0, 0, 0, 0.0, "", True, "auth", 0, 1)
