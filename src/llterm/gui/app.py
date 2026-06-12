@@ -247,9 +247,9 @@ class MainWindow(QtWidgets.QMainWindow):
         tmpl_row = QtWidgets.QHBoxLayout()
         tmpl_row.addWidget(QtWidgets.QLabel(t("gui.label.template")))
         self.cmb_template = QtWidgets.QComboBox()
-        for i, t in enumerate(templates.TEMPLATES):
-            self.cmb_template.addItem(t.label, t.key)
-            self.cmb_template.setItemData(i, t.description, QtCore.Qt.ItemDataRole.ToolTipRole)
+        for i, tmpl in enumerate(templates.TEMPLATES):
+            self.cmb_template.addItem(tmpl.label, tmpl.key)
+            self.cmb_template.setItemData(i, tmpl.description, QtCore.Qt.ItemDataRole.ToolTipRole)
         tmpl_row.addWidget(self.cmb_template)
         self.edit_param = QtWidgets.QLineEdit()
         self.edit_param.setPlaceholderText(t("gui.placeholder.param"))
