@@ -316,6 +316,23 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "One-line progress summary from the latest response / "
               "SESSION_SUMMARY at rotate",
     },
+    # ─── GUI: cost ラベルの種別 (suffix) ─────────────────────────────
+    "gui.cost.reported": {
+        "ja": "報告値",
+        "en": "reported",
+    },
+    "gui.cost.subscription": {
+        "ja": "報告値・課金なし",
+        "en": "reported, no charge",
+    },
+    "gui.cost.billed": {
+        "ja": "実課金",
+        "en": "billed",
+    },
+    "gui.cost.virtual": {
+        "ja": "仮想・課金なし",
+        "en": "virtual, no charge",
+    },
     # ─── GUI: 実行モード / 状態文字列 ────────────────────────────────
     "gui.mode.real_billed": {
         "ja": "実claude(API=実課金)",
