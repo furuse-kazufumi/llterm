@@ -90,7 +90,7 @@ def promote(
     stg = staging_dir(domain, docs_root)
     live = live_dir(domain, docs_root)
     if not stg.is_dir():
-        raise RadError(f"staging が存在しません: {stg}")
+        raise RadError(t("rad.staging_missing", staging=stg))
     backup: Path | None = None
     if live.exists():
         if make_backup:
