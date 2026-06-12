@@ -589,17 +589,19 @@ class SessionLoop:
         """作業 prompt に RAD 研究接地ヒントを付ける (rad_hint 設定時のみ。exit準備には付けない)。"""
         return f"{prompt}\n\n{self.rad_hint}" if self.rad_hint else prompt
 
-    def _continue_prompt(self) -> str:
-        """継続ターンの prompt。GUI が inject したタスクがあれば優先する (一度だけ)。"""
+    def _continue_prompt(self) -> tuple[str, bool]:
+        """継続ターンの prompt と「注入タスクか」フラグ。GUI inject があれば一度だけ優先する。"""
         base = self.continue_prompt
+        injected = False
         if self.next_prompt is not None:
             try:
-                injected = self.next_prompt()
+                got = self.next_prompt()
             except Exception:  # noqa: BLE001
-                injected = None
-            if injected:
-                base = injected
-        return self._augment(base)
+                got = None
+            if got:
+                base = got
+                injected = True
+        return self._augment(base), injected
 
     def used_pct(self, res: TurnResult) -> float:
         # result イベントの実窓サイズ (modelUsage.contextWindow) があればそちらを分母にする。
