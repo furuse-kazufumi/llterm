@@ -166,7 +166,14 @@ class CodexRunner:
         found = shutil.which(self.exe)
         return found or self.exe
 
-    def _build_args(self, *, prompt: str, resume: bool, cwd: Path) -> list[str]:
+    def _build_args(self, *, resume: bool, cwd: Path) -> list[str]:
+        """codex の引数列を組む。**プロンプトは argv に置かず stdin で渡す** ("-" センチネル)。
+
+        理由 (実機バグ): codex は npm 配布で Windows では ``codex.CMD`` shim 経由で起動するため、
+        argv に渡した複数行プロンプトは cmd.exe が**最初の改行で途中切断**する (指示文が途切れる)。
+        ``codex exec [-]`` / ``codex exec resume <id> [-]`` は "-" 指定で stdin からプロンプトを
+        読むので、改行・特殊文字をそのまま安全に渡せ、shell 注入面も同時に消える。
+        """
         base = [self._resolved_exe(), "exec"]
         if resume and self._thread_id:
             base += ["resume", self._thread_id]
@@ -174,7 +181,7 @@ class CodexRunner:
                  "-C", str(cwd), "--color", "never"]
         if self.model:
             base += ["-m", self.model]
-        base += [*self.extra_args, prompt]
+        base += [*self.extra_args, "-"]  # "-" = プロンプトを stdin から読む (argv truncation 回避)
         return base
 
     def _notify_stream(self, line: str) -> None:
