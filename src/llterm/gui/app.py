@@ -407,7 +407,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.lbl_state.setText(f"running [{mode}] {tmpl.key}")
         self._append(f"=== loop 開始 [{mode}] template={tmpl.key} workdir={workdir} "
                      f"max_session={loop_kw['max_sessions']}{effort_note} ===",
-                     PALETTE["session"], bold=True)
+                     PALETTE["session"], bold=True, ts=True)
         self._save_settings()  # クラッシュしても Start 時点の設定が次回復元される
 
     @QtCore.Slot()
