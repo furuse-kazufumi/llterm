@@ -313,6 +313,7 @@ class SessionLoop:
     continue_prompt: str = DEFAULT_CONTINUE_PROMPT
     rad_hint: str = ""  # 非空なら作業 prompt に RAD 研究接地ヒントを付ける (--rad)
     continuity: bool = True  # 各セッション冒頭で handoff を読み「前回の続き」から再開する
+    autonomy: bool = False  # True: 承認確認不要(人間確認を待たず継続)。既定 False=安全側
     window_tokens: int = DEFAULT_WINDOW_TOKENS
     threshold: float = DEFAULT_THRESHOLD
     max_sessions: int | None = None
