@@ -94,7 +94,8 @@ def test_quarantine_name_collision_gets_unique_suffix(tmp_path: Path):
     q = _mk(tmp_path)
     qdir = tmp_path / ".llterm" / "queue"
     rej = tmp_path / ".llterm" / "rejected"
-    qdir.mkdir(parents=True); rej.mkdir(parents=True)
+    qdir.mkdir(parents=True)
+    rej.mkdir(parents=True)
     (rej / "0000-bad.json").write_text("earlier", encoding="utf-8")
     (qdir / "0000-bad.json").write_text("{broken", encoding="utf-8")
     assert q.poll() is None
