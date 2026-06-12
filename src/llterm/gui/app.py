@@ -215,6 +215,10 @@ class MainWindow(QtWidgets.QMainWindow):
         runner = self._build_runner()
         loop_kw = dict(self.loop_kw)
         loop_kw["max_sessions"] = self.spin_sessions.value()  # 常に上限つき (暴走/レート保護)
+        loop_kw["threshold"] = self.spin_threshold.value()
+        loop_kw["window_tokens"] = self.spin_window.value()
+        max_cost = self.spin_maxcost.value()
+        loop_kw["max_total_cost_usd"] = max_cost if max_cost > 0 else None
         if self.chk_rad.isChecked():
             from llterm.host.loop import DEFAULT_RAD_HINT
 
@@ -228,8 +232,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.worker.start()
         self.btn_start.setEnabled(False)
         self.btn_stop.setEnabled(True)
-        self.cmb_project.setEnabled(False)
-        self.chk_real.setEnabled(False)
+        for widget in self._run_widgets:
+            widget.setEnabled(False)
         self.lbl_state.setText("running")
         mode = "実claude(サブスク)" if real else "仮想claude"
         self._append(f"=== loop 開始 [{mode}] workdir={workdir} max_session={loop_kw['max_sessions']} ===")
