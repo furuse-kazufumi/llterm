@@ -46,6 +46,20 @@ PALETTE = {
 _OUTPUT_STYLE = "QPlainTextEdit { background-color: #1e1e2e; color: #d8dee9; border: none; }"
 
 
+def _coerce_number(value: object, cast: type) -> int | float | None:
+    """保存値を int/float へ安全に変換する。変換不能 (型不正・手編集破損) は None。
+
+    bool は int のサブクラスだが数値として扱わない (True/False が 1/0 化するのを防ぐ)。
+    "150000.0" のような小数文字列でも int() できるよう float 経由で変換する。
+    """
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        return int(float(value)) if cast is int else float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+
+
 def discover_projects(root: Path) -> list[tuple[str, Path]]:
     """projects root 直下の「プロジェクトらしい」ディレクトリを (名前, パス) で列挙する。"""
     found: list[tuple[str, Path]] = []
