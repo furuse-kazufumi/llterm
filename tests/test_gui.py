@@ -336,11 +336,26 @@ def test_injected_task_shown_at_consumption(qapp: QtWidgets.QApplication, tmp_pa
     win._on_event("task", {"session_index": 1, "turn": 2, "injected": True,
                            "prompt": "テスト用の割り込みタスク"})
     assert "▶ 注入タスク実行: テスト用の割り込みタスク" in win.output.toPlainText()
-    # 通常 (非注入) の task は本文を垂れ流さない (ノイズ防止)
-    before = win.output.toPlainText()
+    # 通常 (非注入) の task はコンパクトな指令送信マーカーのみ — 長い本文は垂れ流さない
     win._on_event("task", {"session_index": 1, "turn": 3, "injected": False,
                            "prompt": "長い再開プロンプト" * 50})
-    assert win.output.toPlainText() == before
+    after = win.output.toPlainText()
+    assert "▶ 指令送信 (turn 3)" in after
+    assert ("長い再開プロンプト" * 50) not in after
+
+
+def test_output_lines_include_timestamps(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    """指令時 (task) と応答受信時 (turn) と境界に [HH:MM:SS] が出る (要望: 時刻表示)。"""
+    import re
+
+    win = _make_window(tmp_path)
+    win._on_event("session_start", {"session_id": "abcd1234", "session_index": 1})
+    win._on_event("task", {"session_index": 1, "turn": 1, "injected": False, "prompt": "x"})
+    win._on_event("turn", {"turn": 1, "session_index": 1, "used_pct": 0.4, "total_cost": 0.0,
+                           "text": "resp", "error_kind": ""})
+    text = win.output.toPlainText()
+    assert re.search(r"\[\d{2}:\d{2}:\d{2}\] ▶ 指令送信", text)        # 指令時刻
+    assert re.search(r"\[\d{2}:\d{2}:\d{2}\] \[turn 1\] 応答受信", text)  # 応答受信時刻
 
 
 def test_status_shows_session_progress_over_max(
