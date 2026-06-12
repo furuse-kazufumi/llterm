@@ -7,7 +7,7 @@ from llterm import templates
 
 def test_registry_has_expected_keys() -> None:
     ks = templates.keys()
-    for expected in ("general", "rad_expand", "green_keeper", "doc_update"):
+    for expected in ("general", "rad_expand", "green_keeper", "doc_update", "security_audit"):
         assert expected in ks
 
 
