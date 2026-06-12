@@ -665,6 +665,48 @@ def test_effort_cli_overrides_saved(qapp: QtWidgets.QApplication, tmp_path: Path
     assert win.cmb_effort.currentData() == "xhigh"  # CLI 明示指定が保存値に勝つ
 
 
+def test_model_default_is_opus_and_feeds_real_runner(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    """既定 model は Opus 4.8 (ユーザー方針 2026-06-13)、実 claude runner に --model として渡る。"""
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    assert win.cmb_model.currentData() == "claude-opus-4-8"
+    win.chk_real.setChecked(True)
+    runner = win._build_runner()
+    assert runner.model == "claude-opus-4-8"
+
+
+def test_model_persists_and_restores(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    """軽量モデルへ切替 (token 節約) が保存・復元される。"""
+    sp = tmp_path / "s.json"
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=sp)
+    win.cmb_model.setCurrentIndex(win.cmb_model.findData("sonnet"))
+    win._save_settings()
+    win2 = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=sp)
+    assert win2.cmb_model.currentData() == "sonnet"
+
+
+def test_model_cli_overrides_saved(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    from llterm.gui import settings as gs
+
+    sp = tmp_path / "s.json"
+    gs.save_settings(sp, {"model": "haiku"})
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=sp, model_default="sonnet")
+    assert win.cmb_model.currentData() == "sonnet"  # CLI 明示指定が保存値に勝つ
+
+
+def test_model_empty_selects_claude_default(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    """'' (claude既定) を選ぶと runner に --model を付けない (claude 保存既定に委ねる)。"""
+    sp = tmp_path / "s.json"
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=sp, model_default="")
+    assert win.cmb_model.currentData() == ""
+    win.chk_real.setChecked(True)
+    runner = win._build_runner()
+    assert runner.model == ""
+
+
 def test_explicit_args_override_saved_settings(
     qapp: QtWidgets.QApplication, tmp_path: Path
 ) -> None:
