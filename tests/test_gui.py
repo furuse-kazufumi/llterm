@@ -330,6 +330,38 @@ def test_worker_accepts_runner_without_on_stream(
     assert w.isFinished()
 
 
+def test_injected_task_shown_at_consumption(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    """注入タスクが実際に実行される瞬間 (task イベント injected=True) に画面表示する。"""
+    win = _make_window(tmp_path)
+    win._on_event("task", {"session_index": 1, "turn": 2, "injected": True,
+                           "prompt": "テスト用の割り込みタスク"})
+    assert "▶ 注入タスク実行: テスト用の割り込みタスク" in win.output.toPlainText()
+    # 通常 (非注入) の task は本文を垂れ流さない (ノイズ防止)
+    before = win.output.toPlainText()
+    win._on_event("task", {"session_index": 1, "turn": 3, "injected": False,
+                           "prompt": "長い再開プロンプト" * 50})
+    assert win.output.toPlainText() == before
+
+
+def test_status_shows_session_progress_over_max(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    """セッション進捗が session N/max 形式で見える。"""
+    win = _make_window(tmp_path)
+    win._max_sessions = 8
+    win._on_event("session_start", {"session_id": "abcdef123456", "session_index": 3})
+    assert "session 3/8" in win.lbl_session.text()
+    win._on_event("turn", {"turn": 5, "session_index": 3, "used_pct": 0.4, "total_cost": 0.0,
+                           "text": "", "error_kind": ""})
+    assert "session 3/8" in win.lbl_session.text()
+    assert "turn 5" in win.lbl_session.text()
+
+
+def test_ctx_bar_shows_rotate_threshold(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    win = _make_window(tmp_path, threshold=0.65)
+    assert "rotate 65%" in win.ctx_bar.format()
+
+
 def test_render_slots_update_widgets(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
     win = _make_window(tmp_path)
     win._on_event("session_start", {"session_id": "abcdef123456", "session_index": 1})
