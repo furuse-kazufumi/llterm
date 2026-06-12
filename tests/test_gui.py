@@ -394,6 +394,43 @@ def test_progress_bar_shows_latest_response_oneline(
     assert win.lbl_progress.toolTip().startswith("あ")
 
 
+def test_summary_panel_shows_full_text_and_is_selectable(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    """進捗サマリ パネルは SESSION_SUMMARY.md 全文を表示し、読取専用だが選択コピー可能。"""
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    body = "# 認証リファクタ\n" + "\n".join(f"- 項目{i}" for i in range(30))
+    (docs / "SESSION_SUMMARY.md").write_text(body, encoding="utf-8")
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    # 初期表示で既存サマリを全文ロード (2 行だけでなく全文)
+    assert "項目0" in win.summary_view.toPlainText()
+    assert "項目29" in win.summary_view.toPlainText()
+    assert win.summary_view.isReadOnly()
+    # 読取専用でもテキスト選択が可能 (単語をタスク注入へコピーできる)
+    flags = win.summary_view.textInteractionFlags()
+    assert flags & QtCore.Qt.TextInteractionFlag.TextSelectableByMouse
+
+
+def test_summary_panel_refresh_button_rereads(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    summ = docs / "SESSION_SUMMARY.md"
+    summ.write_text("初版サマリ", encoding="utf-8")
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    assert "初版サマリ" in win.summary_view.toPlainText()
+    summ.write_text("更新後サマリ ABC", encoding="utf-8")  # claude が書き換えた想定
+    win._refresh_summary()  # ↻ 更新 ボタン相当
+    assert "更新後サマリ ABC" in win.summary_view.toPlainText()
+
+
+def test_summary_panel_empty_when_no_file(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    assert win.summary_view.toPlainText() == ""  # ファイル無し → 空 (placeholder 表示)
+
+
 def test_progress_bar_reads_session_summary_on_rotate(
     qapp: QtWidgets.QApplication, tmp_path: Path
 ) -> None:
