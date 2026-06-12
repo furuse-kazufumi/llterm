@@ -803,12 +803,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.lbl_state.setText(f"done: {reason}")
         self.btn_start.setEnabled(True)
         self.btn_stop.setEnabled(False)
-        self.btn_stop.setText("Stop")
+        self.btn_stop.setText(t("gui.btn.stop"))
         for widget in self._run_widgets:
             widget.setEnabled(True)
         if reason == "auth_required":
-            self._append("⚠ 再ログインが必要です (claude /login)。認証後に Start で再開してください "
-                         "— 構造的に唯一の人間介在点。", PALETTE["err"], bold=True)
+            self._append(t("gui.msg.auth_required"), PALETTE["err"], bold=True)
         if self._closing_after_stop:
             self._closing_after_stop = False
             self.close()  # × 終了確認で予約された閉じる操作を、記録完了後に実行
