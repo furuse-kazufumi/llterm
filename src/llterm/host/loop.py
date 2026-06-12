@@ -192,6 +192,96 @@ def _as_float(v: object) -> float:
         return 0.0
 
 
+def _short(s: str, n: int = 160) -> str:
+    s = s.strip()
+    return s if len(s) <= n else s[: n - 1] + "…"
+
+
+_TOOL_DETAIL_KEYS = ("command", "file_path", "path", "pattern", "url", "query", "description", "prompt")
+
+
+def _tool_use_detail(inp: object) -> str:
+    """tool_use の input から人間が読んで分かる代表値を 1 行で取り出す。"""
+    if not isinstance(inp, dict):
+        return ""
+    for key in _TOOL_DETAIL_KEYS:
+        v = inp.get(key)
+        if isinstance(v, str) and v.strip():
+            return _short(v.strip().splitlines()[0])
+    try:
+        return _short(json.dumps(inp, ensure_ascii=False))
+    except (TypeError, ValueError):
+        return ""
+
+
+def _tool_result_preview(block: dict) -> str:
+    """tool_result の content (str | block list) から先頭の意味のある 1 行を取り出す。"""
+    content = block.get("content")
+    if isinstance(content, str):
+        text = content
+    elif isinstance(content, list):
+        parts = [c.get("text", "") for c in content if isinstance(c, dict) and c.get("type") == "text"]
+        text = "\n".join(p for p in parts if p)
+    else:
+        text = ""
+    first = next((ln for ln in text.splitlines() if ln.strip()), "")
+    return _short(first)
+
+
+def summarize_stream_event(ev: object) -> list[dict]:
+    """stream-json の 1 イベントを GUI 表示用の軽量 dict 列へ要約する (表示不要なら空 list)。
+
+    実 claude 2.1.x の実出力で確認済のフォーマット (2026-06-12 probe):
+    - ``system/init``: model / session_id (``hook_started`` 等の system は表示しない)
+    - ``assistant``: message.content の ``text`` / ``thinking`` / ``tool_use`` ブロック
+    - ``user``: message.content の ``tool_result`` ブロック
+    - ``result``: ターン完了 (所要時間)。詳細メトリクスは TurnResult 側が正で持つ。
+
+    これが「応答がリアルタイムに表示されない」問題の中核修正 — 従来はターン完了後の
+    最終 result テキストしか GUI に渡らず、自律ターン (数分〜数十分) の間 GUI が無表示だった。
+    """
+    if not isinstance(ev, dict):
+        return []
+    etype = ev.get("type")
+    if etype == "system":
+        if ev.get("subtype") == "init":
+            return [{
+                "kind": "init",
+                "model": str(ev.get("model", "")),
+                "session_id": str(ev.get("session_id", "")),
+            }]
+        return []
+    if etype in ("assistant", "user"):
+        msg = ev.get("message")
+        content = msg.get("content") if isinstance(msg, dict) else None
+        if not isinstance(content, list):
+            return []
+        items: list[dict] = []
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            btype = block.get("type")
+            if etype == "assistant" and btype == "text":
+                text = str(block.get("text") or "")
+                if text.strip():
+                    items.append({"kind": "text", "text": text})
+            elif etype == "assistant" and btype == "thinking":
+                items.append({"kind": "thinking",
+                              "preview": _short(str(block.get("thinking") or ""), 80)})
+            elif etype == "assistant" and btype == "tool_use":
+                items.append({"kind": "tool_use", "name": str(block.get("name") or "?"),
+                              "detail": _tool_use_detail(block.get("input"))})
+            elif etype == "user" and btype == "tool_result":
+                items.append({"kind": "tool_result",
+                              "is_error": bool(block.get("is_error", False)),
+                              "preview": _tool_result_preview(block)})
+        return items
+    if etype == "result":
+        return [{"kind": "result", "duration_ms": _as_int(ev.get("duration_ms")),
+                 "is_error": bool(ev.get("is_error", False))}]
+    return []
+
+
 _SUBSCRIPTION_STRIP_VARS = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
 
 
