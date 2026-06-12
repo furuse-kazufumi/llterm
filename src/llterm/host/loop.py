@@ -372,6 +372,7 @@ class ClaudeRunner:
     timeout: float = 7200.0  # 自律 1 ターンは長い (旧 1800s では正当な作業を途中 kill し得た)
     skip_permissions: bool = True
     use_subscription: bool = True  # True: API キー env を外し claude.ai サブスク認証で回す (課金回避)
+    effort: str = ""  # "" = claude 既定 / それ以外は --effort <level> を付与 (EFFORT_LEVELS)
     extra_args: Sequence[str] = ()
     on_stream: Callable[[dict], None] | None = None  # 要約イベントのリアルタイム購読 (GUI 用)
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
