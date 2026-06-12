@@ -136,10 +136,13 @@ def summarize_for_human(text: str) -> str:
     nxt = _collect(sections, "next")
 
     # 見出しが全く分類できなかったサマリ: 先頭数行を現在地に、next 行抽出を次の一手に。
+    # 現在地からは next 行を除外する (同じ行を 2 区分に重複表示して人を迷わせない)。
     if not (state or done or nxt):
-        meaningful = [ln.rstrip() for ln in text.splitlines() if ln.strip()]
-        state = meaningful[:_FALLBACK_HEAD_LINES]
         nxt = _fallback_next(text)
+        nxt_set = {ln.strip() for ln in nxt}
+        meaningful = [ln.rstrip() for ln in text.splitlines()
+                      if ln.strip() and ln.strip() not in nxt_set]
+        state = meaningful[:_FALLBACK_HEAD_LINES]
 
     blocks: list[str] = []
     for label, lines in (("現在地", state), ("直近の成果", done), ("次の一手", nxt)):
