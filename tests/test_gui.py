@@ -834,6 +834,67 @@ def test_summary_raw_pref_persists(qapp: QtWidgets.QApplication, tmp_path: Path)
     assert win2.chk_summary_raw.isChecked() is True
 
 
+# ─── 無料奏者 (OpenAI 互換) の chain 配線 ───────────────────────────
+
+
+def test_free_player_appended_to_chain_when_key_set(
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
+) -> None:
+    """Groq を選び GROQ_API_KEY 設定済みなら chain 末尾に無料奏者が入る。"""
+    monkeypatch.setenv("GROQ_API_KEY", "sk-test")
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    win.chk_real.setChecked(True)
+    win.cmb_free_provider.setCurrentIndex(win.cmb_free_provider.findData("groq"))
+    primary, fallbacks = _provider_names(win)
+    assert primary == "ClaudeRunner"
+    assert fallbacks[-1] == "OpenAICompatRunner"
+
+
+def test_free_player_dropped_when_key_missing(
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
+) -> None:
+    """APIキー未設定の無料奏者は chain に入れない (loop を auth 停止させない fail-safe)。"""
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    win.chk_real.setChecked(True)
+    win.cmb_free_provider.setCurrentIndex(win.cmb_free_provider.findData("groq"))
+    _, fallbacks = _provider_names(win)
+    assert "OpenAICompatRunner" not in fallbacks
+
+
+def test_free_player_ollama_needs_no_key(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    """ローカル Ollama はキー不要で常に chain に入る。"""
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    win.chk_real.setChecked(True)
+    win.cmb_free_provider.setCurrentIndex(win.cmb_free_provider.findData("ollama"))
+    _, fallbacks = _provider_names(win)
+    assert fallbacks[-1] == "OpenAICompatRunner"
+
+
+def test_free_player_with_codex_first(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    """Codex 優先 + 無料奏者(Ollama): chain = Codex 主 / [Claude, 無料奏者]。"""
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    win.chk_real.setChecked(True)
+    win.chk_codex_first.setChecked(True)
+    win.cmb_free_provider.setCurrentIndex(win.cmb_free_provider.findData("ollama"))
+    primary, fallbacks = _provider_names(win)
+    assert primary == "CodexRunner"
+    assert fallbacks == ["ClaudeRunner", "OpenAICompatRunner"]
+
+
+def test_free_player_persists(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    sp = tmp_path / "s.json"
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=sp)
+    win.cmb_free_provider.setCurrentIndex(win.cmb_free_provider.findData("cerebras"))
+    win._save_settings()
+    win2 = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=sp)
+    assert win2.cmb_free_provider.currentData() == "cerebras"
+
+
 def test_explicit_args_override_saved_settings(
     qapp: QtWidgets.QApplication, tmp_path: Path
 ) -> None:
