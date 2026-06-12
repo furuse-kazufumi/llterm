@@ -120,8 +120,8 @@ def test_codex_runner_resume_uses_thread_id(tmp_path: Path) -> None:
     runner._thread_id = "prev-thread"
 
     class Spy(type(runner)):
-        def _build_args(self, *, prompt: str, resume: bool, cwd: Path) -> list[str]:
-            args = CodexRunner._build_args(self, prompt=prompt, resume=resume, cwd=cwd)
+        def _build_args(self, *, resume: bool, cwd: Path) -> list[str]:
+            args = CodexRunner._build_args(self, resume=resume, cwd=cwd)
             captured.append(args)
             return [sys.executable, str(tmp_path / "fake_codex.py")]
 
@@ -130,3 +130,42 @@ def test_codex_runner_resume_uses_thread_id(tmp_path: Path) -> None:
     spy.run_turn(prompt="p", session_id="s", resume=True, cwd=tmp_path)
     assert "resume" in captured[0]
     assert "prev-thread" in captured[0]
+
+
+# ─── 指示文 truncation 回帰 (codex.CMD への argv 改行切断バグ) ──────
+
+
+def test_build_args_passes_prompt_via_stdin_sentinel(tmp_path: Path) -> None:
+    """プロンプトは argv に置かず "-" (stdin センチネル) を末尾に置く。
+
+    codex.CMD shim 経由だと argv の複数行プロンプトが cmd.exe に改行で切断されるため、
+    argv にプロンプト本文を絶対に載せない (stdin で渡す) ことを契約として固定する。
+    """
+    args = CodexRunner()._build_args(resume=False, cwd=tmp_path)
+    assert args[-1] == "-"  # PROMPT 位置 = stdin 指定
+
+
+_ECHO_STDIN_CODEX = '''\
+import json, sys
+data = sys.stdin.read()  # codex は "-" で stdin からプロンプト全文を読む
+def p(ev): print(json.dumps(ev), flush=True)
+p({"type": "thread.started", "thread_id": "t"})
+p({"type": "item.completed", "item": {"type": "agent_message", "text": data}})
+p({"type": "turn.completed", "usage": {"input_tokens": 1}})
+'''
+
+
+def test_multiline_prompt_reaches_child_intact_via_stdin(tmp_path: Path) -> None:
+    """複数行プロンプトが改行後も含めて全文 codex 子へ届く (argv truncation の回帰防止)。"""
+    runner = _scripted_codex(tmp_path, None, body=_ECHO_STDIN_CODEX)
+    prompt = (
+        "セキュリティ監査タスク(read-only)。\n"
+        "1) スキャンを実行。\n"
+        "2) findings を triage する。\n"
+        "3) docs/SECURITY_AUDIT.md にレポートを書く。"
+    )
+    res = runner.run_turn(prompt=prompt, session_id="s", resume=False, cwd=tmp_path)
+    # 子が stdin から読み返した全文 = 渡した prompt と完全一致 (末尾の改行差のみ吸収)
+    assert res.text.rstrip("\n") == prompt
+    assert "triage" in res.text            # 2 行目 (旧バグでは消えていた)
+    assert "SECURITY_AUDIT.md" in res.text  # 最終行 (旧バグでは消えていた)
