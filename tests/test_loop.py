@@ -464,6 +464,31 @@ def test_should_stop_halts_immediately(tmp_path: Path) -> None:
     assert runner.calls == []  # 1 ターンも回さず停止
 
 
+def test_rotate_rechecks_stop_before_exit_prep(tmp_path: Path) -> None:
+    """Stop がターン結果処理中に届いても、exit準備の新規 claude ターンは起動しない。"""
+    stop = {"flag": False}
+
+    def on_event(kind: str, data: dict) -> None:
+        if kind == "turn":
+            stop["flag"] = True  # ターン完了直後〜rotate 分岐の間に Stop が届いた状況を模擬
+
+    runner = FakeRunner([{"ctx": 150_000}])  # 75% >= 70% → rotate 分岐へ
+    loop = _loop(runner, tmp_path, window_tokens=200_000, threshold=0.70, max_sessions=2,
+                 should_stop=lambda: stop["flag"], on_event=on_event)
+    outcome = loop.run()
+    assert outcome.stop_reason == "stopped"
+    assert len(runner.calls) == 1  # exit準備ターンは起動していない
+
+
+def test_cancelled_turn_stops_loop_immediately(tmp_path: Path) -> None:
+    """cancelled (Stop / 終了由来) のターンはリトライせず即停止する。"""
+    runner = FakeRunner([{"is_error": True, "error_kind": "cancelled"}])
+    loop = _loop(runner, tmp_path, max_sessions=5)
+    outcome = loop.run()
+    assert outcome.stop_reason == "stopped"
+    assert outcome.turns == 1
+
+
 # ─── 監査 ledger / on_event ───────────────────────────────────────
 
 
