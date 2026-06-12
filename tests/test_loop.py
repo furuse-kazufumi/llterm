@@ -869,6 +869,45 @@ def test_build_args_ignores_invalid_effort() -> None:
     assert "--effort" not in args  # vanilla claude に無い値 (ultracode 等) は付けない
 
 
+# ─── model (--model フラグ) ───────────────────────────────────────
+
+
+def test_build_args_appends_model_alias_when_set() -> None:
+    from llterm.host.loop import ClaudeRunner
+
+    args = ClaudeRunner(model="opus")._build_args(prompt="p", session_id="s", resume=False)
+    assert "--model" in args
+    assert args[args.index("--model") + 1] == "opus"
+
+
+def test_build_args_appends_full_model_id() -> None:
+    from llterm.host.loop import ClaudeRunner
+
+    args = ClaudeRunner(model="claude-opus-4-8")._build_args(prompt="p", session_id="s", resume=False)
+    assert args[args.index("--model") + 1] == "claude-opus-4-8"
+
+
+def test_build_args_omits_model_by_default() -> None:
+    from llterm.host.loop import ClaudeRunner
+
+    args = ClaudeRunner()._build_args(prompt="p", session_id="s", resume=False)
+    assert "--model" not in args  # 既定 (空) は claude 保存既定に委ねる
+
+
+def test_build_args_passes_unknown_model_through() -> None:
+    """候補表に無いモデルも素通しする (世代更新でコードを直さなくても使える契約)。"""
+    from llterm.host.loop import ClaudeRunner
+
+    args = ClaudeRunner(model="claude-future-9")._build_args(prompt="p", session_id="s", resume=False)
+    assert args[args.index("--model") + 1] == "claude-future-9"
+
+
+def test_default_model_is_opus_4_8() -> None:
+    from llterm.host.loop import DEFAULT_MODEL
+
+    assert DEFAULT_MODEL == "claude-opus-4-8"
+
+
 # ─── RAD 研究接地ヒント ───────────────────────────────────────────
 
 
