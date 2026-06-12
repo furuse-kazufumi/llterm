@@ -31,35 +31,38 @@ class LoopWorker(QtCore.QThread):
         workdir: Path,
         ledger_path: Path,
         loop_kw: dict,
+        fallback_runners: list[TurnRunner] | None = None,
         parent: QtCore.QObject | None = None,
     ) -> None:
         super().__init__(parent)
         self._runner = runner
+        self._fallback_runners = list(fallback_runners or [])
         self._workdir = Path(workdir)
         self._ledger_path = Path(ledger_path)
         self._loop_kw = dict(loop_kw)
         self._stop = threading.Event()
         self._inject_lock = threading.Lock()
         self._injected: list[str] = []
-        # runner が on_stream を持つ実装 (ClaudeRunner / VirtualClaudeRunner) なら購読する。
-        # 呼び出し側が既に独自コールバックを設定済みの場合は上書きしない。
-        # シグナル emit はスレッド安全 (queued connection でメインスレッドへ配送される)。
-        if hasattr(runner, "on_stream") and runner.on_stream is None:  # type: ignore[attr-defined]
-            runner.on_stream = lambda item: self.stream.emit(dict(item))  # type: ignore[attr-defined]
+        # 全 runner (primary + fallback) の on_stream を購読する。呼び出し側が既に独自
+        # コールバックを設定済みの場合は上書きしない。emit はスレッド安全 (queued connection)。
+        for r in (runner, *self._fallback_runners):
+            if hasattr(r, "on_stream") and r.on_stream is None:  # type: ignore[attr-defined]
+                r.on_stream = lambda item: self.stream.emit(dict(item))  # type: ignore[attr-defined]
 
     def request_stop(self, *, force: bool = False) -> None:
         """停止を要求する。
 
         force=False (graceful, 既定): 実行中ターンは kill せず、現ターン完了後に作業記録
         (handoff) を 1 回残してから停止する。
-        force=True: 実行中ターンをツリーごと即 kill して停止する (記録なし)。
+        force=True: 全 runner の実行中ターンをツリーごと即 kill して停止する (記録なし)。
         """
         self._stop.set()
         if force:
-            try:
-                self._runner.cancel()
-            except Exception:  # noqa: BLE001
-                pass
+            for r in (self._runner, *self._fallback_runners):
+                try:
+                    r.cancel()
+                except Exception:  # noqa: BLE001
+                    pass
 
     def inject(self, text: str) -> None:
         with self._inject_lock:
