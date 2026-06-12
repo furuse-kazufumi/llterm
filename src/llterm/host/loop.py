@@ -438,8 +438,7 @@ class ClaudeRunner:
         """
         found = shutil.which(self.exe)
         if found is not None and found.lower().endswith((".cmd", ".bat", ".ps1")):
-            return (f"claude が npm shim ({found}) でしか見つかりません。"
-                    "native インストールの claude.exe が必要です")
+            return t("runner.claude.npm_shim", path=found)
         return ""
 
     def _build_args(self, *, prompt: str, session_id: str, resume: bool) -> list[str]:
