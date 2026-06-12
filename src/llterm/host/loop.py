@@ -474,11 +474,19 @@ def main(argv: list[str] | None = None) -> int:
     else:
         runner = ClaudeRunner()
 
+    from llterm import templates as _templates
+
+    try:
+        _ov = _templates.get(args.template).build(args.param)
+    except KeyError:
+        print(f"error: 未知のテンプレ: {args.template} (利用可能: {_templates.keys()})", file=sys.stderr)
+        return 2
     loop = SessionLoop(
         runner=runner,
         workdir=workdir,
         ledger=Ledger(ledger_path),
-        resume_prompt=args.resume_prompt,
+        resume_prompt=_ov.get("resume_prompt", args.resume_prompt),
+        continue_prompt=_ov.get("continue_prompt", DEFAULT_CONTINUE_PROMPT),
         exit_prep_prompt=args.exit_prep_prompt,
         window_tokens=args.window_tokens,
         threshold=args.threshold,
