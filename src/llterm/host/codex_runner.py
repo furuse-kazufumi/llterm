@@ -158,8 +158,15 @@ class CodexRunner:
     _proc: subprocess.Popen | None = field(default=None, repr=False, compare=False)
     _cancelled: bool = field(default=False, repr=False, compare=False)
 
+    def _resolved_exe(self) -> str:
+        """codex の実体を解決する。codex は npm 配布で Windows では codex.CMD shim が正規なので、
+        claude (native .exe 優先) と異なり .cmd/.bat を受け入れる。Python の subprocess は
+        フルパスの .cmd を list 形式で安全に起動できる (バッチ用 quoting 適用)。"""
+        found = shutil.which(self.exe)
+        return found or self.exe
+
     def _build_args(self, *, prompt: str, resume: bool, cwd: Path) -> list[str]:
-        base = [self.exe, "exec"]
+        base = [self._resolved_exe(), "exec"]
         if resume and self._thread_id:
             base += ["resume", self._thread_id]
         base += ["--json", "--skip-git-repo-check", "-s", self.sandbox,
