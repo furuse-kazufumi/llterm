@@ -137,6 +137,9 @@ class MainWindow(QtWidgets.QMainWindow):
         # effort 既定: CLI 明示 > 保存値 > "max" (ユーザー方針「とりあえず max」2026-06-12)
         effort_default = self._effort_cli if self._effort_cli is not None else str(
             saved.get("effort", "max"))
+        # model 既定: CLI 明示 > 保存値 > DEFAULT_MODEL (ユーザー方針「llterm も Opus 4.8」2026-06-13)
+        model_default = self._model_cli if self._model_cli is not None else str(
+            saved.get("model", loop_mod.DEFAULT_MODEL))
         # 数値項目は型検証してから取り込む。手編集/外部破損で型不正な値が入っても、
         # _build_ui の int()/float() を直撃させて GUI 起動不能にしない (fail-safe 契約)。
         for kw_key, saved_key, cast in (("max_sessions", "max_sessions", int),
