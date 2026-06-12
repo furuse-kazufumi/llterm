@@ -310,8 +310,14 @@ class MainWindow(QtWidgets.QMainWindow):
                 idx = 0
             self.cmb_project.setCurrentIndex(idx)
 
-    def _append(self, text: str, color: str | None = None, *, bold: bool = False) -> None:
-        """出力ビューへ 1 エントリ追記する (色つき HTML。色未指定は本文色)。"""
+    def _append(self, text: str, color: str | None = None, *, bold: bool = False,
+                ts: bool = False) -> None:
+        """出力ビューへ 1 エントリ追記する (色つき HTML。色未指定は本文色)。
+
+        ts=True で先頭に [HH:MM:SS] を付ける (指令/応答/境界の時刻を見せる)。
+        """
+        if ts:
+            text = f"[{datetime.now():%H:%M:%S}] {text}"
         # CR 正規化: Qt は残留 \r も改行扱いするため CRLF 入りテキストが二重改行になる
         text = text.replace("\r\n", "\n").replace("\r", "\n")
         esc = html.escape(text).replace("\n", "<br/>")
