@@ -354,6 +354,77 @@ def test_ctx_bar_clamped_over_100(qapp: QtWidgets.QApplication, tmp_path: Path) 
     assert win.ctx_bar.value() == 100
 
 
+# ─── 設定永続化 (最後の設定を次回起動時に復元) ─────────────────────
+
+
+def test_settings_persist_across_windows(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    """前回の設定 (プロジェクト/トグル/閾値/テンプレ/引数) が次回起動時に復元される。"""
+    sp = tmp_path / "s.json"
+    proj = tmp_path / "projx"
+    proj.mkdir()
+    (proj / "CLAUDE.md").write_text("x", encoding="utf-8")
+    win = MainWindow(projects_root=tmp_path, workdir=proj, settings_path=sp)
+    win.chk_real.setChecked(True)
+    win.chk_autonomy.setChecked(True)
+    win.spin_threshold.setValue(0.55)
+    win.spin_window.setValue(150_000)
+    win.spin_sessions.setValue(3)
+    win.cmb_template.setCurrentIndex(win.cmb_template.findData("rad_expand"))
+    win.edit_param.setText("robotics")
+    win._save_settings()
+
+    win2 = MainWindow(projects_root=tmp_path, settings_path=sp)  # 全て未指定 → 保存値で復元
+    assert win2._selected_workdir() == proj
+    assert win2.chk_real.isChecked() is True
+    assert win2.chk_autonomy.isChecked() is True
+    assert win2.spin_threshold.value() == pytest.approx(0.55)
+    assert win2.spin_window.value() == 150_000
+    assert win2.spin_sessions.value() == 3
+    assert win2.cmb_template.currentData() == "rad_expand"
+    assert win2.edit_param.text() == "robotics"
+
+
+def test_explicit_args_override_saved_settings(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    """優先順位: CLI 明示指定 > 保存値 > 組込み既定。"""
+    from llterm.gui import settings as gs
+
+    sp = tmp_path / "s.json"
+    gs.save_settings(sp, {"template": "rad_expand", "threshold": 0.50, "real": True})
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=sp,
+                     template_default="general", threshold=0.90)
+    assert win.cmb_template.currentData() == "general"          # 明示指定が勝つ
+    assert win.spin_threshold.value() == pytest.approx(0.90)    # 明示指定が勝つ
+    assert win.chk_real.isChecked() is True                     # 未指定のフラグは保存値
+
+
+def test_broken_settings_file_falls_back_to_defaults(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    sp = tmp_path / "s.json"
+    sp.write_text("{broken", encoding="utf-8")
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=sp)
+    assert win.spin_threshold.value() == pytest.approx(0.70)  # fail-safe で既定値起動
+    assert win.cmb_template.currentData() == "general"
+
+
+def test_vanished_workdir_is_not_restored(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    from llterm.gui import settings as gs
+
+    sp = tmp_path / "s.json"
+    gs.save_settings(sp, {"workdir": str(tmp_path / "deleted-project")})
+    win = MainWindow(projects_root=tmp_path, settings_path=sp)
+    assert win._selected_workdir() != tmp_path / "deleted-project"  # 消えたパスは選択しない
+
+
+def test_close_event_saves_settings(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    sp = tmp_path / "s.json"
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=sp)
+    win.close()  # 終了時に保存される
+    assert sp.exists()
+
+
 # ─── end-to-end: 仮想 claude でループを実駆動 (QThread + offscreen) ──
 
 
