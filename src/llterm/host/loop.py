@@ -255,7 +255,9 @@ def summarize_stream_event(ev: object) -> list[dict]:
     実 claude 2.1.x の実出力で確認済のフォーマット (2026-06-12 probe):
     - ``system/init``: model / session_id (``hook_started`` 等の system は表示しない)
     - ``assistant``: message.content の ``text`` / ``thinking`` / ``tool_use`` ブロック
+      (``parent_tool_use_id`` 非 null = Task サブエージェント由来 → ``subagent: True`` を付与)
     - ``user``: message.content の ``tool_result`` ブロック
+    - ``rate_limit_event``: レート制限 status / resetsAt (サブスク自走の主制約 — 黙殺しない)
     - ``result``: ターン完了 (所要時間)。詳細メトリクスは TurnResult 側が正で持つ。
 
     これが「応答がリアルタイムに表示されない」問題の中核修正 — 従来はターン完了後の
