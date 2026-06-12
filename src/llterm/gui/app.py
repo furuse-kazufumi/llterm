@@ -327,6 +327,12 @@ class MainWindow(QtWidgets.QMainWindow):
         sp_head = QtWidgets.QHBoxLayout()
         sp_head.addWidget(QtWidgets.QLabel(t("gui.summary.title")))
         sp_head.addStretch(1)
+        # 既定 = 構造化ダイジェスト (現在地/直近の成果/次の一手)。OFF で生 SESSION_SUMMARY 全文。
+        self.chk_summary_raw = QtWidgets.QCheckBox(t("gui.check.summary_raw"))
+        self.chk_summary_raw.setToolTip(t("gui.tip.summary_raw"))
+        self.chk_summary_raw.setChecked(bool(saved_summary_raw))
+        self.chk_summary_raw.toggled.connect(self._refresh_summary)
+        sp_head.addWidget(self.chk_summary_raw)
         self.btn_refresh_summary = QtWidgets.QPushButton(t("gui.btn.refresh"))
         self.btn_refresh_summary.setToolTip(t("gui.tip.refresh"))
         self.btn_refresh_summary.clicked.connect(self._refresh_summary)
