@@ -3,7 +3,10 @@
 
 GUI のテンプレ選択 / CLI の ``--template`` で選ぶと、その機能向けの resume/continue prompt を
 ループに与える。``label`` はコンボボックス表示、``description`` はツールチップ(用途説明)に使う。
-新テンプレは TEMPLATES に 1 エントリ足すだけ。
+新テンプレは TEMPLATES に 1 エントリ足すだけ (表示文字列は llterm.i18n の MESSAGES に追加)。
+
+注: builder が返す resume/continue prompt は **Claude への指示文**であり、ユーザー向け
+表示ではないため i18n 対象外 (表示 locale で挙動を変えない)。
 """
 from __future__ import annotations
 
@@ -11,6 +14,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from llterm.i18n import t
 from llterm.rad import build_expand_prompt, expand_continue_prompt
 
 RAPTOR_PY = Path("D:/tools/raptor/raptor.py")
@@ -19,11 +23,26 @@ RAPTOR_PY = Path("D:/tools/raptor/raptor.py")
 @dataclass(frozen=True)
 class Template:
     key: str
-    label: str  # コンボボックス表示名
-    description: str  # ツールチップ(用途)
+    label_key: str  # コンボボックス表示名の i18n key
+    description_key: str  # ツールチップ(用途)の i18n key
     needs_param: bool = False
-    param_label: str = ""
+    param_label_key: str = ""  # 引数欄 placeholder の i18n key ("" = 引数なし)
     builder: Callable[[str], dict] | None = None
+
+    @property
+    def label(self) -> str:
+        """コンボボックス表示名 (現 locale で解決)。"""
+        return t(self.label_key)
+
+    @property
+    def description(self) -> str:
+        """ツールチップ(用途説明) (現 locale で解決)。"""
+        return t(self.description_key)
+
+    @property
+    def param_label(self) -> str:
+        """引数欄の placeholder (現 locale で解決。引数なしテンプレは空文字)。"""
+        return t(self.param_label_key) if self.param_label_key else ""
 
     def build(self, param: str = "") -> dict:
         """ループ上書き (resume_prompt / continue_prompt 等) を返す。"""
