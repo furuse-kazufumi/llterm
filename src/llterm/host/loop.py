@@ -688,7 +688,7 @@ class SessionLoop:
                         )
                         return self._finish("circuit_open", sessions, turns, total_cost,
                                             f"{consec_err} consecutive errors")
-                    prompt, resume = self._continue_prompt(), True
+                    (prompt, injected), resume = self._continue_prompt(), True
                     continue
                 consec_err = 0
 
