@@ -661,9 +661,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
         if isinstance(runner, ClaudeRunner):
             if runner.use_subscription:
-                return "報告値・課金なし", False
-            return "実課金", True
-        return "仮想・課金なし", False
+                return t("gui.cost.subscription"), False
+            return t("gui.cost.billed"), True
+        return t("gui.cost.virtual"), False
 
     def _set_cost(self, amount: float) -> None:
         """cost ラベルを更新する。実課金時のみ赤字で警告する。"""
