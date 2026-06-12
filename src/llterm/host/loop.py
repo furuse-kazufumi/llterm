@@ -269,6 +269,7 @@ class SessionLoop:
     resume_prompt: str = DEFAULT_RESUME_PROMPT
     exit_prep_prompt: str = DEFAULT_EXIT_PREP_PROMPT
     continue_prompt: str = DEFAULT_CONTINUE_PROMPT
+    rad_hint: str = ""  # 非空なら作業 prompt に RAD 研究接地ヒントを付ける (--rad)
     window_tokens: int = DEFAULT_WINDOW_TOKENS
     threshold: float = DEFAULT_THRESHOLD
     max_sessions: int | None = None
