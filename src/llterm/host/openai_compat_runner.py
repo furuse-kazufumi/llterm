@@ -113,6 +113,15 @@ class OpenAICompatRunner:
         env = self._resolved_key_env()
         return os.environ.get(env, "") if env else ""
 
+    def key_available(self) -> bool:
+        """この奏者が即使えるか (APIキー不要、またはキー env が設定済み)。
+
+        chain 構築時にこれが False の provider を入れないことで、未設定キーで
+        loop を auth エラー停止させない (fail-safe な事前除外)。
+        """
+        env = self._resolved_key_env()
+        return (not env) or bool(os.environ.get(env))
+
     def provider_label(self) -> str:
         """表示用 provider 名 (例: 'groq:llama-3.3-70b-versatile')。"""
         return f"{self.provider}:{self._resolved_model()}"
