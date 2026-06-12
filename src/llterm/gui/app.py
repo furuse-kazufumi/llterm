@@ -329,6 +329,9 @@ class MainWindow(QtWidgets.QMainWindow):
         # Enter=改行のまま / 送信は Ctrl+Enter (R12: 誤送信の構造的防止)
         QtGui.QShortcut(QtGui.QKeySequence("Ctrl+Return"), self.input, self.send_input)
         QtGui.QShortcut(QtGui.QKeySequence("Ctrl+Enter"), self.input, self.send_input)
+        # プロジェクトを選び直したら、その既存 SESSION_SUMMARY をプレビュー (idle 時)
+        self.cmb_project.currentIndexChanged.connect(self._refresh_summary)
+        self._refresh_summary()  # 初期表示 (選択プロジェクトの既存サマリ)
         # 走行中に無効化する設定系ウィジェット (途中変更で worker と不整合にしない)
         self._run_widgets: list[QtWidgets.QWidget] = [
             self.cmb_project, self.chk_real, self.chk_rad, self.spin_sessions,
