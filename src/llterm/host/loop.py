@@ -37,6 +37,7 @@ from pathlib import Path
 from typing import Protocol
 
 from llterm.ctl.ledger import Ledger
+from llterm.i18n import t
 
 
 def _ensure_utf8_stdout() -> None:
