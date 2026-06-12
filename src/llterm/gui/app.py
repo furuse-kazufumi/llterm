@@ -543,21 +543,23 @@ class MainWindow(QtWidgets.QMainWindow):
             self.lbl_session.setText(self._session_label(idx))
             self.ctx_bar.setValue(0)  # 新セッションは fresh context = 0%
             self._append(f"\n--- {self._session_label(idx)} 開始 ({sid}) ---",
-                         PALETTE["session"], bold=True)
+                         PALETTE["session"], bold=True, ts=True)
             self._streamed_text = 0
         elif kind == "task":
-            # これから claude が実行する prompt。注入タスクは実行点を明示 (要望: 注入内容を可視化)。
+            # これから claude に送る指令。時刻を出して「指令時 → 応答受信時」の経過を見せる。
             if data.get("injected"):
                 prompt = str(data.get("prompt") or "").strip()
-                self._append(f"▶ 注入タスク実行: {prompt}", PALETTE["inject"], bold=True)
+                self._append(f"▶ 注入タスク実行: {prompt}", PALETTE["inject"], bold=True, ts=True)
+            else:
+                self._append(f"▶ 指令送信 (turn {data.get('turn')})", PALETTE["dim"], ts=True)
         elif kind == "turn":
             pct = int(round(float(data.get("used_pct", 0.0)) * 100))
             self.ctx_bar.setValue(min(pct, 100))
             self.lbl_cost.setText(f"cost(報告値): ${float(data.get('total_cost', 0.0)):.4f}")
             self.lbl_session.setText(self._session_label(data.get("session_index"), data.get("turn")))
             err = data.get("error_kind")
-            head = f"[turn {data.get('turn')}] ctx {pct}%" + (f"  ERR={err}" if err else "")
-            self._append(head, PALETTE["err"] if err else PALETTE["turn"], bold=bool(err))
+            head = f"[turn {data.get('turn')}] 応答受信 ctx {pct}%" + (f"  ERR={err}" if err else "")
+            self._append(head, PALETTE["err"] if err else PALETTE["turn"], bold=bool(err), ts=True)
             text = str(data.get("text") or "")
             # ストリーム済みなら再表示しない (二重表示防止)。ただしエラーターンの text は
             # エラー詳細がストリームに乗らないことがあるため常に表示する。
