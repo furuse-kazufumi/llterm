@@ -591,7 +591,7 @@ def test_loop_runs_end_to_end_with_virtual_claude(
     win.start_loop()
     _run_until_finished(qapp, win)
     text = win.output.toPlainText()
-    assert "loop 開始 [仮想claude]" in text
+    assert "loop 開始 [仮想claude(課金なし)]" in text
     assert "session 1/2 開始" in text            # session N/max 形式で進捗表示
     assert "rotate" in text                      # 70% 超で rotate した
     assert "stopped: max_sessions" in text       # 2 セッションで停止
