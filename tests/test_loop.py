@@ -302,3 +302,32 @@ def test_claude_runner_defaults_to_subscription() -> None:
     from llterm.host.loop import ClaudeRunner
 
     assert ClaudeRunner().use_subscription is True
+
+
+# ─── RAD 研究接地ヒント ───────────────────────────────────────────
+
+
+def test_rad_hint_augments_resume_not_exit_prep(tmp_path: Path) -> None:
+    runner = FakeRunner([{"ctx": 150_000}])
+    loop = _loop(runner, tmp_path, window_tokens=200_000, threshold=0.70,
+                 max_sessions=1, rad_hint="RADHINT-XYZ")
+    loop.run()
+    assert "RADHINT-XYZ" in runner.calls[0][0]                    # 作業(resume)prompt に付く
+    assert DEFAULT_RESUME_PROMPT in runner.calls[0][0]
+    exit_calls = [c for c in runner.calls if c[0] == DEFAULT_EXIT_PREP_PROMPT]
+    assert exit_calls and "RADHINT-XYZ" not in exit_calls[0][0]   # exit準備 には付けない
+
+
+def test_rad_hint_augments_continue_turns(tmp_path: Path) -> None:
+    runner = FakeRunner()  # 常に閾値未満
+    loop = _loop(runner, tmp_path, max_sessions=1, max_turns_per_session=2, rad_hint="RADHINT-XYZ")
+    loop.run()
+    work = [c for c in runner.calls if c[0] != DEFAULT_EXIT_PREP_PROMPT]
+    assert all("RADHINT-XYZ" in c[0] for c in work)              # 全作業 prompt に付く
+
+
+def test_no_rad_hint_by_default(tmp_path: Path) -> None:
+    runner = FakeRunner([{"ctx": 150_000}])
+    loop = _loop(runner, tmp_path, window_tokens=200_000, threshold=0.70, max_sessions=1)
+    loop.run()
+    assert runner.calls[0][0] == DEFAULT_RESUME_PROMPT           # 未設定なら素のまま
