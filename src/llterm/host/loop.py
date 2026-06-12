@@ -777,7 +777,7 @@ class SessionLoop:
                     # graceful stop: 現セッションで作業していれば作業記録 (handoff) を残してから停止。
                     # force stop (runner.cancel 済) のときは _handoff が即 no-op で返る。
                     if self.handoff_on_stop and session_turns > 0:
-                        total_cost += self._handoff(sid)
+                        total_cost += self._handoff(active, sid)
                         turns += 1
                     return self._finish("stopped", sessions, turns, total_cost, "stop requested")
                 if self.max_total_cost_usd is not None and total_cost >= self.max_total_cost_usd:
