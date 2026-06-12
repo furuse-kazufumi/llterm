@@ -628,7 +628,7 @@ class MainWindow(QtWidgets.QMainWindow):
         elif kind == "tool_result":
             preview = str(item.get("preview") or "")
             if item.get("is_error"):
-                self._append(f"{prefix}  ↳ エラー: {preview}", PALETTE["err"])
+                self._append(prefix + t("gui.stream.tool_error", preview=preview), PALETTE["err"])
             elif preview:
                 self._append(f"{prefix}  ↳ {preview}", PALETTE["dim"])
         elif kind == "rate_limit":
@@ -638,10 +638,12 @@ class MainWindow(QtWidgets.QMainWindow):
                 when = ""
                 if resets_at > 0:
                     try:
-                        when = f" (リセット: {datetime.fromtimestamp(resets_at):%m-%d %H:%M})"
+                        when = t("gui.stream.rate_limit_reset",
+                                 time=f"{datetime.fromtimestamp(resets_at):%m-%d %H:%M}")
                     except (OSError, OverflowError, ValueError):
                         pass
-                self._append(f"⚠ レート制限: {status}{when}", PALETTE["err"], bold=True, ts=True)
+                self._append(t("gui.stream.rate_limit", status=status, when=when),
+                             PALETTE["err"], bold=True, ts=True)
         # kind == "result" はターン完了メトリクス (turn イベント側が正) — ここでは描画しない
 
     def _session_label(self, index: object, turn: object = None) -> str:
