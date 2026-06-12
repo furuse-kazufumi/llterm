@@ -289,6 +289,12 @@ class MainWindow(QtWidgets.QMainWindow):
         btn_row.addWidget(self.btn_send)
         vbox.addLayout(btn_row)
 
+        # 進捗バー (画面下部・邪魔にならない定位置)。完全自律時に「今どこまで進んだか」を
+        # 直近応答の 1 行要約で常時表示する。ホバーで全文 (応答 / handoff サマリ)。
+        self.lbl_progress = QtWidgets.QLabel("進捗: -")
+        self.lbl_progress.setToolTip("直近の応答 / rotate 時の SESSION_SUMMARY からの進捗要約")
+        self.statusBar().addWidget(self.lbl_progress, 1)
+
         self.resize(940, 640)
         self.btn_start.clicked.connect(self.start_loop)
         self.btn_stop.clicked.connect(self.stop_loop)
