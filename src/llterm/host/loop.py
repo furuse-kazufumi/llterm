@@ -371,6 +371,23 @@ _SUBSCRIPTION_STRIP_VARS = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
 # 注: raptor 独自の "ultracode" は vanilla claude には無い (max が最上位)。
 EFFORT_LEVELS: tuple[str, ...] = ("", "low", "medium", "high", "xhigh", "max")
 
+# GUI モデル選択コンボに出す候補。"" = --model を付けず claude 側の保存既定に委ねる。
+# alias (opus/sonnet/haiku) は起動時に各世代の最新へ解決される。フル ID は世代を固定する。
+# 妥当性は claude 本体が検証するため、ここに無い値も --model / extra_args で素通しできる
+# (_build_args は非空なら無条件に付与する。世代更新でこの表を直さなくても動く設計)。
+MODEL_CHOICES: tuple[str, ...] = (
+    "",
+    "opus",
+    "sonnet",
+    "haiku",
+    "claude-opus-4-8",
+    "claude-sonnet-4-6",
+    "claude-haiku-4-5",
+)
+# llterm 既定モデル (2026-06-13 ユーザー方針: Opus 4.8)。token 消費が重いときは
+# GUI のコンボ / --model で sonnet・haiku へ即切替できる (alias は最新世代へ解決)。
+DEFAULT_MODEL = "claude-opus-4-8"
+
 # gui-scripts (pythonw) 親が console 子 (claude.exe / taskkill) を spawn すると、stdio を全
 # redirect していても console window が毎ターン可視表示される (実機確認済) — これで抑止する。
 _NO_WINDOW = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
