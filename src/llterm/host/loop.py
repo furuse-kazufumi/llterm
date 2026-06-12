@@ -230,17 +230,23 @@ def _tool_use_detail(inp: object) -> str:
 
 
 def _tool_result_preview(block: dict) -> str:
-    """tool_result の content (str | block list) から先頭の意味のある 1 行を取り出す。"""
+    """tool_result の content (str | block list) から先頭の意味のある 1 行を取り出す。
+
+    数 MB 級の tool_result が 1 イベントで来るため、全文 join/splitlines はせず
+    各パーツ先頭 4KB だけ走査する (stdout reader 上で O(サイズ) コピーをしない)。
+    """
     content = block.get("content")
     if isinstance(content, str):
-        text = content
+        parts: list[str] = [content]
     elif isinstance(content, list):
         parts = [c.get("text", "") for c in content if isinstance(c, dict) and c.get("type") == "text"]
-        text = "\n".join(p for p in parts if p)
     else:
-        text = ""
-    first = next((ln for ln in text.splitlines() if ln.strip()), "")
-    return _short(first)
+        parts = []
+    for part in parts:
+        for ln in part[:4096].splitlines():
+            if ln.strip():
+                return _short(ln)
+    return ""
 
 
 def summarize_stream_event(ev: object) -> list[dict]:
