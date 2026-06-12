@@ -199,6 +199,8 @@ class MainWindow(QtWidgets.QMainWindow):
         _idx = self.cmb_template.findData(template_default)
         self.cmb_template.setCurrentIndex(_idx if _idx >= 0 else 0)
         self._on_template_changed()  # 初期 tooltip / param 有効化
+        if param_default:
+            self.edit_param.setText(param_default)  # 前回のテンプレ引数を復元
 
         # ステータス行
         status_row = QtWidgets.QHBoxLayout()
