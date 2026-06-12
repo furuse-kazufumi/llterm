@@ -16,6 +16,7 @@ from pathlib import Path
 
 from llterm.ctl.queue import CtlQueue
 from llterm.ctl.schema import ALLOWED_ACTIONS, CtlCommand, ParseError
+from llterm.i18n import t
 
 
 def _gen_id() -> str:
