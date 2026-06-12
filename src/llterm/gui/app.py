@@ -526,7 +526,7 @@ class MainWindow(QtWidgets.QMainWindow):
                         when = f" (リセット: {datetime.fromtimestamp(resets_at):%m-%d %H:%M})"
                     except (OSError, OverflowError, ValueError):
                         pass
-                self._append(f"⚠ レート制限: {status}{when}", PALETTE["err"], bold=True)
+                self._append(f"⚠ レート制限: {status}{when}", PALETTE["err"], bold=True, ts=True)
         # kind == "result" はターン完了メトリクス (turn イベント側が正) — ここでは描画しない
 
     def _session_label(self, index: object, turn: object = None) -> str:
