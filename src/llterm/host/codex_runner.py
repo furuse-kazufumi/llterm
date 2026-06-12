@@ -35,6 +35,7 @@ from llterm.host.loop import (
     _short,
     _tool_use_detail,
 )
+from llterm.i18n import t
 
 DEFAULT_CODEX_SANDBOX = "workspace-write"  # 実作業に必要。read-only では実装できない
 
