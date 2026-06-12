@@ -162,6 +162,9 @@ class MainWindow(QtWidgets.QMainWindow):
                   template_default: str, autonomy_default: bool = False,
                   param_default: str = "", effort_default: str = "max") -> None:
         self.setWindowTitle("llterm — Claude Code 自走ループ (GUI)")
+        icon = find_app_icon()
+        if icon is not None:
+            self.setWindowIcon(icon)  # タイトルバー/タスクバーのアイコン
         central = QtWidgets.QWidget()
         self.setCentralWidget(central)
         vbox = QtWidgets.QVBoxLayout(central)
