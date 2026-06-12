@@ -253,7 +253,7 @@ def test_output_view_uses_colored_dark_style(qapp: QtWidgets.QApplication, tmp_p
     assert "background-color" in win.output.styleSheet()
     win._on_event("session_start", {"session_id": "abcdef123456", "session_index": 1})
     # toHtml() のシリアライズ表現 (hex/rgb) は Qt 内部仕様のため、文字フォーマットを直接検証する
-    cursor = win.output.document().find("session #1")
+    cursor = win.output.document().find("session 1")
     assert not cursor.isNull()
     assert cursor.charFormat().foreground().color().name() == "#e5c07b"  # PALETTE["session"]
 
