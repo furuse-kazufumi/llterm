@@ -297,16 +297,21 @@ class SessionLoop:
         except Exception:  # noqa: BLE001
             return False
 
+    def _augment(self, prompt: str) -> str:
+        """作業 prompt に RAD 研究接地ヒントを付ける (rad_hint 設定時のみ。exit準備には付けない)。"""
+        return f"{prompt}\n\n{self.rad_hint}" if self.rad_hint else prompt
+
     def _continue_prompt(self) -> str:
         """継続ターンの prompt。GUI が inject したタスクがあれば優先する (一度だけ)。"""
+        base = self.continue_prompt
         if self.next_prompt is not None:
             try:
                 injected = self.next_prompt()
             except Exception:  # noqa: BLE001
                 injected = None
             if injected:
-                return injected
-        return self.continue_prompt
+                base = injected
+        return self._augment(base)
 
     def used_pct(self, res: TurnResult) -> float:
         if self.window_tokens <= 0:
