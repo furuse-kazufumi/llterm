@@ -286,8 +286,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.lbl_state.setText(f"done: {reason}")
         self.btn_start.setEnabled(True)
         self.btn_stop.setEnabled(False)
-        self.cmb_project.setEnabled(True)
-        self.chk_real.setEnabled(True)
+        for widget in self._run_widgets:
+            widget.setEnabled(True)
         if reason == "auth_required":
             self._append("⚠ 再ログインが必要です (claude /login)。認証後に Start で再開してください "
                          "— 構造的に唯一の人間介在点。")
