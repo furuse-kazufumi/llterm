@@ -99,6 +99,7 @@ class MainWindow(QtWidgets.QMainWindow):
         rad_default: bool = False,
         template_default: str | None = None,
         effort_default: str | None = None,
+        model_default: str | None = None,
         rad_docs_root: Path = rad.RAD_DOCS_ROOT,
         runner_factory: Callable[[], TurnRunner] | None = None,
         settings_path: Path | None = None,
