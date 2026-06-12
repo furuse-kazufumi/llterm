@@ -724,50 +724,52 @@ class MainWindow(QtWidgets.QMainWindow):
             sid = str(data.get("session_id", ""))[:8]
             self.lbl_session.setText(self._session_label(idx))
             self.ctx_bar.setValue(0)  # 新セッションは fresh context = 0%
-            self._append(f"\n--- {self._session_label(idx)} 開始 ({sid}) ---",
+            self._append("\n" + t("gui.msg.session_start", label=self._session_label(idx), sid=sid),
                          PALETTE["session"], bold=True, ts=True)
             self._streamed_text = 0
         elif kind == "handoff":
             # 停止前の作業記録ターン。砂時計のまま「記録中」を明示する。
-            self.lbl_state.setText("作業内容を記録中…")
+            self.lbl_state.setText(t("gui.state.handoff"))
             self._set_busy_cursor(True)
-            self._append("■ 作業内容を記録中 (SESSION_SUMMARY を更新)…", PALETTE["rotate"], ts=True)
+            self._append(t("gui.msg.handoff"), PALETTE["rotate"], ts=True)
         elif kind == "rate_limited":
             # レート制限到達 → resetsAt まで待機して自動再開 (待機中も Stop 可)。
             resets = int(data.get("resets_at") or 0)
             when = ""
             if resets > 0:
                 try:
-                    when = f" {datetime.fromtimestamp(resets):%m-%d %H:%M} まで"
+                    when = t("gui.when.until", time=f"{datetime.fromtimestamp(resets):%m-%d %H:%M}")
                 except (OSError, OverflowError, ValueError):
                     pass
-            self.lbl_state.setText(f"レート制限: 待機中{when}")
-            self._append(f"⏸ レート制限に到達。{when}待機して自動再開します (Stop で中断可)",
+            self.lbl_state.setText(t("gui.state.rate_limited", when=when))
+            self._append(t("gui.msg.rate_limited_wait", when=when),
                          PALETTE["err"], bold=True, ts=True)
         elif kind == "rate_limit_resumed":
             prov = data.get("provider")
-            self.lbl_state.setText("running (制限解除・再開)")
-            self._append(f"▶ レート制限リセット — 自走を再開します ({prov})" if prov
-                         else "▶ レート制限リセット — 自走を再開します", PALETTE["inject"], ts=True)
+            self.lbl_state.setText(t("gui.state.resumed"))
+            self._append(t("gui.msg.resumed_with", provider=prov) if prov
+                         else t("gui.msg.resumed"), PALETTE["inject"], ts=True)
         elif kind == "provider_switch":
             prov = str(data.get("provider") or "?")
-            self.lbl_model.setText(f"model: {prov} (切替)")
-            self._append(f"⇄ プロバイダ切替 → {prov} で継続 (SESSION_SUMMARY から再開)",
+            self.lbl_model.setText(t("gui.model.switched", provider=prov))
+            self._append(t("gui.msg.provider_switch", provider=prov),
                          PALETTE["rotate"], bold=True, ts=True)
         elif kind == "task":
             # これから claude に送る指令。時刻を出して「指令時 → 応答受信時」の経過を見せる。
             if data.get("injected"):
                 prompt = str(data.get("prompt") or "").strip()
-                self._append(f"▶ 注入タスク実行: {prompt}", PALETTE["inject"], bold=True, ts=True)
+                self._append(t("gui.msg.task_injected", prompt=prompt),
+                             PALETTE["inject"], bold=True, ts=True)
             else:
-                self._append(f"▶ 指令送信 (turn {data.get('turn')})", PALETTE["dim"], ts=True)
+                self._append(t("gui.msg.task_sent", turn=data.get("turn")), PALETTE["dim"], ts=True)
         elif kind == "turn":
             pct = int(round(float(data.get("used_pct", 0.0)) * 100))
             self.ctx_bar.setValue(min(pct, 100))
             self._set_cost(float(data.get("total_cost", 0.0)))
             self.lbl_session.setText(self._session_label(data.get("session_index"), data.get("turn")))
             err = data.get("error_kind")
-            head = f"[turn {data.get('turn')}] 応答受信 ctx {pct}%" + (f"  ERR={err}" if err else "")
+            head = t("gui.msg.turn_head", turn=data.get("turn"), pct=pct,
+                     err_note=f"  ERR={err}" if err else "")
             self._append(head, PALETTE["err"] if err else PALETTE["turn"], bold=bool(err), ts=True)
             text = str(data.get("text") or "")
             # ストリーム済みなら再表示しない (二重表示防止)。ただしエラーターンの text は
