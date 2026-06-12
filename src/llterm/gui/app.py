@@ -775,9 +775,18 @@ class MainWindow(QtWidgets.QMainWindow):
 
     @QtCore.Slot()
     def _refresh_summary(self) -> None:
-        """進捗サマリ パネルに SESSION_SUMMARY.md 全文を読み込む (スクロール位置は保持)。"""
+        """進捗サマリ パネルを更新する (スクロール位置は保持)。
+
+        既定は人間向けダイジェスト (現在地/直近の成果/次の一手)。「生」トグル ON で
+        SESSION_SUMMARY.md 全文。要約は純関数 summarize_for_human に委譲 (Qt 非依存)。
+        """
         wd = self._run_workdir or self._selected_workdir()
-        text = self._read_session_summary_full(wd)
+        full = self._read_session_summary_full(wd)
+        if self.chk_summary_raw.isChecked():
+            text = full
+        else:
+            from llterm.summary import summarize_for_human
+            text = summarize_for_human(full)
         bar = self.summary_view.verticalScrollBar()
         pos = bar.value()
         self.summary_view.setPlainText(text)  # 空なら placeholder が出る
