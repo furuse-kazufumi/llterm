@@ -51,16 +51,20 @@ class MainWindow(QtWidgets.QMainWindow):
         workdir: Path | None = None,
         real_default: bool = False,
         rad_default: bool = False,
+        template_default: str = "general",
+        rad_docs_root: Path = rad.RAD_DOCS_ROOT,
         runner_factory: Callable[[], TurnRunner] | None = None,
         **loop_kw: object,
     ) -> None:
         super().__init__()
         self.projects_root = Path(projects_root)
+        self.rad_docs_root = Path(rad_docs_root)
         self.runner_factory_override = runner_factory  # tests/仮想を強制注入する穴
         self.loop_kw = dict(loop_kw)
         self.worker: LoopWorker | None = None
         self._build_ui(initial_workdir=Path(workdir) if workdir else None,
-                       real_default=real_default, rad_default=rad_default)
+                       real_default=real_default, rad_default=rad_default,
+                       template_default=template_default)
 
     # ---- UI 構築 ----
     def _build_ui(self, *, initial_workdir: Path | None, real_default: bool, rad_default: bool) -> None:
