@@ -349,12 +349,12 @@ class MainWindow(QtWidgets.QMainWindow):
         try:
             res = rad.promote(domain, docs_root=self.rad_docs_root)
         except rad.RadError as exc:
-            self._append(f"公開失敗: {exc}")
+            self._append(f"公開失敗: {exc}", PALETTE["err"])
             return
         msg = f"✓ 公開: {res.live}"
         if res.backup:
             msg += f" (backup: {res.backup})"
-        self._append(msg)
+        self._append(msg, PALETTE["inject"])
 
     def closeEvent(self, event: QtGui.QCloseEvent) -> None:  # noqa: N802 (Qt override 名)
         """ウィンドウを閉じる際、ループ実行中なら停止を要求してから閉じる。
