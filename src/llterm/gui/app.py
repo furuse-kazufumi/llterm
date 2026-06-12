@@ -262,7 +262,8 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         workdir = self._selected_workdir()
         if workdir is None or not workdir.is_dir():
-            self._append("error: プロジェクトが選択されていません (コンボボックスから選んでください)")
+            self._append("error: プロジェクトが選択されていません (コンボボックスから選んでください)",
+                         PALETTE["err"])
             return
         real = self.runner_factory_override is None and self.chk_real.isChecked()
         runner = self._build_runner()
