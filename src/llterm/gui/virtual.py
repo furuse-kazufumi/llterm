@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from llterm.host.loop import DEFAULT_WINDOW_TOKENS, TurnResult
+from llterm.i18n import t
 
 
 @dataclass
