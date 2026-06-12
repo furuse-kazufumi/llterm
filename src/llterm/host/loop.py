@@ -815,21 +815,33 @@ class SessionLoop:
                     return self._finish("auth_required", sessions, turns, total_cost,
                                         "re-login required")
 
-                # レート制限 = resetsAt まで待って自動再開 (サブスク自走の主制約)。
-                # 待機中に Stop されたら停止。consec_err は増やさない (失敗ではなく待ち)。
+                # レート制限 = このプロバイダをブロック登録し、別プロバイダがあれば切替、
+                # 無ければ resetsAt まで待って自動再開する (サブスク自走の主制約)。
+                # consec_err は増やさない (失敗ではなく待ち / 切替)。
                 if res.error_kind == "rate_limited" and self.auto_resume_on_rate_limit:
+                    now = self.now_fn()
+                    until = float(res.rate_limit_resets_at) if res.rate_limit_resets_at \
+                        else now + self.rate_limit_fallback_wait_s
+                    self._blocked_until[active_idx] = until
                     self.ledger.append(
                         event="rate_limited", cmd_id=sid, action="wait",
-                        detail=f"resets_at={res.rate_limit_resets_at} status={res.rate_limit_status}",
+                        detail=f"provider={self.provider_name(active)} "
+                               f"resets_at={res.rate_limit_resets_at} status={res.rate_limit_status}",
                     )
-                    self._emit("rate_limited", session_id=sid,
+                    self._emit("rate_limited", session_id=sid, provider=self.provider_name(active),
                                resets_at=res.rate_limit_resets_at, status=res.rate_limit_status)
+                    # 別プロバイダが今すぐ使えるなら、セッション境界として切替 (fresh session で
+                    # SESSION_SUMMARY を読み継続)。無ければ resetsAt まで待って同セッションを再試行。
+                    if self._select_available(now, exclude=active_idx) is not None:
+                        break  # → 外側ループが次の利用可能プロバイダで新セッション開始
                     if not self._wait_until(res.rate_limit_resets_at):
                         return self._finish("stopped", sessions, turns, total_cost,
                                             "stop during rate-limit wait")
+                    self._blocked_until[active_idx] = 0.0  # 解除
                     self.ledger.append(event="rate_limit_resumed", cmd_id=sid, action="resume",
-                                       detail="")
-                    self._emit("rate_limit_resumed", session_id=sid)
+                                       detail=self.provider_name(active))
+                    self._emit("rate_limit_resumed", session_id=sid,
+                               provider=self.provider_name(active))
                     continue  # 同じ prompt を再試行 (consec_err は増やさない)
 
                 if res.is_error:
