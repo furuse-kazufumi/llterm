@@ -633,6 +633,8 @@ class MainWindow(QtWidgets.QMainWindow):
             # エラー詳細がストリームに乗らないことがあるため常に表示する。
             if text and (self._streamed_text == 0 or err):
                 self._append(text, PALETTE["err"] if err else None)
+            if text:
+                self._set_progress(text)  # ターン最終応答を進捗バーに (確定値)
             self._streamed_text = 0
         elif kind == "rotate":
             pct = int(round(float(data.get("used_pct", 0.0)) * 100))
