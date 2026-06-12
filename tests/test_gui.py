@@ -242,6 +242,42 @@ def test_close_event_cancel_keeps_window(
     w.wait(3000)
 
 
+def test_stop_is_graceful_then_force(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    """1 回目 Stop = graceful (kill しない・砂時計)、2 回目 = force (即 kill)。"""
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path,
+                     runner_factory=lambda: VirtualClaudeRunner(delay=0.05), max_sessions=100)
+    win.start_loop()
+    win.stop_loop()  # 1 回目
+    assert win._stopping is True
+    assert win._busy_cursor is True
+    assert win.btn_stop.text() == "強制停止"
+    assert win.worker._stop.is_set()
+    win.stop_loop()  # 2 回目 = force
+    win.worker.wait(3000)
+    qapp.processEvents()
+    assert win._busy_cursor is False  # 終了で砂時計解除
+
+
+def test_handoff_event_sets_busy_cursor_and_status(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    win = _make_window(tmp_path)
+    win._on_event("handoff", {"session_id": "abcd1234"})
+    assert win._busy_cursor is True
+    assert "記録中" in win.lbl_state.text()
+    assert "記録中" in win.output.toPlainText()
+    win._set_busy_cursor(False)  # 後始末
+
+
+def test_window_icon_is_set(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    """タイトルバー用アイコンが設定される (assets が見つかる環境)。"""
+    from llterm.gui.app import find_app_icon
+
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    if find_app_icon() is not None:  # assets がある環境のみ厳密検証
+        assert not win.windowIcon().isNull()
+
+
 # ─── 描画スロット (スレッドなし・直接呼び出し) ─────────────────────
 
 
