@@ -127,6 +127,27 @@ class MainWindow(QtWidgets.QMainWindow):
         set_row.addStretch(1)
         vbox.addLayout(set_row)
 
+        # テンプレ行 (機能ごとの自走テンプレ + RAD 公開ゲート)
+        tmpl_row = QtWidgets.QHBoxLayout()
+        tmpl_row.addWidget(QtWidgets.QLabel("テンプレ:"))
+        self.cmb_template = QtWidgets.QComboBox()
+        for i, t in enumerate(templates.TEMPLATES):
+            self.cmb_template.addItem(t.label, t.key)
+            self.cmb_template.setItemData(i, t.description, QtCore.Qt.ItemDataRole.ToolTipRole)
+        tmpl_row.addWidget(self.cmb_template)
+        self.edit_param = QtWidgets.QLineEdit()
+        self.edit_param.setPlaceholderText("(テンプレ引数)")
+        tmpl_row.addWidget(self.edit_param, 1)
+        self.btn_publish = QtWidgets.QPushButton("公開(staging→live)")
+        self.btn_publish.setToolTip("RAD 拡張の staging を共有 live へ昇格する公開ゲート(人間の明示操作)。")
+        self.btn_publish.clicked.connect(self._promote_clicked)
+        tmpl_row.addWidget(self.btn_publish)
+        vbox.addLayout(tmpl_row)
+        self.cmb_template.currentIndexChanged.connect(self._on_template_changed)
+        _idx = self.cmb_template.findData(template_default)
+        self.cmb_template.setCurrentIndex(_idx if _idx >= 0 else 0)
+        self._on_template_changed()  # 初期 tooltip / param 有効化
+
         # ステータス行
         status_row = QtWidgets.QHBoxLayout()
         self.lbl_state = QtWidgets.QLabel("idle")
