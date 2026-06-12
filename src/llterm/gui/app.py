@@ -22,6 +22,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from llterm import rad, templates
 from llterm.gui import settings as gui_settings
+from llterm.i18n import t
 from llterm.gui.settings import DEFAULT_SETTINGS_PATH
 from llterm.gui.virtual import VirtualClaudeRunner
 from llterm.gui.worker import LoopWorker
