@@ -529,6 +529,7 @@ class MainWindow(QtWidgets.QMainWindow):
             else:
                 self._streamed_text += 1
                 self._append(text)
+                self._set_progress(text)  # 直近応答を進捗バーに (ライブ)
         elif kind == "thinking":
             self._append(f"{prefix}… thinking … {item.get('preview') or ''}", PALETTE["dim"])
         elif kind == "tool_use":
