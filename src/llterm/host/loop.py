@@ -277,26 +277,42 @@ def summarize_stream_event(ev: object) -> list[dict]:
         content = msg.get("content") if isinstance(msg, dict) else None
         if not isinstance(content, list):
             return []
+        # Task サブエージェント由来のイベントは parent_tool_use_id 非 null で届く。
+        # メイン応答と無区別に表示すると並列サブエージェント運用で監視が成立しないため区別する。
+        subagent = bool(ev.get("parent_tool_use_id"))
         items: list[dict] = []
         for block in content:
             if not isinstance(block, dict):
                 continue
             btype = block.get("type")
+            item: dict | None = None
             if etype == "assistant" and btype == "text":
                 text = str(block.get("text") or "")
                 if text.strip():
-                    items.append({"kind": "text", "text": text})
+                    item = {"kind": "text", "text": text}
             elif etype == "assistant" and btype == "thinking":
-                items.append({"kind": "thinking",
-                              "preview": _short(str(block.get("thinking") or ""), 80)})
+                item = {"kind": "thinking",
+                        "preview": _short(str(block.get("thinking") or ""), 80)}
             elif etype == "assistant" and btype == "tool_use":
-                items.append({"kind": "tool_use", "name": str(block.get("name") or "?"),
-                              "detail": _tool_use_detail(block.get("input"))})
+                item = {"kind": "tool_use", "name": str(block.get("name") or "?"),
+                        "detail": _tool_use_detail(block.get("input"))}
             elif etype == "user" and btype == "tool_result":
-                items.append({"kind": "tool_result",
-                              "is_error": bool(block.get("is_error", False)),
-                              "preview": _tool_result_preview(block)})
+                item = {"kind": "tool_result",
+                        "is_error": bool(block.get("is_error", False)),
+                        "preview": _tool_result_preview(block)}
+            if item is not None:
+                if subagent:
+                    item["subagent"] = True
+                items.append(item)
         return items
+    if etype == "rate_limit_event":
+        # サブスク自走の主制約 = レート制限。status / リセット時刻を GUI に伝える (黙殺しない)。
+        info = ev.get("rate_limit_info")
+        if isinstance(info, dict):
+            return [{"kind": "rate_limit", "status": str(info.get("status") or ""),
+                     "resets_at": _as_int(info.get("resetsAt")),
+                     "rate_limit_type": str(info.get("rateLimitType") or "")}]
+        return []
     if etype == "result":
         return [{"kind": "result", "duration_ms": _as_int(ev.get("duration_ms")),
                  "is_error": bool(ev.get("is_error", False))}]
