@@ -43,6 +43,10 @@ class LoopWorker(QtCore.QThread):
 
     def request_stop(self) -> None:
         self._stop.set()
+        try:
+            self._runner.cancel()  # 実行中ターン (claude -p) をツリーごと kill → 即時・安全停止
+        except Exception:  # noqa: BLE001
+            pass
 
     def inject(self, text: str) -> None:
         with self._inject_lock:
