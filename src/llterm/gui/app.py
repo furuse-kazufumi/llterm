@@ -540,6 +540,25 @@ class MainWindow(QtWidgets.QMainWindow):
         tail = f"  turn {turn}" if turn is not None else ""
         return f"session {index}{total}{tail}"
 
+    def _cost_label_mode(self, runner: TurnRunner) -> tuple[str, bool]:
+        """cost ラベルの種別を runner から決める。(suffix, 実課金か) を返す。
+
+        サブスク認証 (use_subscription=True) と仮想 claude は課金なし。API キー認証のみ実課金。
+        """
+        from llterm.host.loop import ClaudeRunner
+
+        if isinstance(runner, ClaudeRunner):
+            if runner.use_subscription:
+                return "報告値・課金なし", False
+            return "実課金", True
+        return "仮想・課金なし", False
+
+    def _set_cost(self, amount: float) -> None:
+        """cost ラベルを更新する。実課金時のみ赤字で警告する。"""
+        self.lbl_cost.setText(f"cost({self._cost_suffix}): ${amount:.4f}")
+        self.lbl_cost.setStyleSheet(f"color:{PALETTE['err']};font-weight:bold"
+                                    if self._cost_billed else "")
+
     @QtCore.Slot(str, dict)
     def _on_event(self, kind: str, data: dict) -> None:
         if kind == "session_start":
