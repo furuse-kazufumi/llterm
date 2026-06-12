@@ -282,6 +282,23 @@ class MainWindow(QtWidgets.QMainWindow):
         data = self.cmb_project.currentData()
         return Path(str(data)) if data else None
 
+    def _save_settings(self) -> None:
+        """現在の GUI 設定を保存する (Start 時と終了時に呼ぶ。失敗しても GUI を殺さない)。"""
+        wd = self._selected_workdir()
+        gui_settings.save_settings(self.settings_path, {
+            "workdir": str(wd) if wd else "",
+            "real": self.chk_real.isChecked(),
+            "rad": self.chk_rad.isChecked(),
+            "autonomy": self.chk_autonomy.isChecked(),
+            "max_sessions": self.spin_sessions.value(),
+            "threshold": round(self.spin_threshold.value(), 2),
+            "window_tokens": self.spin_window.value(),
+            "max_cost": self.spin_maxcost.value(),
+            "template": self.cmb_template.currentData(),
+            "param": self.edit_param.text(),
+            "geometry": bytes(self.saveGeometry().toHex()).decode("ascii"),
+        })
+
     def _build_runner(self) -> TurnRunner:
         """実行モードに応じた TurnRunner を返す (テスト override 優先)。"""
         if self.runner_factory_override is not None:
