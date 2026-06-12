@@ -618,17 +618,31 @@ class MainWindow(QtWidgets.QMainWindow):
         self.lbl_progress.setText(f"{prefix}: {short}")
         self.lbl_progress.setToolTip(str(text).strip()[:2000])
 
-    def _read_session_summary(self) -> str:
-        """実行中 workdir の docs/SESSION_SUMMARY.md 先頭の意味ある 2 行を返す (handoff 進捗)。"""
-        if self._run_workdir is None:
+    def _read_session_summary_full(self, workdir: Path | None) -> str:
+        """workdir の docs/SESSION_SUMMARY.md 全文を返す (無ければ空)。"""
+        if workdir is None:
             return ""
         try:
-            text = (self._run_workdir / "docs" / "SESSION_SUMMARY.md").read_text(
+            return (Path(workdir) / "docs" / "SESSION_SUMMARY.md").read_text(
                 encoding="utf-8", errors="replace")
         except OSError:
             return ""
+
+    def _read_session_summary(self) -> str:
+        """実行中 workdir の docs/SESSION_SUMMARY.md 先頭の意味ある 2 行 (status bar の handoff 用)。"""
+        text = self._read_session_summary_full(self._run_workdir)
         lines = [ln.strip().lstrip("# ").strip() for ln in text.splitlines() if ln.strip()]
         return " / ".join(lines[:2])
+
+    @QtCore.Slot()
+    def _refresh_summary(self) -> None:
+        """進捗サマリ パネルに SESSION_SUMMARY.md 全文を読み込む (スクロール位置は保持)。"""
+        wd = self._run_workdir or self._selected_workdir()
+        text = self._read_session_summary_full(wd)
+        bar = self.summary_view.verticalScrollBar()
+        pos = bar.value()
+        self.summary_view.setPlainText(text)  # 空なら placeholder が出る
+        bar.setValue(min(pos, bar.maximum()))  # 読んでいた位置を維持 (rotate 更新で飛ばさない)
 
     @QtCore.Slot(str, dict)
     def _on_event(self, kind: str, data: dict) -> None:
