@@ -323,6 +323,10 @@ def summarize_stream_event(ev: object) -> list[dict]:
 
 _SUBSCRIPTION_STRIP_VARS = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
 
+# gui-scripts (pythonw) 親が console 子 (claude.exe / taskkill) を spawn すると、stdio を全
+# redirect していても console window が毎ターン可視表示される (実機確認済) — これで抑止する。
+_NO_WINDOW = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+
 
 def _subscription_env() -> dict[str, str]:
     """claude.ai サブスク認証 (OAuth) を使わせるため API キー系 env を外して返す。
