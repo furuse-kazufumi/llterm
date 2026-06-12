@@ -219,7 +219,7 @@ def test_close_event_requests_worker_stop(qapp: QtWidgets.QApplication, tmp_path
 def test_render_slots_update_widgets(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
     win = _make_window(tmp_path)
     win._on_event("session_start", {"session_id": "abcdef123456", "session_index": 1})
-    win._on_event("turn", {"turn": 1, "used_pct": 0.42, "total_cost": 0.06,
+    win._on_event("turn", {"turn": 1, "session_index": 1, "used_pct": 0.42, "total_cost": 0.06,
                            "text": "hello from virtual", "error_kind": ""})
     assert "session: #1" in win.lbl_session.text()
     assert win.ctx_bar.value() == 42
