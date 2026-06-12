@@ -77,6 +77,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.runner_factory_override = runner_factory  # tests/仮想を強制注入する穴
         self.loop_kw = dict(loop_kw)
         self.worker: LoopWorker | None = None
+        self._streamed_text = 0  # 現ターン中にリアルタイム表示した応答数 (turn 完了時の二重表示防止)
         self._build_ui(initial_workdir=Path(workdir) if workdir else None,
                        real_default=real_default, rad_default=rad_default,
                        template_default=template_default)
