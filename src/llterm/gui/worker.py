@@ -42,8 +42,9 @@ class LoopWorker(QtCore.QThread):
         self._inject_lock = threading.Lock()
         self._injected: list[str] = []
         # runner が on_stream を持つ実装 (ClaudeRunner / VirtualClaudeRunner) なら購読する。
+        # 呼び出し側が既に独自コールバックを設定済みの場合は上書きしない。
         # シグナル emit はスレッド安全 (queued connection でメインスレッドへ配送される)。
-        if hasattr(runner, "on_stream"):
+        if hasattr(runner, "on_stream") and runner.on_stream is None:  # type: ignore[attr-defined]
             runner.on_stream = lambda item: self.stream.emit(dict(item))  # type: ignore[attr-defined]
 
     def request_stop(self) -> None:
