@@ -379,6 +379,45 @@ def test_ctx_bar_shows_rotate_threshold(qapp: QtWidgets.QApplication, tmp_path: 
     assert "rotate 65%" in win.ctx_bar.format()
 
 
+def test_progress_bar_shows_latest_response_oneline(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    """完全自律時の進捗を下部バーに直近応答の 1 行要約で表示する。"""
+    win = _make_window(tmp_path)
+    win._on_stream({"kind": "text", "text": "認証モジュールのテストを追加中\n(詳細は続く)"})
+    assert "認証モジュールのテストを追加中" in win.lbl_progress.text()
+    assert win.lbl_progress.text().startswith("進捗:")
+    # 長文は 1 行に切り詰め、全文はツールチップへ
+    long = "あ" * 300
+    win._on_stream({"kind": "text", "text": long})
+    assert len(win.lbl_progress.text()) < 200
+    assert win.lbl_progress.toolTip().startswith("あ")
+
+
+def test_progress_bar_reads_session_summary_on_rotate(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    """rotate 時に docs/SESSION_SUMMARY.md の先頭を handoff 進捗として表示する。"""
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "SESSION_SUMMARY.md").write_text("# 認証リファクタ\n残: テスト3件とドキュメント更新\n",
+                                             encoding="utf-8")
+    win = _make_window(tmp_path)
+    win._run_workdir = tmp_path
+    win._on_event("rotate", {"session_index": 1, "used_pct": 0.7, "session_turns": 5})
+    assert "進捗(handoff)" in win.lbl_progress.text()
+    assert "認証リファクタ" in win.lbl_progress.text()
+
+
+def test_progress_bar_handles_missing_session_summary(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    win = _make_window(tmp_path)
+    win._run_workdir = tmp_path  # docs/SESSION_SUMMARY.md なし
+    win._on_event("rotate", {"session_index": 1, "used_pct": 0.7, "session_turns": 5})  # 例外を出さない
+    assert win._read_session_summary() == ""
+
+
 def test_model_label_updates_from_init_stream(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
     """画面に現在のモデルを表示する (init イベントの model)。effort 併記。"""
     win = _make_window(tmp_path)
