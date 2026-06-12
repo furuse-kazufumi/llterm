@@ -532,10 +532,12 @@ def main(argv: list[str] | None = None) -> int:
                         help="起動時に『実 claude(サブスク認証)』を選択状態にする")
     parser.add_argument("--rad", action="store_true",
                         help="起動時に『RAD 参照(研究接地)』を選択状態にする")
-    parser.add_argument("--template", default="general",
-                        help="起動時に選ぶテンプレ key (general/rad_expand/green_keeper/doc_update)")
-    parser.add_argument("--threshold", type=float, default=0.70)
-    parser.add_argument("--window-tokens", type=int, default=200_000)
+    # 未指定 (None) の項目は前回保存値 → 組込み既定の順で補完される (CLI 明示指定が最優先)
+    parser.add_argument("--template", default=None,
+                        help="起動時に選ぶテンプレ key (general/rad_expand/green_keeper/doc_update。"
+                             "既定: 前回値)")
+    parser.add_argument("--threshold", type=float, default=None, help="既定: 前回値 (初回 0.70)")
+    parser.add_argument("--window-tokens", type=int, default=None, help="既定: 前回値 (初回 200000)")
     parser.add_argument("--max-sessions", type=int, default=None)
     parser.add_argument("--max-cost", type=float, default=None)
     args = parser.parse_args(argv)
