@@ -264,8 +264,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.btn_stop.setEnabled(True)
         for widget in self._run_widgets:
             widget.setEnabled(False)
-        self.lbl_state.setText("running")
         mode = "実claude(サブスク)" if real else "仮想claude"
+        self.lbl_state.setText(f"running [{mode}] {tmpl.key}")
         self._append(f"=== loop 開始 [{mode}] template={tmpl.key} workdir={workdir} "
                      f"max_session={loop_kw['max_sessions']} ===")
 
