@@ -202,6 +202,17 @@ def test_promote_via_gui_reports_error_without_staging(
     assert "公開失敗" in win.output.toPlainText()  # staging 無し → fail-closed
 
 
+def test_close_event_requests_worker_stop(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path,
+                     runner_factory=lambda: VirtualClaudeRunner(delay=0.02), max_sessions=100)
+    win.start_loop()
+    w = win.worker
+    assert w is not None
+    win.close()                  # closeEvent → ループに停止要求
+    assert w._stop.is_set()      # 閉じる操作が loop の停止を要求した
+    w.wait(3000)
+
+
 # ─── 描画スロット (スレッドなし・直接呼び出し) ─────────────────────
 
 
