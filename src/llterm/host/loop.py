@@ -374,10 +374,30 @@ class ClaudeRunner:
     _proc: subprocess.Popen | None = field(default=None, repr=False, compare=False)
     _cancelled: bool = field(default=False, repr=False, compare=False)
 
+    def _resolved_exe(self) -> str:
+        """Windows の CreateProcess は拡張子なし名に .exe しか自動付加しないため明示解決する。"""
+        found = shutil.which(self.exe)
+        if found and found.lower().endswith(".exe"):
+            return found
+        return self.exe
+
+    def _exe_error(self) -> str:
+        """npm shim (.cmd/.bat/.ps1) しか無い環境を fail-closed で検出する。
+
+        shim を cmd.exe 経由で実行すると prompt (任意文字列) が shell 解釈される注入リスクが
+        あるため非対応とし、native claude.exe の導入を明示的に求める。
+        """
+        found = shutil.which(self.exe)
+        if found is not None and found.lower().endswith((".cmd", ".bat", ".ps1")):
+            return (f"claude が npm shim ({found}) でしか見つかりません。"
+                    "native インストールの claude.exe が必要です")
+        return ""
+
     def _build_args(self, *, prompt: str, session_id: str, resume: bool) -> list[str]:
         """claude の引数列を組む (テストはここを差し替えて偽の子プロセスを注入する)。"""
         session_flag = ["--resume", session_id] if resume else ["--session-id", session_id]
-        args = [self.exe, "-p", prompt, "--output-format", "stream-json", "--verbose", *session_flag]
+        args = [self._resolved_exe(), "-p", prompt,
+                "--output-format", "stream-json", "--verbose", *session_flag]
         if self.skip_permissions:
             args.append("--dangerously-skip-permissions")
         args.extend(self.extra_args)
