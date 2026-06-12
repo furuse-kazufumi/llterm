@@ -112,20 +112,20 @@ TEMPLATES: tuple[Template, ...] = (
     Template(
         "rad_expand", "template.rad_expand.label", "template.rad_expand.description",
         needs_param=True, param_label_key="template.rad_expand.param_label",
-        builder=_rad_expand,
+        builder=_rad_expand, prefer="codex",  # 文献取得→corpus 化の機械的長時間タスク
     ),
     Template(
         "green_keeper", "template.green_keeper.label", "template.green_keeper.description",
-        builder=_green_keeper,
+        builder=_green_keeper, prefer="codex",  # test/lint/型 を緑に保つ機械的反復
     ),
     Template(
         "doc_update", "template.doc_update.label", "template.doc_update.description",
-        builder=_doc_update,
+        builder=_doc_update, prefer="codex",  # docs 整合の機械的更新
     ),
     Template(
         "security_audit", "template.security_audit.label",
         "template.security_audit.description",
-        builder=_security_audit,
+        builder=_security_audit, prefer="codex",  # read-only スキャン+triage の機械的作業
     ),
 )
 
