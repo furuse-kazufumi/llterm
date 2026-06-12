@@ -1,4 +1,25 @@
-# llterm Session Summary — 2026-06-12 (GUI 大幅強化セッション)
+# llterm Session Summary — 2026-06-12 (i18n 実装 + GUI 大幅強化)
+
+## 2026-06-12 (夜) 多言語対応 (i18n) 実装完了
+- **`src/llterm/i18n/`** 新設: 軽量テーブル方式 (gettext 不使用)。`messages.py` =
+  `MESSAGES: dict[key, {ja/en}]` (約 90 key、zh/ko は後から追加可能な構造)。
+  `t(key, **kwargs)` = locale 解決 (`LLTERM_LANG` → OS locale → 既定 ja) + fail-safe
+  (未知 key→key / 訳欠落→ja fallback / format 失敗→未整形。例外を絶対に外へ出さない)。
+- **置換**: GUI 全文字列 40+ (ラベル/tooltip/ダイアログ/出力メッセージ/cost種別) /
+  CLI エラー (emit 英語・loop 日本語の混在を統一) / テンプレ registry label・description
+  (property 化でアクセス時 locale 解決) / 仮想 claude 表示 3 件。ja はバイト同一維持。
+- **対象外と判断**: ループ指示プロンプト (DEFAULT_RESUME_PROMPT 等・テンプレ builder の
+  resume/continue prompt・rad expand prompt) = Claude への指示文でありユーザー向け表示で
+  ないため。表示 locale でエージェント挙動を変えない (README の i18n 節に明記)。
+- **README**: README.en.md 完全英訳新設 + 相互言語リンク + i18n 節 (両言語)。
+- **テスト**: 186 → **207 passed** (i18n 19 + templates locale 2 追加)、ruff clean。
+  conftest で `LLTERM_LANG=ja` をプロセス固定 (UI 文字列 assert の安定化)。
+- **残課題**: zh/ko 訳の追加 / GUI 内の言語切替 UI (現状は env 変数のみ) /
+  argparse --help 文の i18n / `llterm-loop` outcome ブロック (機械可読のため据置)。
+
+---
+
+# (前回) llterm Session Summary — 2026-06-12 (GUI 大幅強化セッション)
 
 ## 2026-06-12 セッション総括 (この日の全コミット)
 GUI を一気に実用レベルへ。コミット順:
