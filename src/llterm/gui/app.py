@@ -267,6 +267,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--workdir", default=None, help="初期選択するプロジェクト (任意)")
     parser.add_argument("--real", action="store_true",
                         help="起動時に『実 claude(サブスク認証)』を選択状態にする")
+    parser.add_argument("--rad", action="store_true",
+                        help="起動時に『RAD 参照(研究接地)』を選択状態にする")
     parser.add_argument("--threshold", type=float, default=0.70)
     parser.add_argument("--window-tokens", type=int, default=200_000)
     parser.add_argument("--max-sessions", type=int, default=None)
