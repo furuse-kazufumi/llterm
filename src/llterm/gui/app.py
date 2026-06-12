@@ -334,8 +334,8 @@ class MainWindow(QtWidgets.QMainWindow):
         超過時はそのまま閉じる(child の孤児化を最小化)。
         """
         if self.worker is not None and self.worker.isRunning():
-            self.worker.request_stop()
-            self.worker.wait(3000)
+            self.worker.request_stop()  # 実行中ターンを kill → ループは即終了するので短く待てば足りる
+            self.worker.wait(8000)
         event.accept()
 
     # ---- ワーカーからのイベント (メインスレッドで実行) ----
