@@ -501,19 +501,32 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._append(f"⚠ レート制限: {status}{when}", PALETTE["err"], bold=True)
         # kind == "result" はターン完了メトリクス (turn イベント側が正) — ここでは描画しない
 
+    def _session_label(self, index: object, turn: object = None) -> str:
+        """session N/max  turn T 形式のステータス文字列を組む。max 未確定時は '-'。"""
+        total = f"/{self._max_sessions}" if self._max_sessions else ""
+        tail = f"  turn {turn}" if turn is not None else ""
+        return f"session {index}{total}{tail}"
+
     @QtCore.Slot(str, dict)
     def _on_event(self, kind: str, data: dict) -> None:
         if kind == "session_start":
+            idx = data.get("session_index")
             sid = str(data.get("session_id", ""))[:8]
-            self.lbl_session.setText(f"session: #{data.get('session_index')} ({sid})")
-            self._append(f"\n--- session #{data.get('session_index')} 開始 ---",
+            self.lbl_session.setText(self._session_label(idx))
+            self.ctx_bar.setValue(0)  # 新セッションは fresh context = 0%
+            self._append(f"\n--- session {self._session_label(idx)} 開始 ({sid}) ---",
                          PALETTE["session"], bold=True)
             self._streamed_text = 0
+        elif kind == "task":
+            # これから claude が実行する prompt。注入タスクは実行点を明示 (要望: 注入内容を可視化)。
+            if data.get("injected"):
+                prompt = str(data.get("prompt") or "").strip()
+                self._append(f"▶ 注入タスク実行: {prompt}", PALETTE["inject"], bold=True)
         elif kind == "turn":
             pct = int(round(float(data.get("used_pct", 0.0)) * 100))
             self.ctx_bar.setValue(min(pct, 100))
             self.lbl_cost.setText(f"cost(報告値): ${float(data.get('total_cost', 0.0)):.4f}")
-            self.lbl_session.setText(f"session: #{data.get('session_index')} · turn {data.get('turn')}")
+            self.lbl_session.setText(self._session_label(data.get("session_index"), data.get("turn")))
             err = data.get("error_kind")
             head = f"[turn {data.get('turn')}] ctx {pct}%" + (f"  ERR={err}" if err else "")
             self._append(head, PALETTE["err"] if err else PALETTE["turn"], bold=bool(err))
