@@ -103,6 +103,11 @@ TEMPLATES: tuple[Template, ...] = (
         "README / docs を実コードと整合させる。憶測で書かず必ずコードを確認する。",
         builder=_doc_update,
     ),
+    Template(
+        "security_audit", "セキュリティ監査",
+        "raptor の /scan(Semgrep)で SAST 監査し docs/SECURITY_AUDIT.md に報告。read-only(修正/push しない)。",
+        builder=_security_audit,
+    ),
 )
 
 _BY_KEY = {t.key: t for t in TEMPLATES}
