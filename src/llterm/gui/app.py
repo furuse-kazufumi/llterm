@@ -569,14 +569,14 @@ class MainWindow(QtWidgets.QMainWindow):
         elif kind == "rotate":
             pct = int(round(float(data.get("used_pct", 0.0)) * 100))
             self._append(f"--- rotate (ctx {pct}%) → exit準備 & 新セッションへ ---",
-                         PALETTE["rotate"])
+                         PALETTE["rotate"], ts=True)
             self._streamed_text = 0
         elif kind == "stopped":
             self._append(
                 f"\n=== stopped: {data.get('stop_reason')} "
                 f"(sessions={data.get('sessions')}, turns={data.get('turns')}, "
                 f"cost(報告値)=${float(data.get('total_cost', 0.0)):.4f}) ===",
-                PALETTE["session"], bold=True,
+                PALETTE["session"], bold=True, ts=True,
             )
 
     @QtCore.Slot(dict)
