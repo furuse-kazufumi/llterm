@@ -862,7 +862,7 @@ class SessionLoop:
                     # exit準備: handoff (SESSION_SUMMARY / next_plan) を書かせてから畳む。
                     # force stop 済みなら run_turn が即 cancelled を返し新プロセスは起動しない
                     # (check-then-act 競合の防止は ClaudeRunner の sticky cancel が担保)。
-                    er = self.runner.run_turn(
+                    er = active.run_turn(
                         prompt=self.exit_prep_prompt, session_id=sid, resume=True, cwd=self.workdir,
                     )
                     turns += 1
