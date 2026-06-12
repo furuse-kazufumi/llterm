@@ -102,29 +102,25 @@ def _security_audit(_param: str) -> dict:
 
 TEMPLATES: tuple[Template, ...] = (
     Template(
-        "general", "汎用自走",
-        "前回の続きを自律継続する既定モード。SESSION_SUMMARY / next_plan を読んで最優先タスクを進める。",
+        "general", "template.general.label", "template.general.description",
         builder=_general,
     ),
     Template(
-        "rad_expand", "RAD 拡張 (staging)",
-        "指定分野の RAD コーパスを取得→階層スキル化し staging に生成する。"
-        "共有 live への公開は『公開』ボタン(人間ゲート)でのみ行う。",
-        needs_param=True, param_label="分野名 (例: robotics)", builder=_rad_expand,
+        "rad_expand", "template.rad_expand.label", "template.rad_expand.description",
+        needs_param=True, param_label_key="template.rad_expand.param_label",
+        builder=_rad_expand,
     ),
     Template(
-        "green_keeper", "テスト緑維持",
-        "test / lint / 型チェックを安全な範囲(非破壊修復)で緑に保つ。破壊操作はしない。",
+        "green_keeper", "template.green_keeper.label", "template.green_keeper.description",
         builder=_green_keeper,
     ),
     Template(
-        "doc_update", "ドキュメント整備",
-        "README / docs を実コードと整合させる。憶測で書かず必ずコードを確認する。",
+        "doc_update", "template.doc_update.label", "template.doc_update.description",
         builder=_doc_update,
     ),
     Template(
-        "security_audit", "セキュリティ監査",
-        "raptor の /scan(Semgrep)で SAST 監査し docs/SECURITY_AUDIT.md に報告。read-only(修正/push しない)。",
+        "security_audit", "template.security_audit.label",
+        "template.security_audit.description",
         builder=_security_audit,
     ),
 )
