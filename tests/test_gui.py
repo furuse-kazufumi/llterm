@@ -470,6 +470,39 @@ def test_broken_settings_file_falls_back_to_defaults(
     assert win.cmb_template.currentData() == "general"
 
 
+@pytest.mark.parametrize("bad", [
+    {"threshold": "0,70"},          # 欧州小数点の手編集
+    {"threshold": "high"},          # 数値でない文字列
+    {"threshold": [0.7]},           # 型不正 (list)
+    {"window_tokens": "200,000"},   # カンマ区切り
+    {"max_sessions": {"x": 1}},     # 型不正 (dict)
+    {"max_cost": "free"},           # 数値でない文字列
+    {"max_sessions": True},         # bool は数値扱いしない
+])
+def test_type_unsafe_settings_do_not_crash_gui(
+    qapp: QtWidgets.QApplication, tmp_path: Path, bad: dict
+) -> None:
+    """手編集/外部破損で型不正な数値が入っても GUI 起動はクラッシュせず既定値に落ちる (major 修正)。"""
+    from llterm.gui import settings as gs
+
+    sp = tmp_path / "s.json"
+    gs.save_settings(sp, bad)
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=sp)  # 例外を出さない
+    assert win.spin_threshold.value() == pytest.approx(0.70)  # 既定にフォールバック
+    assert win.spin_window.value() == 200_000
+
+
+def test_valid_numeric_settings_still_restore(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    from llterm.gui import settings as gs
+
+    sp = tmp_path / "s.json"
+    gs.save_settings(sp, {"threshold": 0.55, "window_tokens": "150000", "max_sessions": 4})
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=sp)
+    assert win.spin_threshold.value() == pytest.approx(0.55)
+    assert win.spin_window.value() == 150_000       # 文字列 "150000" も復元される
+    assert win.spin_sessions.value() == 4
+
+
 def test_vanished_workdir_is_not_restored(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
     from llterm.gui import settings as gs
 
