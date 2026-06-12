@@ -170,6 +170,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _build_ui(self, *, initial_workdir: Path | None, real_default: bool, rad_default: bool,
                   template_default: str, autonomy_default: bool = False,
                   param_default: str = "", effort_default: str = "max",
+                  model_default: str = loop_mod.DEFAULT_MODEL,
                   codex_fallback_default: bool = False) -> None:
         self.setWindowTitle(t("gui.window.title"))
         icon = find_app_icon()
