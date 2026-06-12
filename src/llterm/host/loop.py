@@ -145,6 +145,8 @@ def parse_stream_json(stdout: str, *, exit_code: int, stderr: str = "") -> TurnR
     result_seen = False
     context_window = 0
     last_ctx_usage: dict = {}  # 最後のメイン assistant の message.usage = 瞬間コンテキスト占有
+    rl_status = ""
+    rl_resets = 0
     plain_lines: list[str] = []  # JSON でない行 = claude の診断/エラー出力 (auth 判定に使う)
 
     for line in stdout.splitlines():
