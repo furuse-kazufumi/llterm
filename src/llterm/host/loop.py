@@ -53,6 +53,19 @@ DEFAULT_WINDOW_TOKENS = 200_000
 DEFAULT_THRESHOLD = 0.70
 DEFAULT_MAX_TURNS_PER_SESSION = 50
 
+# レート制限を示す既知シグナル (制御系チャネル = text/stderr/非JSON行のみに適用。
+# JSON transcript には "five_hour" 等が常在し誤検知するため走査しない)
+_RATE_LIMIT_SIGNALS: tuple[str, ...] = (
+    "rate limit",
+    "rate-limit",
+    "too many requests",
+    "usage limit",
+    "5-hour limit",
+    "five-hour limit",
+    "resets at",
+    "429",
+)
+
 # 認証切れ / 再ログイン要求を示す既知シグナル (stdout+stderr を小文字化して部分一致, fail-closed)
 _AUTH_SIGNALS: tuple[str, ...] = (
     "please run /login",
