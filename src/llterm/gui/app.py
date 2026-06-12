@@ -182,6 +182,17 @@ class MainWindow(QtWidgets.QMainWindow):
         self.spin_maxcost.setValue(float(_mc) if _mc else 0.0)
         self.spin_maxcost.setToolTip("報告コストの累計上限 (サブスクでは governor。0 で無制限)")
         set_row.addWidget(self.spin_maxcost)
+        set_row.addWidget(QtWidgets.QLabel("effort:"))
+        self.cmb_effort = QtWidgets.QComboBox()
+        for level in loop_mod.EFFORT_LEVELS:
+            self.cmb_effort.addItem(level or "(claude既定)", level)
+        _eidx = self.cmb_effort.findData(effort_default if effort_default in loop_mod.EFFORT_LEVELS
+                                         else "max")
+        self.cmb_effort.setCurrentIndex(_eidx if _eidx >= 0 else 0)
+        self.cmb_effort.setToolTip(
+            "claude の思考努力レベル (--effort)。max が最上位。実 claude のみ有効。"
+            "注: raptor の『ultracode』は vanilla claude には無いため max を使う")
+        set_row.addWidget(self.cmb_effort)
         set_row.addStretch(1)
         vbox.addLayout(set_row)
 
