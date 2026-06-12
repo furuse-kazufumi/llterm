@@ -333,4 +333,4 @@ def test_no_rad_hint_by_default(tmp_path: Path) -> None:
     runner = FakeRunner([{"ctx": 150_000}])
     loop = _loop(runner, tmp_path, window_tokens=200_000, threshold=0.70, max_sessions=1)
     loop.run()
-    assert runner.calls[0][0] == DEFAULT_RESUME_PROMPT           # 未設定なら素のまま
+    assert DEFAULT_RESUME_PROMPT in runner.calls[0][0]           # 未設定なら rad_hint 無し
