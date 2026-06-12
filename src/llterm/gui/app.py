@@ -511,7 +511,7 @@ class MainWindow(QtWidgets.QMainWindow):
             fallbacks = [*fallbacks, free]
         return primary, fallbacks
 
-    def _free_runner(self):
+    def _free_runner(self) -> OpenAICompatRunner | None:
         """選択中の無料奏者 (OpenAI 互換) runner、未選択なら None。"""
         key = str(self.cmb_free_provider.currentData() or "")
         if not key:
