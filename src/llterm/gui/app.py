@@ -873,6 +873,7 @@ def main(argv: list[str] | None = None) -> int:
         rad_default=args.rad,
         template_default=args.template,
         effort_default=args.effort,
+        model_default=args.model,
         window_tokens=args.window_tokens,
         threshold=args.threshold,
         max_sessions=args.max_sessions,
