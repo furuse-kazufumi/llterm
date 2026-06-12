@@ -12,6 +12,7 @@ Start・Stop / タスク注入欄(Ctrl+Enter 送信)/ セッション上限。
 """
 from __future__ import annotations
 
+import html
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -25,6 +26,20 @@ from llterm.host.loop import TurnRunner, _ensure_utf8_stdout
 
 DEFAULT_PROJECTS_ROOT = Path("D:/projects")
 _PROJECT_MARKERS = (".git", "pyproject.toml", "CLAUDE.md", "package.json", "Cargo.toml")
+
+# 出力ビューのセマンティックカラー (One Dark 系)。stream-json は ANSI を含まないため、
+# 端末色のパススルーではなくイベント種別ごとに llterm 自身が着色する。
+PALETTE = {
+    "text": "#d8dee9",     # assistant 応答本文
+    "session": "#e5c07b",  # セッション境界 (黄)
+    "turn": "#61afef",     # ターンヘッダ (青)
+    "tool": "#56b6c2",     # ツール実行 (シアン)
+    "dim": "#7f848e",      # 補助情報 (灰)
+    "err": "#e06c75",      # エラー (赤)
+    "rotate": "#c678dd",   # rotate (マゼンタ)
+    "inject": "#98c379",   # タスク注入 (緑)
+}
+_OUTPUT_STYLE = "QPlainTextEdit { background-color: #1e1e2e; color: #d8dee9; border: none; }"
 
 
 def discover_projects(root: Path) -> list[tuple[str, Path]]:
