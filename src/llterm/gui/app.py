@@ -577,10 +577,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 event.ignore()  # 既に graceful 停止中 — 二重ダイアログを出さない
                 return
             reply = QtWidgets.QMessageBox.question(
-                self, "終了確認",
-                "ループが実行中です。作業内容を記録して安全に終了しますか?\n"
-                "「はい」= 記録してから終了 /「いいえ」= 終了しない\n"
-                "(記録完了までウィンドウは開いたまま・砂時計表示になります)",
+                self, t("gui.dialog.close.title"), t("gui.dialog.close.body"),
                 QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
                 QtWidgets.QMessageBox.StandardButton.No,
             )
