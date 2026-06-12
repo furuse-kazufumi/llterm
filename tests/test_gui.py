@@ -795,6 +795,44 @@ def test_mechanical_template_prefer_codex_metadata() -> None:
     assert tmpl.get("general").prefer == ""
 
 
+# ─── 進捗サマリ 構造化表示トグル ────────────────────────────────
+
+
+def test_summary_digest_is_default(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    """既定はダイジェスト (現在地/直近の成果/次の一手) を表示する。"""
+    proj = tmp_path / "proj"
+    (proj / "docs").mkdir(parents=True)
+    (proj / "docs" / "SESSION_SUMMARY.md").write_text(
+        "## 現在地\nXを実装中\n## 次の一手\nYをやる\n", encoding="utf-8")
+    win = MainWindow(projects_root=tmp_path, workdir=proj, settings_path=tmp_path / "s.json")
+    assert win.chk_summary_raw.isChecked() is False
+    shown = win.summary_view.toPlainText()
+    assert "【現在地】" in shown and "Xを実装中" in shown
+    assert "## 現在地" not in shown  # 生の markdown 見出しは出さない
+
+
+def test_summary_raw_toggle_shows_full(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    """『生』ON で SESSION_SUMMARY.md 全文 (生 markdown) を表示する。"""
+    proj = tmp_path / "proj"
+    (proj / "docs").mkdir(parents=True)
+    raw = "## 現在地\nXを実装中\n## 次の一手\nYをやる\n"
+    (proj / "docs" / "SESSION_SUMMARY.md").write_text(raw, encoding="utf-8")
+    win = MainWindow(projects_root=tmp_path, workdir=proj, settings_path=tmp_path / "s.json")
+    win.chk_summary_raw.setChecked(True)
+    shown = win.summary_view.toPlainText()
+    assert "## 現在地" in shown  # 生 markdown そのまま
+    assert "【現在地】" not in shown
+
+
+def test_summary_raw_pref_persists(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    sp = tmp_path / "s.json"
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=sp)
+    win.chk_summary_raw.setChecked(True)
+    win._save_settings()
+    win2 = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=sp)
+    assert win2.chk_summary_raw.isChecked() is True
+
+
 def test_explicit_args_override_saved_settings(
     qapp: QtWidgets.QApplication, tmp_path: Path
 ) -> None:
