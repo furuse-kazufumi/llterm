@@ -232,8 +232,13 @@ class MainWindow(QtWidgets.QMainWindow):
                 idx = 0
             self.cmb_project.setCurrentIndex(idx)
 
-    def _append(self, text: str) -> None:
-        self.output.appendPlainText(text)
+    def _append(self, text: str, color: str | None = None, *, bold: bool = False) -> None:
+        """出力ビューへ 1 エントリ追記する (色つき HTML。色未指定は本文色)。"""
+        esc = html.escape(text).replace("\n", "<br/>")
+        style = f"color:{color or PALETTE['text']};white-space:pre-wrap"
+        if bold:
+            style += ";font-weight:bold"
+        self.output.appendHtml(f'<span style="{style}">{esc}</span>')
 
     def _selected_workdir(self) -> Path | None:
         data = self.cmb_project.currentData()
