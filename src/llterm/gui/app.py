@@ -579,6 +579,27 @@ class MainWindow(QtWidgets.QMainWindow):
         self.lbl_cost.setStyleSheet(f"color:{PALETTE['err']};font-weight:bold"
                                     if self._cost_billed else "")
 
+    def _set_progress(self, text: str, *, prefix: str = "進捗") -> None:
+        """進捗バーを 1 行要約で更新する (全文はツールチップ)。空テキストは無視。"""
+        line = next((ln.strip() for ln in str(text).splitlines() if ln.strip()), "")
+        if not line:
+            return
+        short = line if len(line) <= 140 else line[:139] + "…"
+        self.lbl_progress.setText(f"{prefix}: {short}")
+        self.lbl_progress.setToolTip(str(text).strip()[:2000])
+
+    def _read_session_summary(self) -> str:
+        """実行中 workdir の docs/SESSION_SUMMARY.md 先頭の意味ある 2 行を返す (handoff 進捗)。"""
+        if self._run_workdir is None:
+            return ""
+        try:
+            text = (self._run_workdir / "docs" / "SESSION_SUMMARY.md").read_text(
+                encoding="utf-8", errors="replace")
+        except OSError:
+            return ""
+        lines = [ln.strip().lstrip("# ").strip() for ln in text.splitlines() if ln.strip()]
+        return " / ".join(lines[:2])
+
     @QtCore.Slot(str, dict)
     def _on_event(self, kind: str, data: dict) -> None:
         if kind == "session_start":
