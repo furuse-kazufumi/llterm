@@ -697,6 +697,11 @@ class MainWindow(QtWidgets.QMainWindow):
             self._append(f"\n--- {self._session_label(idx)} 開始 ({sid}) ---",
                          PALETTE["session"], bold=True, ts=True)
             self._streamed_text = 0
+        elif kind == "handoff":
+            # 停止前の作業記録ターン。砂時計のまま「記録中」を明示する。
+            self.lbl_state.setText("作業内容を記録中…")
+            self._set_busy_cursor(True)
+            self._append("■ 作業内容を記録中 (SESSION_SUMMARY を更新)…", PALETTE["rotate"], ts=True)
         elif kind == "task":
             # これから claude に送る指令。時刻を出して「指令時 → 応答受信時」の経過を見せる。
             if data.get("injected"):
