@@ -713,7 +713,7 @@ class SessionLoop:
             self.sleep_fn(min(2.0, max(0.0, remaining)))
         return True
 
-    def _handoff(self, sid: str) -> float:
+    def _handoff(self, runner: TurnRunner, sid: str) -> float:
         """停止要求時の作業記録 (exit準備 = SESSION_SUMMARY 更新) を 1 ターン回す。
 
         戻り値 = 追加コスト。失敗は握り潰す (fail-safe)。force stop (runner.cancel 済) の場合は
@@ -721,8 +721,8 @@ class SessionLoop:
         """
         self._emit("handoff", session_id=sid)
         try:
-            r = self.runner.run_turn(prompt=self.exit_prep_prompt, session_id=sid,
-                                     resume=True, cwd=self.workdir)
+            r = runner.run_turn(prompt=self.exit_prep_prompt, session_id=sid,
+                                resume=True, cwd=self.workdir)
             self.ledger.append(event="exit_prep", cmd_id=sid, action="shutdown",
                                detail="handoff on stop")
             return r.cost_usd
