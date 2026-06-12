@@ -51,3 +51,20 @@ def test_get_unknown_raises() -> None:
 
     with pytest.raises(KeyError):
         templates.get("nope")
+
+
+def test_labels_resolve_per_locale(monkeypatch) -> None:
+    """label / description / param_label はアクセス時点の locale で解決される (i18n)。"""
+    gen = templates.get("general")
+    rad = templates.get("rad_expand")
+    monkeypatch.setenv("LLTERM_LANG", "ja")
+    assert gen.label == "汎用自走"
+    assert rad.param_label == "分野名 (例: robotics)"
+    monkeypatch.setenv("LLTERM_LANG", "en")
+    assert gen.label == "General self-drive"
+    assert "robotics" in rad.param_label
+    assert gen.description  # en でも説明が出る
+
+
+def test_param_label_empty_without_param() -> None:
+    assert templates.get("general").param_label == ""  # 引数なしテンプレは空のまま
