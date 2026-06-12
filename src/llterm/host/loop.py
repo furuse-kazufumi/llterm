@@ -577,6 +577,7 @@ class SessionLoop:
     max_total_cost_usd: float | None = None
     max_consecutive_errors: int = 3
     max_turns_per_session: int = DEFAULT_MAX_TURNS_PER_SESSION
+    handoff_on_stop: bool = True  # 停止要求時、作業中なら exit準備 (handoff) を 1 回回してから止める
     on_event: Callable[[str, dict], None] | None = None
     should_stop: Callable[[], bool] | None = None  # GUI の Stop ボタン等 (協調停止)
     next_prompt: Callable[[], str | None] | None = None  # GUI のタスク注入 (継続ターンで一度だけ優先)
