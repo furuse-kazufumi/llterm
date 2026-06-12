@@ -114,7 +114,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.worker: LoopWorker | None = None
         self._streamed_text = 0  # 現ターン中にリアルタイム表示した応答数 (turn 完了時の二重表示防止)
         self._max_sessions = 0  # ステータス表示 (session N/max) 用。Start 時に確定
-        self._cost_suffix = "報告値"  # cost ラベルの種別 (Start 時に課金有無で確定)
+        self._cost_suffix = t("gui.cost.reported")  # cost ラベルの種別 (Start 時に課金有無で確定)
         self._cost_billed = False  # True = 実課金 (API キー)。サブスク/仮想は False
         self._run_effort = ""  # 実行中の effort (init イベントで model と併記)
         self._run_workdir: Path | None = None  # 実行中の workdir (SESSION_SUMMARY 読取用)
