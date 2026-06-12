@@ -275,6 +275,90 @@ def test_auth_detected_from_plain_diagnostic_line() -> None:
     assert r.error_kind == "auth"
 
 
+# ─── レート制限の検知と自動再開 ───────────────────────────────────
+
+
+def test_parse_rate_limit_from_blocking_status() -> None:
+    """rate_limit_event の status が allowed 以外 + エラーなら rate_limited として resetsAt を拾う。"""
+    stdout = "\n".join([
+        '{"type":"rate_limit_event","rate_limit_info":'
+        '{"status":"rejected","resetsAt":1781251200,"rateLimitType":"five_hour"}}',
+    ])
+    r = parse_stream_json(stdout, exit_code=1)  # result 無し + exit 1 = エラー
+    assert r.error_kind == "rate_limited"
+    assert r.rate_limit_resets_at == 1781251200
+    assert r.rate_limit_status == "rejected"
+
+
+def test_parse_rate_limit_from_text_signal() -> None:
+    """診断テキストのレート制限シグナルからも rate_limited を検知する。"""
+    r = parse_stream_json("Error: usage limit reached. Resets at 14:00\n", exit_code=1)
+    assert r.error_kind == "rate_limited"
+
+
+def test_parse_allowed_rate_limit_is_not_rate_limited() -> None:
+    """status=allowed (制限内) の rate_limit_event は成功ターンを rate_limited にしない。"""
+    stdout = "\n".join([
+        '{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","resetsAt":1781251200}}',
+        '{"type":"assistant","parent_tool_use_id":null,"message":{"usage":{"input_tokens":100}}}',
+        '{"type":"result","subtype":"success","is_error":false,"session_id":"s","result":"ok",'
+        '"usage":{"input_tokens":100}}',
+    ])
+    r = parse_stream_json(stdout, exit_code=0)
+    assert r.is_error is False
+    assert r.error_kind == ""
+
+
+def test_auth_takes_priority_over_rate_limit() -> None:
+    """auth と rate-limit が同時に見えたら auth を優先 (人間介在が必須なので)。"""
+    stdout = '{"type":"rate_limit_event","rate_limit_info":{"status":"rejected","resetsAt":1}}'
+    r = parse_stream_json(stdout, exit_code=1, stderr="Please run /login")
+    assert r.error_kind == "auth"
+
+
+def test_rate_limit_auto_resume_waits_then_retries(tmp_path: Path) -> None:
+    """rate_limited → resetsAt まで待機 (fake clock) → 同じターンを再試行して継続。"""
+    # 1 ターン目を rate_limited、2 ターン目以降は成功 (rotate して max_sessions 到達)
+    runner = FakeRunner([{"is_error": True, "error_kind": "rate_limited", "ctx": 0},
+                         {"ctx": 150_000}])
+    clock = {"t": 1000.0}
+    slept: list[float] = []
+
+    def now() -> float:
+        return clock["t"]
+
+    def sleep(s: float) -> None:
+        slept.append(s)
+        clock["t"] += s  # fake clock を進める
+
+    events: list[str] = []
+    loop = SessionLoop(
+        runner=runner, workdir=tmp_path, ledger=Ledger(tmp_path / "l.jsonl"),
+        window_tokens=200_000, threshold=0.70, max_sessions=1,
+        now_fn=now, sleep_fn=sleep,
+        on_event=lambda k, d: events.append(k),
+    )
+    # FakeRunner は rate_limit_resets_at を返さないので、TurnResult を直接組む形に差し替え
+    outcome = loop.run()
+    assert outcome.stop_reason == "max_sessions"
+    assert "rate_limited" in events
+    assert "rate_limit_resumed" in events
+    assert slept  # 実際に待機した
+
+
+def test_rate_limit_wait_interrupted_by_stop(tmp_path: Path) -> None:
+    """待機中に Stop されたら自走を停止する (待機は中断可能)。"""
+    runner = FakeRunner([{"is_error": True, "error_kind": "rate_limited"}])
+    loop = SessionLoop(
+        runner=runner, workdir=tmp_path, ledger=Ledger(tmp_path / "l.jsonl"),
+        max_sessions=1, now_fn=lambda: 0.0, sleep_fn=lambda s: None,
+        should_stop=lambda: True,  # 待機ループ内で即停止
+        rate_limit_fallback_wait_s=100.0,
+    )
+    outcome = loop.run()
+    assert outcome.stop_reason == "stopped"
+
+
 # ─── ClaudeRunner ストリーミング (偽の子プロセスで実走・課金ゼロ) ──
 
 
