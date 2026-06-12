@@ -781,12 +781,11 @@ class MainWindow(QtWidgets.QMainWindow):
             self._streamed_text = 0
         elif kind == "rotate":
             pct = int(round(float(data.get("used_pct", 0.0)) * 100))
-            self._append(f"--- rotate (ctx {pct}%) → exit準備 & 新セッションへ ---",
-                         PALETTE["rotate"], ts=True)
+            self._append(t("gui.msg.rotate", pct=pct), PALETTE["rotate"], ts=True)
             self._streamed_text = 0
             summary = self._read_session_summary()  # exit準備で更新された handoff を進捗に反映
             if summary:
-                self._set_progress(summary, prefix="進捗(handoff)")
+                self._set_progress(summary, prefix=t("gui.progress.handoff_prefix"))
             self._refresh_summary()  # 進捗サマリ パネルも最新 handoff に更新
         elif kind == "stopped":
             self._append(
