@@ -107,9 +107,10 @@ class TurnResult:
     cost_usd: float
     text: str
     is_error: bool
-    error_kind: str  # "" | "auth" | "other"
+    error_kind: str  # "" | "auth" | "other" | "cancelled"
     num_turns: int
     raw_exit: int
+    context_window: int = 0  # result の modelUsage.contextWindow (実窓サイズ。0=不明→設定値を使う)
 
 
 def parse_stream_json(stdout: str, *, exit_code: int, stderr: str = "") -> TurnResult:
