@@ -433,8 +433,10 @@ class MainWindow(QtWidgets.QMainWindow):
             head = f"[turn {data.get('turn')}] ctx {pct}%" + (f"  ERR={err}" if err else "")
             self._append(head, PALETTE["err"] if err else PALETTE["turn"], bold=bool(err))
             text = str(data.get("text") or "")
-            if text and self._streamed_text == 0:  # ストリーム済みなら再表示しない (二重表示防止)
-                self._append(text)
+            # ストリーム済みなら再表示しない (二重表示防止)。ただしエラーターンの text は
+            # エラー詳細がストリームに乗らないことがあるため常に表示する。
+            if text and (self._streamed_text == 0 or err):
+                self._append(text, PALETTE["err"] if err else None)
             self._streamed_text = 0
         elif kind == "rotate":
             pct = int(round(float(data.get("used_pct", 0.0)) * 100))
