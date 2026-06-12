@@ -510,12 +510,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
             loop_kw["rad_hint"] = DEFAULT_RAD_HINT
         loop_kw["autonomy"] = self.chk_autonomy.isChecked()  # 承認確認不要トグル
-        # Codex フォールバック: 実 claude のとき + チェック ON で、レート制限時の切替先に CodexRunner を足す
-        fallback_runners: list[TurnRunner] = []
-        if real and self.chk_codex_fallback.isChecked():
-            from llterm.host.codex_runner import CodexRunner
-
-            fallback_runners.append(CodexRunner())
+        # provider chain は _resolve_providers() が決定済み (Codex 優先/テンプレ別/フォールバック)。
+        # 仮想モードや override では fallback_runners は空。
         ledger_path = workdir / ".llterm" / "loop_ledger.jsonl"
         self.worker = LoopWorker(
             runner=runner, workdir=workdir, ledger_path=ledger_path, loop_kw=loop_kw,
