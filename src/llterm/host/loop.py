@@ -449,6 +449,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="claude を呼ばず仮想 claude で配線確認 (課金ゼロ)")
     parser.add_argument("--rad", action="store_true",
                         help="RAD コーパス研究接地を有効化 (新規作業前に D:/docs/*_corpus_v2 を grep)")
+    parser.add_argument("--template", default="general", help="テンプレ key (templates.py)")
+    parser.add_argument("--param", default="", help="テンプレ引数 (例: rad_expand の分野名)")
     args = parser.parse_args(argv)
 
     workdir = Path(args.workdir).resolve()
