@@ -952,6 +952,10 @@ def main(argv: list[str] | None = None) -> int:
                         help="RAD コーパス研究接地を有効化 (新規作業前に D:/docs/*_corpus_v2 を grep)")
     parser.add_argument("--effort", default="", choices=EFFORT_LEVELS,
                         help="claude の思考努力レベル (low/medium/high/xhigh/max。既定: claude 既定)")
+    parser.add_argument("--model", default=DEFAULT_MODEL,
+                        help="claude モデル (alias: opus/sonnet/haiku、またはフル ID。"
+                             "'' で claude 保存既定に委ねる。token 消費を抑えるなら sonnet/haiku。"
+                             "既定: %(default)s)")
     parser.add_argument("--template", default="general", help="テンプレ key (templates.py)")
     parser.add_argument("--param", default="", help="テンプレ引数 (例: rad_expand の分野名)")
     args = parser.parse_args(argv)
