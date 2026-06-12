@@ -161,7 +161,8 @@ class MainWindow(QtWidgets.QMainWindow):
                        model_default=model_default,
                        codex_fallback_default=codex_fallback_default,
                        codex_first_default=codex_first_default,
-                       summary_raw_default=bool(saved.get("summary_raw", False)))
+                       summary_raw_default=bool(saved.get("summary_raw", False)),
+                       free_provider_default=str(saved.get("free_provider") or ""))
         geo = saved.get("geometry")
         if isinstance(geo, str) and geo:  # ウィンドウ位置/サイズの復元 (壊れた値は無視)
             try:
