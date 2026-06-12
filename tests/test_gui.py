@@ -204,14 +204,41 @@ def test_promote_via_gui_reports_error_without_staging(
     assert "公開失敗" in win.output.toPlainText()  # staging 無し → fail-closed
 
 
-def test_close_event_requests_worker_stop(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+def test_close_event_confirms_then_graceful_stops(
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
+) -> None:
+    """× 終了は確認ダイアログ → 「はい」で graceful 停止 (記録) を要求し、完了後に閉じる。"""
+    monkeypatch.setattr(QtWidgets.QMessageBox, "question",
+                        lambda *a, **k: QtWidgets.QMessageBox.StandardButton.Yes)
     win = MainWindow(projects_root=tmp_path, workdir=tmp_path,
                      runner_factory=lambda: VirtualClaudeRunner(delay=0.02), max_sessions=100)
     win.start_loop()
     w = win.worker
     assert w is not None
-    win.close()                  # closeEvent → ループに停止要求
-    assert w._stop.is_set()      # 閉じる操作が loop の停止を要求した
+    win.close()                       # closeEvent → 確認 (Yes) → graceful 停止
+    assert w._stop.is_set()           # 停止要求された
+    assert win._closing_after_stop    # 記録完了後に閉じる予約
+    w.wait(3000)
+    qapp.processEvents()              # _on_finished → 砂時計解除 + 予約 close
+    assert win._busy_cursor is False  # カーソルは復元済み
+
+
+def test_close_event_cancel_keeps_window(
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
+) -> None:
+    """× 終了で「いいえ」を選ぶと閉じず停止もしない (安全側)。"""
+    monkeypatch.setattr(QtWidgets.QMessageBox, "question",
+                        lambda *a, **k: QtWidgets.QMessageBox.StandardButton.No)
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path,
+                     runner_factory=lambda: VirtualClaudeRunner(delay=0.02), max_sessions=100)
+    win.start_loop()
+    w = win.worker
+    assert w is not None
+    win.close()
+    assert not w._stop.is_set()       # 停止していない
+    assert not win._closing_after_stop
+    win.stop_loop()                   # 後始末
+    win.stop_loop()                   # force
     w.wait(3000)
 
 
