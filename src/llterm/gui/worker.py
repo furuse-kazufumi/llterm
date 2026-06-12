@@ -21,6 +21,7 @@ class LoopWorker(QtCore.QThread):
     """SessionLoop を別スレッドで駆動し、イベントをシグナルで流す。"""
 
     event = QtCore.Signal(str, dict)  # (kind, data)
+    stream = QtCore.Signal(dict)  # ターン内のリアルタイム表示イベント (summarize_stream_event の要約)
     finished_outcome = QtCore.Signal(dict)
 
     def __init__(
@@ -40,6 +41,10 @@ class LoopWorker(QtCore.QThread):
         self._stop = threading.Event()
         self._inject_lock = threading.Lock()
         self._injected: list[str] = []
+        # runner が on_stream を持つ実装 (ClaudeRunner / VirtualClaudeRunner) なら購読する。
+        # シグナル emit はスレッド安全 (queued connection でメインスレッドへ配送される)。
+        if hasattr(runner, "on_stream"):
+            runner.on_stream = lambda item: self.stream.emit(dict(item))  # type: ignore[attr-defined]
 
     def request_stop(self) -> None:
         self._stop.set()
