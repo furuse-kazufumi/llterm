@@ -89,6 +89,47 @@ def test_parse_success_extracts_usage_cost_text() -> None:
     assert r.error_kind == ""
 
 
+def test_parse_context_tokens_uses_last_assistant_not_cumulative() -> None:
+    """ctx 占有は最後のメイン assistant の usage を使う (result.usage 累計は過大なので不採用)。"""
+    stdout = "\n".join([
+        '{"type":"system","subtype":"init","session_id":"s"}',
+        '{"type":"assistant","parent_tool_use_id":null,"message":{"usage":'
+        '{"input_tokens":12028,"cache_read_input_tokens":20351,"cache_creation_input_tokens":9095}}}',
+        '{"type":"assistant","parent_tool_use_id":null,"message":{"usage":'
+        '{"input_tokens":2,"cache_read_input_tokens":29446,"cache_creation_input_tokens":12732}}}',
+        '{"type":"result","subtype":"success","session_id":"s","total_cost_usd":0.5,'
+        '"usage":{"input_tokens":12030,"output_tokens":617,'
+        '"cache_read_input_tokens":49797,"cache_creation_input_tokens":21827}}',
+    ])
+    r = parse_stream_json(stdout, exit_code=0)
+    # 最後の assistant: 2 + 29446 + 12732 = 42180 (瞬間占有)。result 累計 83654 ではない。
+    assert r.context_tokens == 42180
+    assert r.output_tokens == 617  # output/cost は result の値 (累計でよい)
+    assert r.cost_usd == pytest.approx(0.5)
+
+
+def test_parse_context_tokens_ignores_subagent_usage() -> None:
+    """サブエージェント (parent_tool_use_id 非 null) の usage はメイン窓占有に含めない。"""
+    stdout = "\n".join([
+        '{"type":"assistant","parent_tool_use_id":null,"message":{"usage":'
+        '{"input_tokens":1000,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}',
+        '{"type":"assistant","parent_tool_use_id":"toolu_01","message":{"usage":'
+        '{"input_tokens":99999,"cache_read_input_tokens":99999,"cache_creation_input_tokens":99999}}}',
+        '{"type":"result","subtype":"success","session_id":"s","usage":{"input_tokens":5}}',
+    ])
+    r = parse_stream_json(stdout, exit_code=0)
+    assert r.context_tokens == 1000  # サブエージェントの巨大 usage は無視 = メインの 1000
+
+
+def test_parse_context_tokens_falls_back_to_result_when_no_assistant() -> None:
+    """assistant usage が無い (error 等) ときだけ result.usage にフォールバックする。"""
+    stdout = ('{"type":"result","subtype":"success","session_id":"s",'
+              '"usage":{"input_tokens":100,"cache_read_input_tokens":50,'
+              '"cache_creation_input_tokens":10}}')
+    r = parse_stream_json(stdout, exit_code=0)
+    assert r.context_tokens == 160  # フォールバック: 100 + 50 + 10
+
+
 def test_parse_detects_auth_from_login_signal() -> None:
     r = parse_stream_json("", exit_code=1, stderr="Error: Please run /login to authenticate")
     assert r.is_error is True
