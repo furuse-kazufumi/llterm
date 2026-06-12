@@ -201,13 +201,13 @@ class CodexRunner:
                 pass
 
     def run_turn(self, *, prompt: str, session_id: str, resume: bool, cwd: Path) -> TurnResult:
-        args = self._build_args(prompt=prompt, resume=resume, cwd=cwd)
+        args = self._build_args(resume=resume, cwd=cwd)  # プロンプトは stdin で渡す (下記)
         with self._lock:
             if self._cancelled:
                 return TurnResult(session_id, 0, 0, 0, 0.0, "", True, "cancelled", 0, -1)
         try:
             proc = subprocess.Popen(
-                args, cwd=str(cwd), stdin=subprocess.DEVNULL,
+                args, cwd=str(cwd), stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 text=True, encoding="utf-8", errors="replace", bufsize=1,
                 creationflags=_NO_WINDOW,
@@ -220,6 +220,21 @@ class CodexRunner:
             kill_now = self._cancelled
         if kill_now:
             self._kill(proc)
+
+        # プロンプトを stdin へ書き切って EOF を送る (codex は "-" で stdin から全文を読む)。
+        # 別スレッドにすることで、stdout を読む前に大きな prompt を書いてもパイプ
+        # デッドロックしない (stderr drain と同型)。子が死んでいれば書込は無害に失敗する。
+        def _feed_stdin() -> None:
+            try:
+                assert proc.stdin is not None
+                proc.stdin.write(prompt)
+                proc.stdin.flush()
+                proc.stdin.close()
+            except (OSError, ValueError):
+                pass
+
+        stdin_thread = threading.Thread(target=_feed_stdin, daemon=True)
+        stdin_thread.start()
 
         timed_out = threading.Event()
 
