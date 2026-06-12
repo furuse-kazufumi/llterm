@@ -349,6 +349,10 @@ class MainWindow(QtWidgets.QMainWindow):
         loop_kw["max_sessions"] = self.spin_sessions.value()  # 常に上限つき (暴走/レート保護)
         loop_kw["threshold"] = self.spin_threshold.value()
         loop_kw["window_tokens"] = self.spin_window.value()
+        self._max_sessions = loop_kw["max_sessions"]  # ステータス表示 (session N/max) 用
+        # rotate 閾値を ctx バーに反映 (走行中の状態が一目で分かるように)
+        self.ctx_bar.setFormat(f"ctx %p%  (rotate {int(round(self.spin_threshold.value() * 100))}%)")
+        self.ctx_bar.setValue(0)
         max_cost = self.spin_maxcost.value()
         loop_kw["max_total_cost_usd"] = max_cost if max_cost > 0 else None
         tmpl = templates.get(self.cmb_template.currentData())
