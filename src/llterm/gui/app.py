@@ -612,7 +612,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self._append(
                 f"\n=== stopped: {data.get('stop_reason')} "
                 f"(sessions={data.get('sessions')}, turns={data.get('turns')}, "
-                f"cost(報告値)=${float(data.get('total_cost', 0.0)):.4f}) ===",
+                f"cost({self._cost_suffix})=${float(data.get('total_cost', 0.0)):.4f}) ===",
                 PALETTE["session"], bold=True, ts=True,
             )
 
