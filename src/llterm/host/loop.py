@@ -374,7 +374,10 @@ class SessionLoop:
                 detail=f"session#{sessions + 1}",
             )
             self._emit("session_start", session_id=sid, session_index=sessions + 1)
-            prompt = self._augment(self.resume_prompt)
+            opener = self.resume_prompt
+            if self.continuity:
+                opener = CONTINUITY_PREAMBLE + opener  # 全テンプレで前回の続きから再開
+            prompt = self._augment(opener)
             resume = False
             session_turns = 0
 
