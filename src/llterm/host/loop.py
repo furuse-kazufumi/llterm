@@ -384,6 +384,8 @@ class SessionLoop:
             opener = self.resume_prompt
             if self.continuity:
                 opener = CONTINUITY_PREAMBLE + opener  # 全テンプレで前回の続きから再開
+            if self.autonomy:
+                opener = opener + AUTONOMY_DIRECTIVE  # 承認確認不要 → 停止せず自律継続
             prompt = self._augment(opener)
             resume = False
             session_turns = 0
