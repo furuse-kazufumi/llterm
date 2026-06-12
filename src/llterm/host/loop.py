@@ -447,6 +447,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="監査 ledger のパス (既定 <workdir>/.llterm/loop_ledger.jsonl)")
     parser.add_argument("--dry-run", action="store_true",
                         help="claude を呼ばず仮想 claude で配線確認 (課金ゼロ)")
+    parser.add_argument("--rad", action="store_true",
+                        help="RAD コーパス研究接地を有効化 (新規作業前に D:/docs/*_corpus_v2 を grep)")
     args = parser.parse_args(argv)
 
     workdir = Path(args.workdir).resolve()
