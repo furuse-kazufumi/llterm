@@ -439,8 +439,10 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.chk_real.isChecked():
             from llterm.host.loop import ClaudeRunner
 
-            # API キーを外しサブスク認証で実走 + 選択した effort (--effort) を付与
-            return ClaudeRunner(use_subscription=True, effort=str(self.cmb_effort.currentData() or ""))
+            # API キーを外しサブスク認証で実走 + 選択した effort/model (--effort/--model) を付与
+            return ClaudeRunner(use_subscription=True,
+                                effort=str(self.cmb_effort.currentData() or ""),
+                                model=str(self.cmb_model.currentData() or ""))
         return VirtualClaudeRunner()
 
     # ---- 操作 ----
