@@ -105,6 +105,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self._cost_billed = False  # True = 実課金 (API キー)。サブスク/仮想は False
         self._run_effort = ""  # 実行中の effort (init イベントで model と併記)
         self._run_workdir: Path | None = None  # 実行中の workdir (SESSION_SUMMARY 読取用)
+        self._stopping = False  # graceful 停止要求中 (2 回目 Stop で force kill)
+        self._busy_cursor = False  # 砂時計カーソル表示中か (set/restore のバランス管理)
+        self._closing_after_stop = False  # × 終了確認で graceful 停止 → 完了後に閉じる予約
 
         # 前回設定の復元: CLI 明示指定 > 保存値 > 組込み既定
         saved = gui_settings.load_settings(self.settings_path)
