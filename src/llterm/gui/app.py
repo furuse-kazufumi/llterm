@@ -428,6 +428,7 @@ class MainWindow(QtWidgets.QMainWindow):
             "template": self.cmb_template.currentData(),
             "param": self.edit_param.text(),
             "effort": self.cmb_effort.currentData(),
+            "model": self.cmb_model.currentData(),
             "geometry": bytes(self.saveGeometry().toHex()).decode("ascii"),
         })
 
