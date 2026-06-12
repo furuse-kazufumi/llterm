@@ -133,7 +133,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.spin_window.setSingleStep(10_000)
         self.spin_window.setGroupSeparatorShown(True)
         self.spin_window.setValue(int(self.loop_kw.get("window_tokens") or 200_000))
-        self.spin_window.setToolTip("コンテキスト窓サイズ (使用率の分母)")
+        self.spin_window.setToolTip(
+            "コンテキスト窓サイズ (使用率の分母)。実 claude が実窓サイズ (modelUsage.contextWindow) "
+            "を報告した場合はそちらを優先する")
         set_row.addWidget(self.spin_window)
         set_row.addWidget(QtWidgets.QLabel("コスト上限$(0=無制限):"))
         self.spin_maxcost = QtWidgets.QDoubleSpinBox()
