@@ -248,12 +248,86 @@ def test_stream_then_turn_does_not_duplicate_text(
 
 
 def test_output_view_uses_colored_dark_style(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
-    """カラー表示: ダーク背景スタイル + イベント種別ごとの色つき HTML 描画。"""
+    """カラー表示: ダーク背景スタイル + イベント種別ごとの色つき描画。"""
     win = _make_window(tmp_path)
     assert "background-color" in win.output.styleSheet()
     win._on_event("session_start", {"session_id": "abcdef123456", "session_index": 1})
-    html_doc = win.output.document().toHtml()
-    assert "#e5c07b" in html_doc  # セッション境界が PALETTE["session"] で着色されている
+    # toHtml() のシリアライズ表現 (hex/rgb) は Qt 内部仕様のため、文字フォーマットを直接検証する
+    cursor = win.output.document().find("session #1")
+    assert not cursor.isNull()
+    assert cursor.charFormat().foreground().color().name() == "#e5c07b"  # PALETTE["session"]
+
+
+def test_append_normalizes_carriage_returns(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    """CRLF/CR 入りテキストが二重改行にならない (Qt は残留 \\r も改行扱いするため)。"""
+    win = _make_window(tmp_path)
+    win._append("a\r\nb\rc")
+    assert "a\nb\nc" in win.output.toPlainText()
+
+
+def test_error_turn_text_shown_even_after_stream(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    """エラーターンの詳細テキストは、前置きがストリーム済みでも握り潰さず表示する。"""
+    win = _make_window(tmp_path)
+    win._on_stream({"kind": "text", "text": "前置きテキスト"})
+    win._on_event("turn", {"turn": 1, "used_pct": 0.1, "total_cost": 0.0,
+                           "text": "API error: rate exceeded", "error_kind": "other"})
+    assert "API error: rate exceeded" in win.output.toPlainText()
+
+
+def test_subagent_stream_is_labeled_and_not_counted(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    """サブエージェント出力は ⤷ 付き区別表示で、メイン応答の二重表示判定に数えない。"""
+    win = _make_window(tmp_path)
+    win._on_stream({"kind": "text", "text": "サブ応答", "subagent": True})
+    assert "⤷ サブ応答" in win.output.toPlainText()
+    win._on_event("turn", {"turn": 1, "used_pct": 0.1, "total_cost": 0.0,
+                           "text": "メイン最終応答", "error_kind": ""})
+    assert "メイン最終応答" in win.output.toPlainText()  # サブのみストリーム → メイン text は出す
+
+
+def test_rate_limit_warning_rendered(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    """レート制限 (サブスク自走の主制約) は GUI に必ず可視化、allowed はノイズにしない。"""
+    win = _make_window(tmp_path)
+    win._on_stream({"kind": "rate_limit", "status": "rejected", "resets_at": 0})
+    assert "レート制限: rejected" in win.output.toPlainText()
+    win._on_stream({"kind": "rate_limit", "status": "allowed", "resets_at": 0})
+    assert win.output.toPlainText().count("レート制限") == 1
+
+
+def test_worker_preserves_existing_on_stream(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    from llterm.gui.worker import LoopWorker
+
+    def sentinel(item: dict) -> None:
+        pass
+
+    runner = VirtualClaudeRunner(delay=0.0, on_stream=sentinel)
+    LoopWorker(runner=runner, workdir=tmp_path, ledger_path=tmp_path / "l.jsonl",
+               loop_kw={"max_sessions": 1})
+    assert runner.on_stream is sentinel  # 呼び出し側のコールバックを黙って上書きしない
+
+
+def test_worker_accepts_runner_without_on_stream(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    """on_stream を持たない素の TurnRunner でも worker は購読なしで正常動作する (後方互換)。"""
+    from llterm.gui.worker import LoopWorker
+    from llterm.host.loop import TurnResult
+
+    class BareRunner:
+        def run_turn(self, *, prompt: str, session_id: str, resume: bool, cwd: Path) -> TurnResult:
+            return TurnResult(session_id, 150_000, 1, 150_000, 0.0, "bare", False, "", 1, 0)
+
+        def cancel(self) -> None:
+            pass
+
+    w = LoopWorker(runner=BareRunner(), workdir=tmp_path, ledger_path=tmp_path / "l.jsonl",
+                   loop_kw={"max_sessions": 1})
+    w.start()
+    assert w.wait(10000)
+    assert w.isFinished()
 
 
 def test_render_slots_update_widgets(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
