@@ -247,6 +247,16 @@ class MainWindow(QtWidgets.QMainWindow):
         self.cmb_effort.setCurrentIndex(_eidx if _eidx >= 0 else 0)
         self.cmb_effort.setToolTip(t("gui.tip.effort"))
         set_row.addWidget(self.cmb_effort)
+        set_row.addWidget(QtWidgets.QLabel(t("gui.label.model")))
+        self.cmb_model = QtWidgets.QComboBox()
+        for m in loop_mod.MODEL_CHOICES:
+            self.cmb_model.addItem(m or t("gui.model.default_item"), m)
+        # 保存値が候補外 (手編集の独自モデル等) なら DEFAULT_MODEL の位置へ落とす (fail-safe)
+        _midx = self.cmb_model.findData(model_default if model_default in loop_mod.MODEL_CHOICES
+                                        else loop_mod.DEFAULT_MODEL)
+        self.cmb_model.setCurrentIndex(_midx if _midx >= 0 else 0)
+        self.cmb_model.setToolTip(t("gui.tip.model_select"))
+        set_row.addWidget(self.cmb_model)
         set_row.addStretch(1)
         vbox.addLayout(set_row)
 
