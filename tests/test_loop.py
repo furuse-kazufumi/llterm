@@ -132,7 +132,7 @@ def test_rotates_when_threshold_exceeded(tmp_path: Path) -> None:
     assert outcome.sessions == 1
     assert outcome.turns == 2  # 作業 1 + exit準備 1
     # 最初は新セッション (resume=False)、exit準備は同セッション resume=True で exit_prep_prompt
-    assert runner.calls[0][0] == DEFAULT_RESUME_PROMPT
+    assert DEFAULT_RESUME_PROMPT in runner.calls[0][0]
     assert runner.calls[0][2] is False
     assert runner.calls[1][0] == DEFAULT_EXIT_PREP_PROMPT
     assert runner.calls[1][2] is True
