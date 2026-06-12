@@ -170,6 +170,11 @@ def parse_stream_json(stdout: str, *, exit_code: int, stderr: str = "") -> TurnR
             mu = msg.get("usage") if isinstance(msg, dict) else None
             if isinstance(mu, dict) and mu:
                 last_ctx_usage = mu
+        elif etype == "rate_limit_event":
+            info = ev.get("rate_limit_info")
+            if isinstance(info, dict):
+                rl_status = str(info.get("status") or rl_status)
+                rl_resets = _as_int(info.get("resetsAt")) or rl_resets
         elif etype == "result":
             result_seen = True
             session_id = str(ev.get("session_id", session_id))
