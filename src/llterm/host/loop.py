@@ -221,38 +221,63 @@ class ClaudeRunner:
     skip_permissions: bool = True
     use_subscription: bool = True  # True: API キー env を外し claude.ai サブスク認証で回す (課金回避)
     extra_args: Sequence[str] = ()
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
+    _proc: subprocess.Popen | None = field(default=None, repr=False, compare=False)
+    _cancelled: bool = field(default=False, repr=False, compare=False)
 
     def run_turn(self, *, prompt: str, session_id: str, resume: bool, cwd: Path) -> TurnResult:
         session_flag = ["--resume", session_id] if resume else ["--session-id", session_id]
-        args = [
-            self.exe,
-            "-p",
-            prompt,
-            "--output-format",
-            "stream-json",
-            "--verbose",
-            *session_flag,
-        ]
+        args = [self.exe, "-p", prompt, "--output-format", "stream-json", "--verbose", *session_flag]
         if self.skip_permissions:
             args.append("--dangerously-skip-permissions")
         args.extend(self.extra_args)
+        with self._lock:
+            self._cancelled = False
         try:
-            proc = subprocess.run(
-                args,
-                cwd=str(cwd),
-                stdin=subprocess.DEVNULL,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=self.timeout,
+            proc = subprocess.Popen(
+                args, cwd=str(cwd), stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                text=True, encoding="utf-8", errors="replace",
                 env=_subscription_env() if self.use_subscription else None,
             )
         except FileNotFoundError:
             return TurnResult(session_id, 0, 0, 0, 0.0, "", True, "other", 0, 127)
+        with self._lock:
+            self._proc = proc
+        try:
+            out, err = proc.communicate(timeout=self.timeout)
         except subprocess.TimeoutExpired:
+            self._kill(proc)
             return TurnResult(session_id, 0, 0, 0, 0.0, "", True, "other", 0, -1)
-        return parse_stream_json(proc.stdout, exit_code=proc.returncode, stderr=proc.stderr)
+        finally:
+            with self._lock:
+                self._proc = None
+        with self._lock:
+            cancelled = self._cancelled
+        if cancelled:
+            return TurnResult(session_id, 0, 0, 0, 0.0, "", True, "cancelled", 0, proc.returncode or -1)
+        return parse_stream_json(out, exit_code=proc.returncode, stderr=err)
+
+    def cancel(self) -> None:
+        """実行中の claude ターンをプロセスツリーごと安全に kill する (Stop / 終了用)。"""
+        with self._lock:
+            self._cancelled = True
+            proc = self._proc
+        if proc is not None and proc.poll() is None:
+            self._kill(proc)
+
+    def _kill(self, proc: subprocess.Popen) -> None:
+        try:
+            if sys.platform == "win32":  # 子(node 等)も含めツリーで止める
+                subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
+            else:
+                proc.kill()
+        except Exception:  # noqa: BLE001
+            try:
+                proc.kill()
+            except Exception:  # noqa: BLE001
+                pass
 
 
 @dataclass(frozen=True)
