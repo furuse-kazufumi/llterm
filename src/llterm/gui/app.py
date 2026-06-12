@@ -266,6 +266,16 @@ class MainWindow(QtWidgets.QMainWindow):
         self.cmb_model.setCurrentIndex(_midx if _midx >= 0 else 0)
         self.cmb_model.setToolTip(t("gui.tip.model_select"))
         set_row.addWidget(self.cmb_model)
+        set_row.addWidget(QtWidgets.QLabel(t("gui.label.free_player")))
+        self.cmb_free_provider = QtWidgets.QComboBox()
+        self.cmb_free_provider.addItem(t("gui.free_player.none"), "")
+        for _key, _label in (("groq", "Groq"), ("cerebras", "Cerebras"),
+                             ("openrouter", "OpenRouter"), ("ollama", "Ollama (local)")):
+            self.cmb_free_provider.addItem(_label, _key)
+        _fpidx = self.cmb_free_provider.findData(free_provider_default)
+        self.cmb_free_provider.setCurrentIndex(_fpidx if _fpidx >= 0 else 0)
+        self.cmb_free_provider.setToolTip(t("gui.tip.free_player"))
+        set_row.addWidget(self.cmb_free_provider)
         set_row.addStretch(1)
         vbox.addLayout(set_row)
 
