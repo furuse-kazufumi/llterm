@@ -491,10 +491,27 @@ class MainWindow(QtWidgets.QMainWindow):
         claude = ClaudeRunner(use_subscription=True,
                               effort=str(self.cmb_effort.currentData() or ""),
                               model=str(self.cmb_model.currentData() or ""))
+        primary: TurnRunner
+        fallbacks: list[TurnRunner]
         if self._codex_is_primary():
-            return CodexRunner(), [claude]  # Claude を保険に残す = 動き続ける
-        fallbacks: list[TurnRunner] = [CodexRunner()] if self.chk_codex_fallback.isChecked() else []
-        return claude, fallbacks
+            primary, fallbacks = CodexRunner(), [claude]  # Claude を保険に残す = 動き続ける
+        else:
+            primary = claude
+            fallbacks = [CodexRunner()] if self.chk_codex_fallback.isChecked() else []
+        # 無料奏者 (OpenAI 互換) を chain 末尾に追加。テキスト専用なので keep-alive 保険として
+        # 最後尾に置く。APIキー未設定 (Ollama 以外) なら入れない = loop を auth 停止させない。
+        free = self._free_runner()
+        if free is not None and free.key_available():
+            fallbacks = [*fallbacks, free]
+        return primary, fallbacks
+
+    def _free_runner(self):
+        """選択中の無料奏者 (OpenAI 互換) runner、未選択なら None。"""
+        key = str(self.cmb_free_provider.currentData() or "")
+        if not key:
+            return None
+        from llterm.host.openai_compat_runner import OpenAICompatRunner
+        return OpenAICompatRunner(provider=key)
 
     def _build_runner(self) -> TurnRunner:
         """このランの primary runner (= provider chain の先頭) を返す。"""
