@@ -201,6 +201,10 @@ class TurnRunner(Protocol):
 
     def run_turn(self, *, prompt: str, session_id: str, resume: bool, cwd: Path) -> TurnResult: ...
 
+    def cancel(self) -> None:
+        """実行中ターンを安全に中断する (Stop / ウィンドウ終了用)。"""
+        ...
+
 
 @dataclass
 class ClaudeRunner:
