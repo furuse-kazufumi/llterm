@@ -689,6 +689,7 @@ class MainWindow(QtWidgets.QMainWindow):
             summary = self._read_session_summary()  # exit準備で更新された handoff を進捗に反映
             if summary:
                 self._set_progress(summary, prefix="進捗(handoff)")
+            self._refresh_summary()  # 進捗サマリ パネルも最新 handoff に更新
         elif kind == "stopped":
             self._append(
                 f"\n=== stopped: {data.get('stop_reason')} "
