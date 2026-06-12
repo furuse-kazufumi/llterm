@@ -17,6 +17,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from llterm.i18n import t
+
 RAD_DOCS_ROOT = Path("D:/docs")
 RAPTOR_LIBEXEC = Path("D:/tools/raptor/libexec")
 
