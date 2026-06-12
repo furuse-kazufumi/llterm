@@ -160,7 +160,8 @@ class MainWindow(QtWidgets.QMainWindow):
     # ---- UI 構築 ----
     def _build_ui(self, *, initial_workdir: Path | None, real_default: bool, rad_default: bool,
                   template_default: str, autonomy_default: bool = False,
-                  param_default: str = "", effort_default: str = "max") -> None:
+                  param_default: str = "", effort_default: str = "max",
+                  codex_fallback_default: bool = False) -> None:
         self.setWindowTitle("llterm — Claude Code 自走ループ (GUI)")
         icon = find_app_icon()
         if icon is not None:
