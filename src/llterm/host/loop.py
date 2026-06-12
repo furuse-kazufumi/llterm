@@ -468,6 +468,8 @@ class ClaudeRunner:
             args.append("--dangerously-skip-permissions")
         if self.effort and self.effort in EFFORT_LEVELS:  # 不正値は付けない (claude 既定に委ねる)
             args.extend(["--effort", self.effort])
+        if self.model:  # 非空ならそのまま渡す (alias/フル ID)。妥当性は claude 側が検証する
+            args.extend(["--model", self.model])
         args.extend(self.extra_args)
         return args
 
