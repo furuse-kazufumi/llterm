@@ -62,6 +62,25 @@ def _doc_update(_param: str) -> dict:
     }
 
 
+def _security_audit(_param: str) -> dict:
+    scan_cmd = f"py -3.11 {RAPTOR_PY} scan --repo <このプロジェクトの絶対パス> --policy_groups secrets,owasp"
+    help_cmd = f"py -3.11 {RAPTOR_PY} help scan"
+    return {
+        "resume_prompt": (
+            "セキュリティ監査タスク(read-only)。対象 = このプロジェクト(現在の作業ディレクトリ)。\n"
+            f"1) raptor の SAST スキャン(/scan 連携)を実行: `{scan_cmd}` "
+            f"(オプションは `{help_cmd}` で確認。Semgrep を内部で使い SARIF/findings を出力する)。\n"
+            "2) 出力された findings を読み、重大度・真偽(false positive 判定)・到達可能性/悪用可能性で triage する。\n"
+            "3) `docs/SECURITY_AUDIT.md` に監査レポート(サマリ + 各 finding + 推奨修正)を書く。\n"
+            "制約: **監査は read-only**。修正/パッチ適用・push・削除はしない(remediation は人間が判断)。"
+            "レポートを書き終えたら停止。"
+        ),
+        "continue_prompt": (
+            "残りの findings を triage し docs/SECURITY_AUDIT.md を完成させて停止。修正/push はしない。"
+        ),
+    }
+
+
 TEMPLATES: tuple[Template, ...] = (
     Template(
         "general", "汎用自走",
