@@ -406,10 +406,19 @@ class MainWindow(QtWidgets.QMainWindow):
         self.btn_stop.setEnabled(True)
         for widget in self._run_widgets:
             widget.setEnabled(False)
-        mode = "実claude(サブスク)" if real else "仮想claude"
+        # cost 種別 (課金なし / 実課金) を確定し、idle 表示を更新
+        self._cost_suffix, self._cost_billed = self._cost_label_mode(runner)
+        self._set_cost(0.0)
         effort = str(self.cmb_effort.currentData() or "")
+        if real:
+            mode = "実claude(API=実課金)" if self._cost_billed else "実claude(サブスク=課金なし)"
+        else:
+            mode = "仮想claude(課金なし)"
         effort_note = f" effort={effort}" if real and effort else ""
+        # model はまだ未確定 (init イベントで判明) — effort だけ先に出す
+        self.lbl_model.setText(f"model: …{('  effort=' + effort) if real and effort else ''}")
         self.lbl_state.setText(f"running [{mode}] {tmpl.key}")
+        self._run_effort = effort if real else ""  # init で model と併記するため保持
         self._append(f"=== loop 開始 [{mode}] template={tmpl.key} workdir={workdir} "
                      f"max_session={loop_kw['max_sessions']}{effort_note} ===",
                      PALETTE["session"], bold=True, ts=True)
