@@ -12,6 +12,9 @@ import os
 import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+# UI 文字列 assert は日本語 (既定 locale) を前提とする。開発機の LLTERM_LANG / OS locale に
+# 依存しないようテストプロセス全体で ja に固定する (i18n 単体テストは monkeypatch で切替)。
+os.environ["LLTERM_LANG"] = "ja"
 
 
 @pytest.fixture(autouse=True)
