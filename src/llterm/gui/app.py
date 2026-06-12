@@ -639,6 +639,9 @@ class MainWindow(QtWidgets.QMainWindow):
             self._append(f"--- rotate (ctx {pct}%) → exit準備 & 新セッションへ ---",
                          PALETTE["rotate"], ts=True)
             self._streamed_text = 0
+            summary = self._read_session_summary()  # exit準備で更新された handoff を進捗に反映
+            if summary:
+                self._set_progress(summary, prefix="進捗(handoff)")
         elif kind == "stopped":
             self._append(
                 f"\n=== stopped: {data.get('stop_reason')} "
