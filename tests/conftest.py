@@ -9,4 +9,18 @@ from __future__ import annotations
 
 import os
 
+import pytest
+
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+
+@pytest.fixture(autouse=True)
+def _isolate_gui_settings(tmp_path, monkeypatch):
+    """GUI テストが実ユーザーの ~/.llterm/gui_settings.json を読み書きしないよう隔離する。"""
+    try:
+        from llterm.gui import app as gui_app
+    except ImportError:  # PySide6 なし環境では GUI テスト自体が skip される
+        yield
+        return
+    monkeypatch.setattr(gui_app, "DEFAULT_SETTINGS_PATH", tmp_path / "gui_settings.json")
+    yield
