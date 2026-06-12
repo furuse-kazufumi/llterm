@@ -1,4 +1,38 @@
-# llterm Session Summary — 2026-06-11 夜 (L2 自走エンジン + L3 Qt GUI)
+# llterm Session Summary — 2026-06-12 (リアルタイムストリーミング表示 + カラー化)
+
+## 2026-06-12: 「claude の応答が GUI に表示されない」問題を解消
+
+**根本原因** (ledger 実証): `ClaudeRunner` が `proc.communicate()` でターン完了まで全ブロック
+し、GUI はターン完了後に最終 result テキスト 1 個を無着色で出すだけだった。自律 1 ターンは
+数分〜数十分かかるため、その間 GUI は完全無表示 → ユーザーは故障と判断し Stop していた
+(2026-06-12 03:20 UTC の実走 ledger で session_start 2.5 分後に cancelled を確認)。
+
+**修正内容**:
+- `loop.py ClaudeRunner` — stdout を**行単位リアルタイム読み**に変更 (communicate 廃止)。
+  stderr 排出スレッド (pipe デッドロック防止) + `threading.Timer` watchdog (timeout 1800→7200s、
+  自律長ターンの途中 kill 防止)。`on_stream` コールバックで要約イベントを逐次通知。
+  `_build_args()` 分離 (テストが偽の子プロセスを注入する seam)。
+- `loop.py summarize_stream_event()` — stream-json 1 イベント → GUI 用軽量 dict 列の純関数。
+  **実 claude 2.1.174 の実出力で確認済** (init/assistant text/thinking/tool_use/user tool_result/
+  result。hook_started 等の system と rate_limit_event は表示しない)。
+- `worker.py` — `stream` シグナル追加。runner が `on_stream` を持てば購読 (duck-typing)。
+- `app.py` — **セマンティックカラー描画** (One Dark 系 PALETTE + ダーク背景、html.escape 済み
+  appendHtml)。応答=本文色 / セッション境界=黄 / ターン=青 / ツール=シアン / エラー=赤 /
+  rotate=マゼンタ / 注入=緑 / 補助=灰。`_streamed_text` カウンタでストリーム済み応答の
+  turn 完了時二重表示を防止。stream-json は ANSI を含まないため端末色パススルーではなく
+  イベント種別で llterm 自身が着色する設計。
+- `virtual.py` — 仮想 claude も同形の stream イベントを発行 (課金ゼロで表示経路を検証可能)。
+
+**実走確認 (2026-06-12)**:
+- `--resume <sid>` は**同一 session_id の in-place 継続** (fork しない) — ループの resume 設計は正
+- `parse_stream_json` のフィールド名は実出力と一致 (result/total_cost_usd/usage/num_turns)
+- 実 claude 1 ターン smoke: 2.9s init → **18.1s 初回テキスト表示** → 38.4s ターン完了
+  (旧実装では 38.4s まで無表示)
+- テスト 99 passed (新規 10: summarize 5 + ClaudeRunner ストリーミング 2 + GUI 描画 3)、ruff clean
+
+---
+
+# (前回) llterm Session Summary — 2026-06-11 夜 (L2 自走エンジン + L3 Qt GUI)
 
 ## このセッションでやったこと
 端末 (TUI) を捨てて **GUI 化**する方針転換 + **ループ駆動の心臓 (L2) を新規実装**。
