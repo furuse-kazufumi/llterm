@@ -440,18 +440,44 @@ class MainWindow(QtWidgets.QMainWindow):
             "geometry": bytes(self.saveGeometry().toHex()).decode("ascii"),
         })
 
-    def _build_runner(self) -> TurnRunner:
-        """実行モードに応じた TurnRunner を返す (テスト override 優先)。"""
-        if self.runner_factory_override is not None:
-            return self.runner_factory_override()
-        if self.chk_real.isChecked():
-            from llterm.host.loop import ClaudeRunner
+    def _codex_is_primary(self) -> bool:
+        """このランで Codex を主役にするか (token 節約ルーティング)。
 
-            # API キーを外しサブスク認証で実走 + 選択した effort/model (--effort/--model) を付与
-            return ClaudeRunner(use_subscription=True,
-                                effort=str(self.cmb_effort.currentData() or ""),
-                                model=str(self.cmb_model.currentData() or ""))
-        return VirtualClaudeRunner()
+        「Codex 優先」トグル ON、または選択テンプレが ``prefer=="codex"`` (機械的タスク) の
+        とき True。実 claude モードでのみ意味を持つ。
+        """
+        if self.chk_codex_first.isChecked():
+            return True
+        return templates.get(self.cmb_template.currentData()).prefer == "codex"
+
+    def _resolve_providers(self) -> tuple[TurnRunner, list[TurnRunner]]:
+        """このランの (primary, fallbacks) を決める唯一の真実。
+
+        - テスト override 最優先。
+        - 仮想 claude モードは Codex を使わない (課金/サブスク不要のプレビュー)。
+        - 実 claude モード: Codex 主なら ``(Codex, [Claude])`` = 作業を無料の Codex に寄せ、
+          Claude は保険 (Codex レート制限時に継続) に回す。Claude 主なら従来どおり
+          ``(Claude, [Codex] if フォールバック ON else [])``。
+        """
+        if self.runner_factory_override is not None:
+            return self.runner_factory_override(), []
+        if not self.chk_real.isChecked():
+            return VirtualClaudeRunner(), []
+        from llterm.host.codex_runner import CodexRunner
+        from llterm.host.loop import ClaudeRunner
+
+        # API キーを外しサブスク認証で実走 + 選択した effort/model (--effort/--model) を付与
+        claude = ClaudeRunner(use_subscription=True,
+                              effort=str(self.cmb_effort.currentData() or ""),
+                              model=str(self.cmb_model.currentData() or ""))
+        if self._codex_is_primary():
+            return CodexRunner(), [claude]  # Claude を保険に残す = 動き続ける
+        fallbacks: list[TurnRunner] = [CodexRunner()] if self.chk_codex_fallback.isChecked() else []
+        return claude, fallbacks
+
+    def _build_runner(self) -> TurnRunner:
+        """このランの primary runner (= provider chain の先頭) を返す。"""
+        return self._resolve_providers()[0]
 
     # ---- 操作 ----
     @QtCore.Slot()
