@@ -764,14 +764,20 @@ class MainWindow(QtWidgets.QMainWindow):
     @QtCore.Slot(dict)
     def _on_finished(self, outcome: dict) -> None:
         reason = outcome.get("stop_reason")
+        self._set_busy_cursor(False)  # 砂時計を解除 (graceful 停止/記録の完了)
+        self._stopping = False
         self.lbl_state.setText(f"done: {reason}")
         self.btn_start.setEnabled(True)
         self.btn_stop.setEnabled(False)
+        self.btn_stop.setText("Stop")
         for widget in self._run_widgets:
             widget.setEnabled(True)
         if reason == "auth_required":
             self._append("⚠ 再ログインが必要です (claude /login)。認証後に Start で再開してください "
                          "— 構造的に唯一の人間介在点。", PALETTE["err"], bold=True)
+        if self._closing_after_stop:
+            self._closing_after_stop = False
+            self.close()  # × 終了確認で予約された閉じる操作を、記録完了後に実行
 
 
 def main(argv: list[str] | None = None) -> int:
