@@ -349,7 +349,7 @@ class MainWindow(QtWidgets.QMainWindow):
             pct = int(round(float(data.get("used_pct", 0.0)) * 100))
             self.ctx_bar.setValue(min(pct, 100))
             self.lbl_cost.setText(f"cost(報告値): ${float(data.get('total_cost', 0.0)):.4f}")
-            self.lbl_session.setText(f"session #{data.get('session_index')} · turn {data.get('turn')}")
+            self.lbl_session.setText(f"session: #{data.get('session_index')} · turn {data.get('turn')}")
             err = data.get("error_kind")
             head = f"[turn {data.get('turn')}] ctx {pct}%" + (f"  ERR={err}" if err else "")
             self._append(f"{head}\n{data.get('text') or ''}")
