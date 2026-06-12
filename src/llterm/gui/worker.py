@@ -47,12 +47,19 @@ class LoopWorker(QtCore.QThread):
         if hasattr(runner, "on_stream") and runner.on_stream is None:  # type: ignore[attr-defined]
             runner.on_stream = lambda item: self.stream.emit(dict(item))  # type: ignore[attr-defined]
 
-    def request_stop(self) -> None:
+    def request_stop(self, *, force: bool = False) -> None:
+        """停止を要求する。
+
+        force=False (graceful, 既定): 実行中ターンは kill せず、現ターン完了後に作業記録
+        (handoff) を 1 回残してから停止する。
+        force=True: 実行中ターンをツリーごと即 kill して停止する (記録なし)。
+        """
         self._stop.set()
-        try:
-            self._runner.cancel()  # 実行中ターン (claude -p) をツリーごと kill → 即時・安全停止
-        except Exception:  # noqa: BLE001
-            pass
+        if force:
+            try:
+                self._runner.cancel()
+            except Exception:  # noqa: BLE001
+                pass
 
     def inject(self, text: str) -> None:
         with self._inject_lock:
