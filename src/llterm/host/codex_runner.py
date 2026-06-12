@@ -19,6 +19,7 @@ SESSION_SUMMARY / CLAUDE.md を読んで「前回の続き」を継続する)。
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 import sys
 import threading
