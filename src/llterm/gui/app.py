@@ -389,6 +389,8 @@ class MainWindow(QtWidgets.QMainWindow):
         loop_kw["threshold"] = self.spin_threshold.value()
         loop_kw["window_tokens"] = self.spin_window.value()
         self._max_sessions = loop_kw["max_sessions"]  # ステータス表示 (session N/max) 用
+        self._run_workdir = workdir  # rotate 時に docs/SESSION_SUMMARY.md を読むため保持
+        self.lbl_progress.setText("進捗: 開始…")
         # rotate 閾値を ctx バーに反映 (走行中の状態が一目で分かるように)
         self.ctx_bar.setFormat(f"ctx %p%  (rotate {int(round(self.spin_threshold.value() * 100))}%)")
         self.ctx_bar.setValue(0)
