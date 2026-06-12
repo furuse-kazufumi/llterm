@@ -323,6 +323,10 @@ def summarize_stream_event(ev: object) -> list[dict]:
 
 _SUBSCRIPTION_STRIP_VARS = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
 
+# claude --effort が受け付ける値 (claude 2.1.174 で実測確認)。"" = フラグを付けず claude 既定。
+# 注: raptor 独自の "ultracode" は vanilla claude には無い (max が最上位)。
+EFFORT_LEVELS: tuple[str, ...] = ("", "low", "medium", "high", "xhigh", "max")
+
 # gui-scripts (pythonw) 親が console 子 (claude.exe / taskkill) を spawn すると、stdio を全
 # redirect していても console window が毎ターン可視表示される (実機確認済) — これで抑止する。
 _NO_WINDOW = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
