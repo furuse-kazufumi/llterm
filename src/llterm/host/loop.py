@@ -709,7 +709,7 @@ class SessionLoop:
                     )
                     self._emit("rotate", session_id=sid, session_index=sessions + 1,
                                used_pct=used, session_turns=session_turns)
-                    break  # → 新セッローへ rotate
+                    break  # → 新セッションへ rotate
 
                 (prompt, injected), resume = self._continue_prompt(), True  # 閾値未満: 同セッション継続
 
