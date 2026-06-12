@@ -313,52 +313,111 @@ class ClaudeRunner:
     """実 claude を headless stream-json で 1 ターン回す。端末を使わない (PTY なし)。
 
     - ``resume=False`` → ``--session-id <uuid>`` で新規セッション作成。
-    - ``resume=True``  → ``--resume <uuid>`` で同セッション継続 (文脈保持)。
+    - ``resume=True``  → ``--resume <uuid>`` で同セッション継続 (in-place・同一 ID。2026-06-12 実走確認)。
     - ``stdin=DEVNULL`` — 自走ループの子は stdin を待たない (orphan-reader hang を構造的に排除)。
     - list-based args (shell 不使用)。``--verbose`` は ``-p`` + stream-json に必須。
+    - ``on_stream`` — stdout を**行単位でリアルタイム購読**し、要約イベント
+      (:func:`summarize_stream_event`) を逐次通知する。ターン完了 (数分〜数十分) を待たずに
+      GUI へ応答が流れる。stderr は別スレッドで排出し pipe デッドロックを防ぐ。
     """
 
     exe: str = "claude"
-    timeout: float = 1800.0
+    timeout: float = 7200.0  # 自律 1 ターンは長い (旧 1800s では正当な作業を途中 kill し得た)
     skip_permissions: bool = True
     use_subscription: bool = True  # True: API キー env を外し claude.ai サブスク認証で回す (課金回避)
     extra_args: Sequence[str] = ()
+    on_stream: Callable[[dict], None] | None = None  # 要約イベントのリアルタイム購読 (GUI 用)
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
     _proc: subprocess.Popen | None = field(default=None, repr=False, compare=False)
     _cancelled: bool = field(default=False, repr=False, compare=False)
 
-    def run_turn(self, *, prompt: str, session_id: str, resume: bool, cwd: Path) -> TurnResult:
+    def _build_args(self, *, prompt: str, session_id: str, resume: bool) -> list[str]:
+        """claude の引数列を組む (テストはここを差し替えて偽の子プロセスを注入する)。"""
         session_flag = ["--resume", session_id] if resume else ["--session-id", session_id]
         args = [self.exe, "-p", prompt, "--output-format", "stream-json", "--verbose", *session_flag]
         if self.skip_permissions:
             args.append("--dangerously-skip-permissions")
         args.extend(self.extra_args)
+        return args
+
+    def _notify_stream(self, line: str) -> None:
+        """stdout 1 行を要約して購読者へ流す。購読者の例外でターンを殺さない (fail-safe)。"""
+        if self.on_stream is None:
+            return
+        line = line.strip()
+        if not line:
+            return
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            return
+        for item in summarize_stream_event(ev):
+            try:
+                self.on_stream(item)
+            except Exception:  # noqa: BLE001 — 表示側の失敗を loop に波及させない
+                pass
+
+    def run_turn(self, *, prompt: str, session_id: str, resume: bool, cwd: Path) -> TurnResult:
+        args = self._build_args(prompt=prompt, session_id=session_id, resume=resume)
         with self._lock:
             self._cancelled = False
         try:
             proc = subprocess.Popen(
                 args, cwd=str(cwd), stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                text=True, encoding="utf-8", errors="replace",
+                text=True, encoding="utf-8", errors="replace", bufsize=1,
                 env=_subscription_env() if self.use_subscription else None,
             )
         except FileNotFoundError:
             return TurnResult(session_id, 0, 0, 0, 0.0, "", True, "other", 0, 127)
         with self._lock:
             self._proc = proc
-        try:
-            out, err = proc.communicate(timeout=self.timeout)
-        except subprocess.TimeoutExpired:
+
+        timed_out = threading.Event()
+
+        def _on_timeout() -> None:
+            timed_out.set()
             self._kill(proc)
-            return TurnResult(session_id, 0, 0, 0, 0.0, "", True, "other", 0, -1)
+
+        watchdog = threading.Timer(self.timeout, _on_timeout)
+        watchdog.daemon = True
+        watchdog.start()
+
+        err_buf: list[str] = []
+
+        def _drain_stderr() -> None:  # stderr を排出しないと子が write でブロックし得る
+            try:
+                assert proc.stderr is not None
+                for eline in proc.stderr:
+                    err_buf.append(eline)
+            except (OSError, ValueError):
+                pass
+
+        stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
+        stderr_thread.start()
+
+        out_lines: list[str] = []
+        try:
+            assert proc.stdout is not None
+            for line in proc.stdout:  # 行単位リアルタイム読み — communicate() の全ブロックを廃止
+                out_lines.append(line)
+                self._notify_stream(line)
+            proc.wait()
+        except (OSError, ValueError):
+            self._kill(proc)
         finally:
+            watchdog.cancel()
+            stderr_thread.join(timeout=5)
             with self._lock:
                 self._proc = None
+
         with self._lock:
             cancelled = self._cancelled
         if cancelled:
             return TurnResult(session_id, 0, 0, 0, 0.0, "", True, "cancelled", 0, proc.returncode or -1)
-        return parse_stream_json(out, exit_code=proc.returncode, stderr=err)
+        if timed_out.is_set():
+            return TurnResult(session_id, 0, 0, 0, 0.0, "", True, "other", 0, -1)
+        return parse_stream_json("".join(out_lines), exit_code=proc.returncode, stderr="".join(err_buf))
 
     def cancel(self) -> None:
         """実行中の claude ターンをプロセスツリーごと安全に kill する (Stop / 終了用)。"""
