@@ -458,6 +458,9 @@ class _DryRunner:
         ctx = 10_000 if not resume else int(self.window_tokens * (self.threshold + 0.05))
         return TurnResult(session_id, ctx, 500, ctx, 0.0, "(dry-run turn)", False, "", 1, 0)
 
+    def cancel(self) -> None:
+        pass
+
 
 def main(argv: list[str] | None = None) -> int:
     _ensure_utf8_stdout()
