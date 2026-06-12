@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 DEFAULT_SETTINGS_PATH = Path.home() / ".llterm" / "gui_settings.json"
