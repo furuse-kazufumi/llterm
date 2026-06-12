@@ -70,6 +70,7 @@ class MainWindow(QtWidgets.QMainWindow):
         real_default: bool = False,
         rad_default: bool = False,
         template_default: str | None = None,
+        effort_default: str | None = None,
         rad_docs_root: Path = rad.RAD_DOCS_ROOT,
         runner_factory: Callable[[], TurnRunner] | None = None,
         settings_path: Path | None = None,
@@ -80,6 +81,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.rad_docs_root = Path(rad_docs_root)
         self.runner_factory_override = runner_factory  # tests/仮想を強制注入する穴
         self.settings_path = Path(settings_path) if settings_path else DEFAULT_SETTINGS_PATH
+        self._effort_cli = effort_default  # CLI 明示指定 (None = 未指定 → 保存値/既定に委ねる)
         self.loop_kw = dict(loop_kw)
         self.worker: LoopWorker | None = None
         self._streamed_text = 0  # 現ターン中にリアルタイム表示した応答数 (turn 完了時の二重表示防止)
