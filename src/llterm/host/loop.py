@@ -630,6 +630,22 @@ class SessionLoop:
         # rotation = 新 session-id = fresh context。UUID 衝突は事実上ゼロ。
         return str(uuid.uuid4())
 
+    def _handoff(self, sid: str) -> float:
+        """停止要求時の作業記録 (exit準備 = SESSION_SUMMARY 更新) を 1 ターン回す。
+
+        戻り値 = 追加コスト。失敗は握り潰す (fail-safe)。force stop (runner.cancel 済) の場合は
+        run_turn が即 cancelled を返すため事実上 no-op (新プロセスは起動しない)。
+        """
+        self._emit("handoff", session_id=sid)
+        try:
+            r = self.runner.run_turn(prompt=self.exit_prep_prompt, session_id=sid,
+                                     resume=True, cwd=self.workdir)
+            self.ledger.append(event="exit_prep", cmd_id=sid, action="shutdown",
+                               detail="handoff on stop")
+            return r.cost_usd
+        except Exception:  # noqa: BLE001
+            return 0.0
+
     def run(self) -> Outcome:
         sessions = 0
         turns = 0
