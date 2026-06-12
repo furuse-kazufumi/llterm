@@ -1,6 +1,44 @@
-# llterm Session Summary — 2026-06-12 (リアルタイムストリーミング表示 + カラー化)
+# llterm Session Summary — 2026-06-12 (GUI 大幅強化セッション)
 
-## 2026-06-12: 「claude の応答が GUI に表示されない」問題を解消
+## 2026-06-12 セッション総括 (この日の全コミット)
+GUI を一気に実用レベルへ。コミット順:
+1. **streaming+color** — claude 応答のリアルタイム表示 + One Dark セマンティックカラー(下記詳細)。
+2. **多視点レビュー修正 17 件** — cancel 消失レース / CREATE_NO_WINDOW / auth 誤分類限定 /
+   subagent 区別 / CR 正規化 / npm shim fail-closed 等。
+3. **設定永続化** — `~/.llterm/gui_settings.json`(project/effort/threshold/window/cost/template/
+   geometry/codex_fallback…)。型不正でも fail-safe で既定起動。
+4. **effort 選択** — `--effort low..max`(既定 max)。/effort はタスク注入では効かない・ultracode は
+   vanilla claude に無い(max が最上位)を実機確認。
+5. **注入タスク可視化 + session 進捗 + 設定 fail-safe** — `▶ 注入タスク実行`、`session N/max`、
+   ctx バーに rotate 閾値併記。
+6. **タイムスタンプ** — 指令時/応答受信時/境界に `[HH:MM:SS]`。
+7. **cost 課金有無の明示 + model 表示** — `cost(報告値・課金なし)` / API キー時のみ赤字 `実課金` /
+   ステータス行に `model: <name> effort=<x>`。
+8. **進捗サマリ パネル** — 右側スプリッタに SESSION_SUMMARY 全文をスクロール表示・選択コピー可
+   (単語をタスク注入に流用可)・↻更新。
+9. **ctx% 分子バグ修正** — context_tokens を「最後のメイン assistant の usage(瞬間占有)」に変更。
+   従来は result.usage(全往復累計)で過大評価し fullsense で 156%→100% 張付き。実機 4.3% vs 旧 8.4%。
+10. **graceful Stop + ×終了確認 + ウィンドウアイコン** — Stop 1回目=作業記録(handoff)してから停止
+    +砂時計、2回目=強制 kill。×は確認ダイアログ。assets/llterm-icon.ico をタイトルバーに。
+11. **レート制限の自動再開** — rate_limit_event の resetsAt まで中断可能に待機 → 同ターン再試行。
+    allowed は誤検知しない。auth 優先。
+12. **Codex プロバイダ・チェーン** — Claude がレート制限なら CodexRunner(codex exec --json、
+    ChatGPT Pro サブスク=課金なし)に切替、resetsAt 復活で Claude へ戻す。`_blocked_until` で
+    プロバイダ別解除管理、SESSION_SUMMARY が cross-provider 継続を橋渡し。GUI「Codex 切替」トグル。
+
+テスト 186 passed + ruff clean。実 claude / 実 codex で各機能を実機確認済み。
+
+## 次にやるべきこと (TRIZ ideation の生存案 / 未着手)
+- **handoff 自己検証ゲート** (rotate 直前に SESSION_SUMMARY の充足を検証、不足なら 1 回再執筆。
+  検証は「exit_prep 前スナップショット比較 + 非空 + mtime」の複合シグナルに絞る)
+- **ctl-gated 自律 rotate** (休眠中の ctl 制御プレーンを結線、閾値未満でも意味境界で自己申告 rotate)
+- **failure postmortem 可視化** (circuit_open 時に直近エラーを 1 行要約して ledger/GUI に)
+- **Watch Pin** (監視語を宣言しヒット時ハイライト) / **Heartbeat Digest** (周期サンプリング 1 行)
+- **多言語対応 (i18n)** — 2026-06-12 時点で保留 (ユーザー判断)
+
+---
+
+# (詳細) 2026-06-12: 「claude の応答が GUI に表示されない」問題を解消
 
 **根本原因** (ledger 実証): `ClaudeRunner` が `proc.communicate()` でターン完了まで全ブロック
 し、GUI はターン完了後に最終 result テキスト 1 個を無着色で出すだけだった。自律 1 ターンは
