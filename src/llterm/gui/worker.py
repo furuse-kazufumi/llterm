@@ -75,6 +75,7 @@ class LoopWorker(QtCore.QThread):
     def run(self) -> None:  # QThread のエントリ (別スレッド)
         loop = SessionLoop(
             runner=self._runner,
+            fallback_runners=tuple(self._fallback_runners),
             workdir=self._workdir,
             ledger=Ledger(self._ledger_path),
             on_event=lambda kind, data: self.event.emit(kind, data),
