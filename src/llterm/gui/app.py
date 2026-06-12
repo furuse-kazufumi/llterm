@@ -507,8 +507,10 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             mode = t("gui.mode.virtual")
         effort_note = f" effort={effort}" if real and effort else ""
-        # model はまだ未確定 (init イベントで判明) — effort だけ先に出す
-        self.lbl_model.setText(f"model: …{('  effort=' + effort) if real and effort else ''}")
+        # 実モデルは init イベントで確定するが、選択値を暫定表示する (空=claude 既定は "…")
+        model_sel = str(self.cmb_model.currentData() or "")
+        model_hint = model_sel if real and model_sel else "…"
+        self.lbl_model.setText(f"model: {model_hint}{('  effort=' + effort) if real and effort else ''}")
         self.lbl_state.setText(t("gui.state.running", mode=mode, template=tmpl.key))
         self._run_effort = effort if real else ""  # init で model と併記するため保持
         self._append(t("gui.msg.loop_start", mode=mode, template=tmpl.key, workdir=workdir,
