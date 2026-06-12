@@ -348,15 +348,19 @@ def test_rate_limit_auto_resume_waits_then_retries(tmp_path: Path) -> None:
 
 def test_rate_limit_wait_interrupted_by_stop(tmp_path: Path) -> None:
     """待機中に Stop されたら自走を停止する (待機は中断可能)。"""
+    state = {"turns": 0}
     runner = FakeRunner([{"is_error": True, "error_kind": "rate_limited"}])
     loop = SessionLoop(
         runner=runner, workdir=tmp_path, ledger=Ledger(tmp_path / "l.jsonl"),
         max_sessions=1, now_fn=lambda: 0.0, sleep_fn=lambda s: None,
-        should_stop=lambda: True,  # 待機ループ内で即停止
+        # top-of-loop の check では止めず、rate_limited ターンを 1 回走らせてから待機中に停止
+        should_stop=lambda: state["turns"] >= 1,
         rate_limit_fallback_wait_s=100.0,
+        on_event=lambda k, d: state.__setitem__("turns", state["turns"] + (1 if k == "turn" else 0)),
     )
     outcome = loop.run()
     assert outcome.stop_reason == "stopped"
+    assert "stop during rate-limit wait" in outcome.detail
 
 
 # ─── ClaudeRunner ストリーミング (偽の子プロセスで実走・課金ゼロ) ──
