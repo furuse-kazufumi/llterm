@@ -721,6 +721,21 @@ class MainWindow(QtWidgets.QMainWindow):
             self.lbl_state.setText("作業内容を記録中…")
             self._set_busy_cursor(True)
             self._append("■ 作業内容を記録中 (SESSION_SUMMARY を更新)…", PALETTE["rotate"], ts=True)
+        elif kind == "rate_limited":
+            # レート制限到達 → resetsAt まで待機して自動再開 (待機中も Stop 可)。
+            resets = int(data.get("resets_at") or 0)
+            when = ""
+            if resets > 0:
+                try:
+                    when = f" {datetime.fromtimestamp(resets):%m-%d %H:%M} まで"
+                except (OSError, OverflowError, ValueError):
+                    pass
+            self.lbl_state.setText(f"レート制限: 待機中{when}")
+            self._append(f"⏸ レート制限に到達。{when}待機して自動再開します (Stop で中断可)",
+                         PALETTE["err"], bold=True, ts=True)
+        elif kind == "rate_limit_resumed":
+            self.lbl_state.setText("running (制限解除・再開)")
+            self._append("▶ レート制限リセット — 自走を再開します", PALETTE["inject"], ts=True)
         elif kind == "task":
             # これから claude に送る指令。時刻を出して「指令時 → 応答受信時」の経過を見せる。
             if data.get("injected"):
