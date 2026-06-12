@@ -518,6 +518,35 @@ def test_on_event_emits_progress(tmp_path: Path) -> None:
     assert turn_ev["used_pct"] == pytest.approx(0.75)
 
 
+def test_emits_task_event_with_prompt(tmp_path: Path) -> None:
+    """各ターン前に task イベントで prompt を流す (GUI が実行内容を可視化できる)。"""
+    seen: list[tuple[str, dict]] = []
+    runner = FakeRunner([{"ctx": 150_000}])
+    loop = _loop(runner, tmp_path, window_tokens=200_000, threshold=0.70, max_sessions=1,
+                 on_event=lambda kind, data: seen.append((kind, data)))
+    loop.run()
+    tasks = [d for k, d in seen if k == "task"]
+    assert tasks, "task イベントが流れていない"
+    assert DEFAULT_RESUME_PROMPT in tasks[0]["prompt"]
+    assert tasks[0]["injected"] is False  # 最初は通常の再開 prompt
+
+
+def test_injected_task_marked_in_event(tmp_path: Path) -> None:
+    """注入タスクが消費されるターンの task イベントは injected=True を持つ。"""
+    injected = ["割り込みタスク X"]
+    seen: list[tuple[str, dict]] = []
+    runner = FakeRunner()  # 常に閾値未満
+    loop = _loop(runner, tmp_path, window_tokens=200_000, threshold=0.70, max_sessions=1,
+                 max_turns_per_session=3,
+                 next_prompt=lambda: injected.pop(0) if injected else None,
+                 on_event=lambda kind, data: seen.append((kind, data)))
+    loop.run()
+    tasks = [d for k, d in seen if k == "task"]
+    injected_tasks = [d for d in tasks if d["injected"]]
+    assert len(injected_tasks) == 1
+    assert injected_tasks[0]["prompt"] == "割り込みタスク X"
+
+
 def test_on_event_failure_does_not_kill_loop(tmp_path: Path) -> None:
     def boom(kind: str, data: dict) -> None:
         raise RuntimeError("observer exploded")
