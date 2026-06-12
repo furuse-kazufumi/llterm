@@ -13,6 +13,7 @@ pytest.importorskip("PySide6", reason="GUI テストは PySide6 が要る (pip i
 
 from PySide6 import QtCore, QtWidgets  # noqa: E402
 
+from llterm import rad, templates  # noqa: E402
 from llterm.gui.app import MainWindow, discover_projects  # noqa: E402
 from llterm.gui.virtual import VirtualClaudeRunner  # noqa: E402
 from llterm.host.loop import ClaudeRunner  # noqa: E402
