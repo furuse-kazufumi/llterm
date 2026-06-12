@@ -428,6 +428,7 @@ class MainWindow(QtWidgets.QMainWindow):
             "rad": self.chk_rad.isChecked(),
             "autonomy": self.chk_autonomy.isChecked(),
             "codex_fallback": self.chk_codex_fallback.isChecked(),
+            "codex_first": self.chk_codex_first.isChecked(),
             "max_sessions": self.spin_sessions.value(),
             "threshold": round(self.spin_threshold.value(), 2),
             "window_tokens": self.spin_window.value(),
