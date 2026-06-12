@@ -373,25 +373,47 @@ class MainWindow(QtWidgets.QMainWindow):
     # ---- ワーカーからのイベント (メインスレッドで実行) ----
     @QtCore.Slot(dict)
     def _on_stream(self, item: dict) -> None:
-        """ターン内のリアルタイム表示 — 応答・ツール実行をターン完了を待たずに描画する。"""
+        """ターン内のリアルタイム表示 — 応答・ツール実行をターン完了を待たずに描画する。
+
+        ``subagent: True`` の項目は Task サブエージェント由来 — インデント + 灰色で
+        メイン応答と区別し、二重表示防止カウンタ (_streamed_text) には数えない。
+        """
         kind = item.get("kind")
+        sub = bool(item.get("subagent"))
+        prefix = "  ⤷ " if sub else ""
         if kind == "init":
             sid = str(item.get("session_id", ""))[:8]
             self._append(f"⏵ model={item.get('model')} session={sid}", PALETTE["dim"])
         elif kind == "text":
-            self._streamed_text += 1
-            self._append(str(item.get("text") or ""))
+            text = str(item.get("text") or "")
+            if sub:
+                self._append(prefix + text, PALETTE["dim"])
+            else:
+                self._streamed_text += 1
+                self._append(text)
         elif kind == "thinking":
-            self._append(f"… thinking … {item.get('preview') or ''}", PALETTE["dim"])
+            self._append(f"{prefix}… thinking … {item.get('preview') or ''}", PALETTE["dim"])
         elif kind == "tool_use":
             detail = str(item.get("detail") or "")
-            self._append(f"⚙ {item.get('name')}" + (f": {detail}" if detail else ""), PALETTE["tool"])
+            line = f"{prefix}⚙ {item.get('name')}" + (f": {detail}" if detail else "")
+            self._append(line, PALETTE["dim"] if sub else PALETTE["tool"])
         elif kind == "tool_result":
             preview = str(item.get("preview") or "")
             if item.get("is_error"):
-                self._append(f"  ↳ エラー: {preview}", PALETTE["err"])
+                self._append(f"{prefix}  ↳ エラー: {preview}", PALETTE["err"])
             elif preview:
-                self._append(f"  ↳ {preview}", PALETTE["dim"])
+                self._append(f"{prefix}  ↳ {preview}", PALETTE["dim"])
+        elif kind == "rate_limit":
+            status = str(item.get("status") or "")
+            if status and status != "allowed":  # サブスク自走の主制約 — 制限時は必ず可視化する
+                resets_at = int(item.get("resets_at") or 0)
+                when = ""
+                if resets_at > 0:
+                    try:
+                        when = f" (リセット: {datetime.fromtimestamp(resets_at):%m-%d %H:%M})"
+                    except (OSError, OverflowError, ValueError):
+                        pass
+                self._append(f"⚠ レート制限: {status}{when}", PALETTE["err"], bold=True)
         # kind == "result" はターン完了メトリクス (turn イベント側が正) — ここでは描画しない
 
     @QtCore.Slot(str, dict)
