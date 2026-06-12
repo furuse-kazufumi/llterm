@@ -327,6 +327,17 @@ class MainWindow(QtWidgets.QMainWindow):
             msg += f" (backup: {res.backup})"
         self._append(msg)
 
+    def closeEvent(self, event: QtGui.QCloseEvent) -> None:  # noqa: N802 (Qt override 名)
+        """ウィンドウを閉じる際、ループ実行中なら停止を要求してから閉じる。
+
+        Stop ボタンと同じく次ターン境界で止まる。現在の claude ターン完了を最大数秒待ち、
+        超過時はそのまま閉じる(child の孤児化を最小化)。
+        """
+        if self.worker is not None and self.worker.isRunning():
+            self.worker.request_stop()
+            self.worker.wait(3000)
+        event.accept()
+
     # ---- ワーカーからのイベント (メインスレッドで実行) ----
     @QtCore.Slot(str, dict)
     def _on_event(self, kind: str, data: dict) -> None:
