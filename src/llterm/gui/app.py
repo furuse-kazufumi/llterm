@@ -287,6 +287,46 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             self._append("  (loop 未起動: Start 後に反映されます)")
 
+    @QtCore.Slot()
+    def _on_template_changed(self) -> None:
+        key = self.cmb_template.currentData()
+        if key is None:
+            return
+        tmpl = templates.get(key)
+        self.cmb_template.setToolTip(tmpl.description)  # 用途をツールチップで表示
+        self.edit_param.setEnabled(tmpl.needs_param)
+        self.edit_param.setPlaceholderText(tmpl.param_label if tmpl.needs_param else "(引数不要)")
+
+    @QtCore.Slot()
+    def _promote_clicked(self) -> None:
+        domain = self.edit_param.text().strip()
+        if not domain:
+            self._append("error: 公開する分野名を引数欄に入れてください")
+            return
+        stg = rad.staging_dir(domain, self.rad_docs_root)
+        if not stg.is_dir():
+            self._append(f"error: staging がありません: {stg}")
+            return
+        reply = QtWidgets.QMessageBox.question(
+            self, "RAD 公開ゲート",
+            f"分野「{domain}」の staging を共有 live へ公開しますか?\n"
+            f"  staging: {stg}\n  live: {rad.live_dir(domain, self.rad_docs_root)}\n"
+            f"既存 live はバックアップされます。",
+        )
+        if reply == QtWidgets.QMessageBox.StandardButton.Yes:
+            self._do_promote(domain)
+
+    def _do_promote(self, domain: str) -> None:
+        try:
+            res = rad.promote(domain, docs_root=self.rad_docs_root)
+        except rad.RadError as exc:
+            self._append(f"公開失敗: {exc}")
+            return
+        msg = f"✓ 公開: {res.live}"
+        if res.backup:
+            msg += f" (backup: {res.backup})"
+        self._append(msg)
+
     # ---- ワーカーからのイベント (メインスレッドで実行) ----
     @QtCore.Slot(str, dict)
     def _on_event(self, kind: str, data: dict) -> None:
