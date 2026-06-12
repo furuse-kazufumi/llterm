@@ -1,0 +1,286 @@
+# SPDX-License-Identifier: Apache-2.0
+"""llterm の Codex エンジン — レート制限時のフォールバック用 TurnRunner 実装。
+
+Claude (ClaudeRunner) がレート制限に達したとき、SessionLoop が provider chain を
+たどってこの CodexRunner に切り替える。Codex CLI (`codex exec --json`) を非対話で回し、
+JSONL イベントを :func:`parse_codex_jsonl` で TurnResult へ変換する。
+
+ChatGPT Pro サブスク認証で動くため **新たな従量課金なし** (cost_usd=0.0)。制約はレート制限。
+cross-provider の作業継続性は SESSION_SUMMARY handoff が橋渡しする (Codex は fresh session で
+SESSION_SUMMARY / CLAUDE.md を読んで「前回の続き」を継続する)。
+
+実 codex 0.135.0 の `codex exec --json` 出力で確認済のフォーマット (2026-06-12 probe):
+- ``thread.started``  : ``thread_id`` (= ``codex exec resume <id>`` で継続)
+- ``turn.started``
+- ``item.completed``  : ``item`` (``type``=agent_message/command_execution/… と ``text``)
+- ``turn.completed``  : ``usage`` (input_tokens / cached_input_tokens / output_tokens / …)
+- ``turn.failed`` / ``error`` : エラー
+"""
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+import threading
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from llterm.host.loop import (
+    _NO_WINDOW,
+    _RATE_LIMIT_SIGNALS,
+    TurnResult,
+    _as_int,
+    _short,
+    _tool_use_detail,
+)
+
+DEFAULT_CODEX_SANDBOX = "workspace-write"  # 実作業に必要。read-only では実装できない
+
+
+def summarize_codex_event(ev: object) -> list[dict]:
+    """codex exec --json の 1 イベントを GUI 表示用の軽量 dict 列へ要約する。
+
+    Claude の :func:`llterm.host.loop.summarize_stream_event` と同じ ``kind`` 体系へ揃える
+    (text / thinking / tool_use / tool_result / init / result) ので GUI 側は共通描画できる。
+    """
+    if not isinstance(ev, dict):
+        return []
+    etype = ev.get("type")
+    if etype == "thread.started":
+        return [{"kind": "init", "model": "codex", "session_id": str(ev.get("thread_id") or "")}]
+    if etype == "item.completed":
+        item = ev.get("item")
+        if not isinstance(item, dict):
+            return []
+        itype = str(item.get("type") or "")
+        if itype == "agent_message":
+            text = str(item.get("text") or "")
+            return [{"kind": "text", "text": text}] if text.strip() else []
+        if itype == "reasoning":
+            return [{"kind": "thinking", "preview": _short(str(item.get("text") or ""), 80)}]
+        if itype in ("command_execution", "shell", "local_shell_call"):
+            detail = item.get("command") or item.get("text") or _tool_use_detail(item)
+            return [{"kind": "tool_use", "name": "shell", "detail": _short(str(detail or ""))}]
+        if itype in ("file_change", "patch", "apply_patch"):
+            return [{"kind": "tool_use", "name": "edit", "detail": _short(str(item.get("text") or ""))}]
+        if itype in ("mcp_tool_call", "tool_call", "function_call"):
+            return [{"kind": "tool_use", "name": str(item.get("name") or "tool"),
+                     "detail": _tool_use_detail(item.get("arguments") or item)}]
+        return []  # 未知の item は黙って無視 (将来の type に耐える)
+    if etype == "turn.completed":
+        return [{"kind": "result", "duration_ms": 0, "is_error": False}]
+    return []
+
+
+def parse_codex_jsonl(stdout: str, *, exit_code: int, stderr: str = "") -> TurnResult:
+    """``codex exec --json`` (JSONL) を 1 ターン結果へ defensively パースする。
+
+    session_id には codex の ``thread_id`` を入れる (CodexRunner が resume に使う)。
+    cost_usd=0.0 (サブスク)。context_window=0 (不明 → SessionLoop が設定窓を使う)。
+    """
+    thread_id = ""
+    texts: list[str] = []
+    usage: dict = {}
+    turn_completed = False
+    failed = False
+
+    for line in stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(ev, dict):
+            continue
+        etype = ev.get("type")
+        if etype == "thread.started":
+            thread_id = str(ev.get("thread_id") or thread_id)
+        elif etype == "item.completed":
+            item = ev.get("item")
+            if isinstance(item, dict) and item.get("type") == "agent_message":
+                texts.append(str(item.get("text") or ""))
+        elif etype == "turn.completed":
+            turn_completed = True
+            u = ev.get("usage")
+            if isinstance(u, dict):
+                usage = u
+        elif etype in ("turn.failed", "error"):
+            failed = True
+
+    text = texts[-1] if texts else ""
+    input_tokens = _as_int(usage.get("input_tokens"))
+    output_tokens = _as_int(usage.get("output_tokens"))
+    # Codex の窓占有近似 = 非キャッシュ入力 + キャッシュ入力 (= プロンプト総量)
+    context_tokens = input_tokens + _as_int(usage.get("cached_input_tokens"))
+
+    is_error = exit_code != 0 or failed or not turn_completed
+    error_kind = ""
+    if is_error:
+        blob = (text + "\n" + stderr).lower()
+        error_kind = "rate_limited" if any(s in blob for s in _RATE_LIMIT_SIGNALS) else "other"
+
+    return TurnResult(
+        session_id=thread_id,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        context_tokens=context_tokens,
+        cost_usd=0.0,
+        text=text,
+        is_error=is_error,
+        error_kind=error_kind,
+        num_turns=1,
+        raw_exit=exit_code,
+    )
+
+
+@dataclass
+class CodexRunner:
+    """Codex を `codex exec --json` で 1 ターン回す TurnRunner (端末を使わない)。
+
+    - ``resume=False`` → 新 codex thread を作る (`codex exec`)。前 thread は破棄。
+    - ``resume=True``  → 直近 thread を継続 (`codex exec resume <thread_id>`)。
+    - SessionLoop が渡す session_id (claude 用 uuid) は無視し、codex 自身の thread_id を内部管理。
+    - サンドボックス既定 = workspace-write (プロジェクト内の編集可・ネット/外部は不可)。
+    """
+
+    exe: str = "codex"
+    sandbox: str = DEFAULT_CODEX_SANDBOX
+    timeout: float = 7200.0
+    model: str = ""  # 空 = codex 設定の既定モデル
+    extra_args: Sequence[str] = ()
+    on_stream: Callable[[dict], None] | None = None
+    _thread_id: str = field(default="", repr=False, compare=False)
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
+    _proc: subprocess.Popen | None = field(default=None, repr=False, compare=False)
+    _cancelled: bool = field(default=False, repr=False, compare=False)
+
+    def _build_args(self, *, prompt: str, resume: bool, cwd: Path) -> list[str]:
+        base = [self.exe, "exec"]
+        if resume and self._thread_id:
+            base += ["resume", self._thread_id]
+        base += ["--json", "--skip-git-repo-check", "-s", self.sandbox,
+                 "-C", str(cwd), "--color", "never"]
+        if self.model:
+            base += ["-m", self.model]
+        base += [*self.extra_args, prompt]
+        return base
+
+    def _notify_stream(self, line: str) -> None:
+        if self.on_stream is None:
+            return
+        line = line.strip()
+        if not line:
+            return
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            return
+        for item in summarize_codex_event(ev):
+            try:
+                self.on_stream(item)
+            except Exception:  # noqa: BLE001
+                pass
+
+    def run_turn(self, *, prompt: str, session_id: str, resume: bool, cwd: Path) -> TurnResult:
+        args = self._build_args(prompt=prompt, resume=resume, cwd=cwd)
+        with self._lock:
+            if self._cancelled:
+                return TurnResult(session_id, 0, 0, 0, 0.0, "", True, "cancelled", 0, -1)
+        try:
+            proc = subprocess.Popen(
+                args, cwd=str(cwd), stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                text=True, encoding="utf-8", errors="replace", bufsize=1,
+                creationflags=_NO_WINDOW,
+            )
+        except FileNotFoundError:
+            return TurnResult(session_id, 0, 0, 0, 0.0, "codex が見つかりません", True, "other", 0, 127)
+        with self._lock:
+            self._proc = proc
+            kill_now = self._cancelled
+        if kill_now:
+            self._kill(proc)
+
+        timed_out = threading.Event()
+
+        def _on_timeout() -> None:
+            if proc.poll() is not None:
+                return
+            timed_out.set()
+            self._kill(proc)
+
+        watchdog = threading.Timer(self.timeout, _on_timeout)
+        watchdog.daemon = True
+        watchdog.start()
+
+        err_buf: list[str] = []
+
+        def _drain_stderr() -> None:
+            try:
+                assert proc.stderr is not None
+                for eline in proc.stderr:
+                    err_buf.append(eline)
+            except (OSError, ValueError):
+                pass
+
+        stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
+        stderr_thread.start()
+
+        out_lines: list[str] = []
+        try:
+            assert proc.stdout is not None
+            for line in proc.stdout:
+                out_lines.append(line)
+                self._notify_stream(line)
+            try:
+                proc.wait(timeout=30)
+            except subprocess.TimeoutExpired:
+                self._kill(proc)
+                try:
+                    proc.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    pass
+        except (OSError, ValueError):
+            self._kill(proc)
+        finally:
+            watchdog.cancel()
+            stderr_thread.join(timeout=5)
+            with self._lock:
+                self._proc = None
+
+        with self._lock:
+            cancelled = self._cancelled
+        if cancelled:
+            return TurnResult(session_id, 0, 0, 0, 0.0, "", True, "cancelled", 0, proc.returncode or -1)
+        if timed_out.is_set():
+            return TurnResult(session_id, 0, 0, 0, 0.0, "", True, "other", 0, -1)
+        exit_code = proc.returncode if proc.returncode is not None else -1
+        res = parse_codex_jsonl("".join(out_lines), exit_code=exit_code, stderr="".join(err_buf))
+        if res.session_id:  # codex thread_id を覚えて次ターンの resume に使う
+            self._thread_id = res.session_id
+        return res
+
+    def cancel(self) -> None:
+        """Codex ターンをプロセスツリーごと安全に kill する (恒久・sticky)。"""
+        with self._lock:
+            self._cancelled = True
+            proc = self._proc
+        if proc is not None and proc.poll() is None:
+            self._kill(proc)
+
+    def _kill(self, proc: subprocess.Popen) -> None:
+        try:
+            if sys.platform == "win32":
+                subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                               creationflags=_NO_WINDOW, timeout=10)
+            else:
+                proc.kill()
+        except Exception:  # noqa: BLE001
+            try:
+                proc.kill()
+            except Exception:  # noqa: BLE001
+                pass
