@@ -29,9 +29,15 @@ def save_settings(path: Path, data: dict) -> bool:
     try:
         p = Path(path)
         p.parent.mkdir(parents=True, exist_ok=True)
-        tmp = p.with_name(p.name + ".tmp")
+        # tmp 名は PID でユニーク化: 複数インスタンス同時保存での replace 衝突 / .tmp 残留を避ける
+        tmp = p.with_name(f"{p.name}.{os.getpid()}.tmp")
         tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         tmp.replace(p)
         return True
     except (OSError, TypeError, ValueError):
+        try:
+            if tmp.exists():  # replace 失敗時に中間ファイルを残さない
+                tmp.unlink()
+        except (OSError, NameError):
+            pass
         return False
