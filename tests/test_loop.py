@@ -170,6 +170,70 @@ def test_summarize_result_event() -> None:
     assert items == [{"kind": "result", "duration_ms": 4300, "is_error": False}]
 
 
+def test_summarize_marks_subagent_events() -> None:
+    """Task サブエージェント由来 (parent_tool_use_id 非 null) は subagent フラグで区別する。"""
+    from llterm.host.loop import summarize_stream_event
+
+    items = summarize_stream_event({
+        "type": "assistant", "parent_tool_use_id": "toolu_01ABC",
+        "message": {"content": [{"type": "text", "text": "sub の応答"}]},
+    })
+    assert items == [{"kind": "text", "text": "sub の応答", "subagent": True}]
+    # メイン (parent_tool_use_id が null) には付かない
+    items = summarize_stream_event({
+        "type": "assistant", "parent_tool_use_id": None,
+        "message": {"content": [{"type": "text", "text": "main"}]},
+    })
+    assert items == [{"kind": "text", "text": "main"}]
+
+
+def test_summarize_rate_limit_event() -> None:
+    """レート制限 = サブスク自走の主制約。黙殺せず status / リセット時刻を伝える。"""
+    from llterm.host.loop import summarize_stream_event
+
+    items = summarize_stream_event({"type": "rate_limit_event", "rate_limit_info": {
+        "status": "rejected", "resetsAt": 1781251200, "rateLimitType": "five_hour"}})
+    assert items == [{"kind": "rate_limit", "status": "rejected",
+                      "resets_at": 1781251200, "rate_limit_type": "five_hour"}]
+
+
+# ─── 実窓サイズ (modelUsage.contextWindow) と auth 判定の限定 ──────
+
+
+def test_parse_extracts_context_window_from_model_usage() -> None:
+    stdout = json.dumps({
+        "type": "result", "subtype": "success", "is_error": False, "session_id": "w",
+        "result": "ok", "usage": {"input_tokens": 100},
+        "modelUsage": {"claude-fable-5": {"contextWindow": 1_000_000}},
+    })
+    r = parse_stream_json(stdout, exit_code=0)
+    assert r.context_window == 1_000_000
+
+
+def test_used_pct_prefers_reported_context_window(tmp_path: Path) -> None:
+    """1M 窓モデルでは設定既定 200K でなく実窓を分母にする (早すぎる rotate の防止)。"""
+    loop = _loop(FakeRunner(), tmp_path, window_tokens=200_000)
+    res = TurnResult("s", 0, 0, 140_000, 0.0, "", False, "", 1, 0, context_window=1_000_000)
+    assert loop.used_pct(res) == pytest.approx(0.14)
+    res_unknown = TurnResult("s", 0, 0, 140_000, 0.0, "", False, "", 1, 0)  # 報告なし → 設定値
+    assert loop.used_pct(res_unknown) == pytest.approx(0.70)
+
+
+def test_auth_not_inferred_from_transcript_content() -> None:
+    """transcript (tool_result 等) 内の auth 語彙で auth に誤分類しない (自走の不要停止防止)。"""
+    stdout = json.dumps({"type": "user", "message": {"content": [
+        {"type": "tool_result", "content": "please run /login — authentication docs"}]}})
+    r = parse_stream_json(stdout, exit_code=1)  # result 無し + exit 1 = エラーだが auth ではない
+    assert r.is_error is True
+    assert r.error_kind == "other"
+
+
+def test_auth_detected_from_plain_diagnostic_line() -> None:
+    """JSON でない診断行 (claude の生エラー出力) からは従来どおり auth を検出する。"""
+    r = parse_stream_json("Error: OAuth token has expired. Please run /login\n", exit_code=1)
+    assert r.error_kind == "auth"
+
+
 # ─── ClaudeRunner ストリーミング (偽の子プロセスで実走・課金ゼロ) ──
 
 
