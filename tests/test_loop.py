@@ -7,6 +7,9 @@ should_stop / on_event) を検証する。
 """
 from __future__ import annotations
 
+import json
+import threading
+import time
 from pathlib import Path
 
 import pytest
