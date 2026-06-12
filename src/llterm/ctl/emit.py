@@ -64,7 +64,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         path = CtlQueue(Path(ns.root)).submit(cmd)
     except (FileExistsError, ParseError, OSError) as e:
-        print(f"error: submit failed: {e}", file=sys.stderr)
+        print(t("cli.emit.submit_failed", error=e), file=sys.stderr)
         return 2
     print(f"submitted {cmd.id} -> {path}")
     return 0
