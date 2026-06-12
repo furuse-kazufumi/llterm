@@ -479,13 +479,14 @@ def test_progress_bar_shows_latest_response_oneline(
 def test_summary_panel_shows_full_text_and_is_selectable(
     qapp: QtWidgets.QApplication, tmp_path: Path
 ) -> None:
-    """進捗サマリ パネルは SESSION_SUMMARY.md 全文を表示し、読取専用だが選択コピー可能。"""
+    """進捗サマリ パネルは『生』モードで SESSION_SUMMARY.md 全文を表示し、読取専用だが選択コピー可能。"""
     docs = tmp_path / "docs"
     docs.mkdir()
     body = "# 認証リファクタ\n" + "\n".join(f"- 項目{i}" for i in range(30))
     (docs / "SESSION_SUMMARY.md").write_text(body, encoding="utf-8")
     win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
-    # 初期表示で既存サマリを全文ロード (2 行だけでなく全文)
+    win.chk_summary_raw.setChecked(True)  # 既定はダイジェスト → 生全文を見るトグルを ON
+    # 生モードで既存サマリを全文ロード (先頭数行でなく全文)
     assert "項目0" in win.summary_view.toPlainText()
     assert "項目29" in win.summary_view.toPlainText()
     assert win.summary_view.isReadOnly()
