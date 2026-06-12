@@ -46,6 +46,18 @@ PALETTE = {
 _OUTPUT_STYLE = "QPlainTextEdit { background-color: #1e1e2e; color: #d8dee9; border: none; }"
 
 
+def find_app_icon() -> QtGui.QIcon | None:
+    """タイトルバー/タスクバー用アイコンを assets から探す (見つからなければ None)。"""
+    here = Path(__file__).resolve()
+    bases = [here.parents[3] / "assets", here.parent / "assets"]  # repo/assets と package 同梱
+    for base in bases:
+        for name in ("llterm-icon.ico", "llterm.ico", "llterm_256.png"):
+            p = base / name
+            if p.exists():
+                return QtGui.QIcon(str(p))
+    return None
+
+
 def _coerce_number(value: object, cast: type) -> int | float | None:
     """保存値を int/float へ安全に変換する。変換不能 (型不正・手編集破損) は None。
 
