@@ -530,6 +530,11 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         real = self.runner_factory_override is None and self.chk_real.isChecked()
         runner, fallback_runners = self._resolve_providers()
+        # 無料奏者を選んだのに APIキー未設定で chain に入らなかった場合は明示する (honest disclosure)
+        free = self._free_runner()
+        if real and free is not None and not free.key_available():
+            self._append(t("gui.msg.free_player_no_key", provider=str(self.cmb_free_provider.currentData())),
+                         PALETTE["err"])
         loop_kw = dict(self.loop_kw)
         loop_kw["max_sessions"] = self.spin_sessions.value()  # 常に上限つき (暴走/レート保護)
         loop_kw["threshold"] = self.spin_threshold.value()
