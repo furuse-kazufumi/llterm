@@ -205,7 +205,8 @@ class CodexRunner:
                 creationflags=_NO_WINDOW,
             )
         except FileNotFoundError:
-            return TurnResult(session_id, 0, 0, 0, 0.0, "codex が見つかりません", True, "other", 0, 127)
+            return TurnResult(session_id, 0, 0, 0, 0.0, t("runner.codex.not_found"),
+                              True, "other", 0, 127)
         with self._lock:
             self._proc = proc
             kill_now = self._cancelled
