@@ -729,21 +729,23 @@ class SessionLoop:
 
                 rotate = used >= self.threshold or session_turns >= self.max_turns_per_session
                 if rotate:
-                    # Stop 要求の再確認: ここで確認しないと Stop 後に exit準備の新規 claude が
-                    # 起動してしまう (check-then-act 競合, 2026-06-12 レビュー所見)。
-                    if self._stop_requested():
-                        return self._finish("stopped", sessions, turns, total_cost, "stop requested")
                     # exit準備: handoff (SESSION_SUMMARY / next_plan) を書かせてから畳む。
-                    self.runner.run_turn(
+                    # force stop 済みなら run_turn が即 cancelled を返し新プロセスは起動しない
+                    # (check-then-act 競合の防止は ClaudeRunner の sticky cancel が担保)。
+                    er = self.runner.run_turn(
                         prompt=self.exit_prep_prompt, session_id=sid, resume=True, cwd=self.workdir,
                     )
                     turns += 1
+                    total_cost += er.cost_usd
                     self.ledger.append(
                         event="exit_prep", cmd_id=sid, action="rotate",
                         detail=f"used={used:.0%} turns={session_turns} → rotate",
                     )
                     self._emit("rotate", session_id=sid, session_index=sessions + 1,
                                used_pct=used, session_turns=session_turns)
+                    # rotate 地点で停止要求があれば、handoff (exit準備) 済みのまま停止する
+                    if self._stop_requested():
+                        return self._finish("stopped", sessions, turns, total_cost, "stop requested")
                     break  # → 新セッションへ rotate
 
                 (prompt, injected), resume = self._continue_prompt(), True  # 閾値未満: 同セッション継続
