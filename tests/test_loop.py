@@ -338,8 +338,7 @@ def test_rate_limit_auto_resume_waits_then_retries(tmp_path: Path) -> None:
         now_fn=now, sleep_fn=sleep,
         on_event=lambda k, d: events.append(k),
     )
-    # FakeRunner は rate_limit_resets_at を返さないので、TurnResult を直接組む形に差し替え
-    outcome = loop.run()
+    outcome = loop.run()  # resets_at=0 → fallback 待ち → 再試行 (FakeRunner 2 ターン目で成功)
     assert outcome.stop_reason == "max_sessions"
     assert "rate_limited" in events
     assert "rate_limit_resumed" in events
