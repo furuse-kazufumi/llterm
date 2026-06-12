@@ -595,6 +595,7 @@ class SessionLoop:
     runner: TurnRunner
     workdir: Path
     ledger: Ledger
+    fallback_runners: Sequence[TurnRunner] = ()  # レート制限時に切り替えるプロバイダ (優先順)
     resume_prompt: str = DEFAULT_RESUME_PROMPT
     exit_prep_prompt: str = DEFAULT_EXIT_PREP_PROMPT
     continue_prompt: str = DEFAULT_CONTINUE_PROMPT
