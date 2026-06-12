@@ -62,7 +62,7 @@ class MainWindow(QtWidgets.QMainWindow):
                        real_default=real_default, rad_default=rad_default)
 
     # ---- UI 構築 ----
-    def _build_ui(self, *, initial_workdir: Path | None, real_default: bool) -> None:
+    def _build_ui(self, *, initial_workdir: Path | None, real_default: bool, rad_default: bool) -> None:
         self.setWindowTitle("llterm — Claude Code 自走ループ (GUI)")
         central = QtWidgets.QWidget()
         self.setCentralWidget(central)
