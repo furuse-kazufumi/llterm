@@ -421,24 +421,36 @@ class ClaudeRunner:
                 pass
 
     def run_turn(self, *, prompt: str, session_id: str, resume: bool, cwd: Path) -> TurnResult:
+        exe_err = self._exe_error()
+        if exe_err:
+            return TurnResult(session_id, 0, 0, 0, 0.0, exe_err, True, "other", 0, 127)
         args = self._build_args(prompt=prompt, session_id=session_id, resume=resume)
+        # cancel は恒久 (リセットしない): Stop 後〜次ターン起動前に届いた cancel を消失させない。
+        # GUI は Start ごとに新しい runner を作るので、次の走行に持ち越されることはない。
         with self._lock:
-            self._cancelled = False
+            if self._cancelled:
+                return TurnResult(session_id, 0, 0, 0, 0.0, "", True, "cancelled", 0, -1)
         try:
             proc = subprocess.Popen(
                 args, cwd=str(cwd), stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 text=True, encoding="utf-8", errors="replace", bufsize=1,
+                creationflags=_NO_WINDOW,
                 env=_subscription_env() if self.use_subscription else None,
             )
         except FileNotFoundError:
             return TurnResult(session_id, 0, 0, 0, 0.0, "", True, "other", 0, 127)
         with self._lock:
             self._proc = proc
+            kill_now = self._cancelled  # Popen 中 (=_proc 未設定) に cancel が来た窓を閉じる
+        if kill_now:
+            self._kill(proc)
 
         timed_out = threading.Event()
 
         def _on_timeout() -> None:
+            if proc.poll() is not None:
+                return  # 正常完了との同時発火 — 完了済みの結果をタイムアウト扱いにしない
             timed_out.set()
             self._kill(proc)
 
@@ -465,7 +477,14 @@ class ClaudeRunner:
             for line in proc.stdout:  # 行単位リアルタイム読み — communicate() の全ブロックを廃止
                 out_lines.append(line)
                 self._notify_stream(line)
-            proc.wait()
+            try:
+                proc.wait(timeout=30)  # stdout を閉じても居座る異常な子に timeout まで付き合わない
+            except subprocess.TimeoutExpired:
+                self._kill(proc)
+                try:
+                    proc.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    pass
         except (OSError, ValueError):
             self._kill(proc)
         finally:
@@ -480,10 +499,15 @@ class ClaudeRunner:
             return TurnResult(session_id, 0, 0, 0, 0.0, "", True, "cancelled", 0, proc.returncode or -1)
         if timed_out.is_set():
             return TurnResult(session_id, 0, 0, 0, 0.0, "", True, "other", 0, -1)
-        return parse_stream_json("".join(out_lines), exit_code=proc.returncode, stderr="".join(err_buf))
+        exit_code = proc.returncode if proc.returncode is not None else -1
+        return parse_stream_json("".join(out_lines), exit_code=exit_code, stderr="".join(err_buf))
 
     def cancel(self) -> None:
-        """実行中の claude ターンをプロセスツリーごと安全に kill する (Stop / 終了用)。"""
+        """claude ターンをプロセスツリーごと安全に kill する (Stop / 終了用)。
+
+        恒久的: 以後この runner の run_turn は新しい claude を起動せず cancelled を返す
+        (Stop 直後のターン境界レースで新プロセスが生まれるのを構造的に防ぐ)。
+        """
         with self._lock:
             self._cancelled = True
             proc = self._proc
@@ -494,7 +518,8 @@ class ClaudeRunner:
         try:
             if sys.platform == "win32":  # 子(node 等)も含めツリーで止める
                 subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)],
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                               creationflags=_NO_WINDOW, timeout=10)
             else:
                 proc.kill()
         except Exception:  # noqa: BLE001
