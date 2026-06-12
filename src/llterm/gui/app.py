@@ -483,16 +483,16 @@ class MainWindow(QtWidgets.QMainWindow):
         self._set_cost(0.0)
         effort = str(self.cmb_effort.currentData() or "")
         if real:
-            mode = "実claude(API=実課金)" if self._cost_billed else "実claude(サブスク=課金なし)"
+            mode = t("gui.mode.real_billed") if self._cost_billed else t("gui.mode.real_subscription")
         else:
-            mode = "仮想claude(課金なし)"
+            mode = t("gui.mode.virtual")
         effort_note = f" effort={effort}" if real and effort else ""
         # model はまだ未確定 (init イベントで判明) — effort だけ先に出す
         self.lbl_model.setText(f"model: …{('  effort=' + effort) if real and effort else ''}")
-        self.lbl_state.setText(f"running [{mode}] {tmpl.key}")
+        self.lbl_state.setText(t("gui.state.running", mode=mode, template=tmpl.key))
         self._run_effort = effort if real else ""  # init で model と併記するため保持
-        self._append(f"=== loop 開始 [{mode}] template={tmpl.key} workdir={workdir} "
-                     f"max_session={loop_kw['max_sessions']}{effort_note} ===",
+        self._append(t("gui.msg.loop_start", mode=mode, template=tmpl.key, workdir=workdir,
+                       max_sessions=loop_kw["max_sessions"], effort_note=effort_note),
                      PALETTE["session"], bold=True, ts=True)
         self._save_settings()  # クラッシュしても Start 時点の設定が次回復元される
 
