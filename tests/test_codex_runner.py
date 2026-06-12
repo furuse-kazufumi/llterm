@@ -147,8 +147,11 @@ def test_build_args_passes_prompt_via_stdin_sentinel(tmp_path: Path) -> None:
 
 _ECHO_STDIN_CODEX = '''\
 import json, sys
+# 実 codex と同じく stdin/stdout を UTF-8 で扱う (本体は Popen(encoding="utf-8") で書込)
+sys.stdin.reconfigure(encoding="utf-8")
+sys.stdout.reconfigure(encoding="utf-8")
 data = sys.stdin.read()  # codex は "-" で stdin からプロンプト全文を読む
-def p(ev): print(json.dumps(ev), flush=True)
+def p(ev): print(json.dumps(ev, ensure_ascii=False), flush=True)
 p({"type": "thread.started", "thread_id": "t"})
 p({"type": "item.completed", "item": {"type": "agent_message", "text": data}})
 p({"type": "turn.completed", "usage": {"input_tokens": 1}})
