@@ -295,6 +295,8 @@ def test_loop_runs_end_to_end_with_virtual_claude(
     assert "rotate" in text                      # 70% 超で rotate した
     assert "stopped: max_sessions" in text       # 2 セッションで停止
     assert "[virtual claude]" in text            # 仮想 claude の出力が描画された
+    assert "⚙ VirtualTool" in text               # stream イベントが worker 経由で逐次描画された
+    assert text.count("turn #1)") == 1           # ストリーム済み応答は turn 完了時に二重表示しない
     assert win.btn_start.isEnabled()             # 終了後 Start が再び有効
     assert not win.btn_stop.isEnabled()
     assert win.cmb_project.isEnabled()           # 終了後コンボボックス再有効
