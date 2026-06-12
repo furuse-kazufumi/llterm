@@ -592,7 +592,7 @@ class MainWindow(QtWidgets.QMainWindow):
         elif kind == "turn":
             pct = int(round(float(data.get("used_pct", 0.0)) * 100))
             self.ctx_bar.setValue(min(pct, 100))
-            self.lbl_cost.setText(f"cost(報告値): ${float(data.get('total_cost', 0.0)):.4f}")
+            self._set_cost(float(data.get("total_cost", 0.0)))
             self.lbl_session.setText(self._session_label(data.get("session_index"), data.get("turn")))
             err = data.get("error_kind")
             head = f"[turn {data.get('turn')}] 応答受信 ctx {pct}%" + (f"  ERR={err}" if err else "")
