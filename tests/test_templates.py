@@ -36,6 +36,16 @@ def test_green_keeper_and_doc_update_set_resume() -> None:
     assert "resume_prompt" in templates.get("doc_update").build("")
 
 
+def test_security_audit_template() -> None:
+    out = templates.get("security_audit").build("")
+    rp = out["resume_prompt"]
+    assert "scan" in rp                       # /scan 連携
+    assert "raptor.py" in rp
+    assert "SECURITY_AUDIT" in rp             # 報告先
+    assert "read-only" in rp                  # 監査は read-only (修正しない)
+    assert "continue_prompt" in out
+
+
 def test_get_unknown_raises() -> None:
     import pytest
 
