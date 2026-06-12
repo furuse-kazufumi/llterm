@@ -540,17 +540,16 @@ class MainWindow(QtWidgets.QMainWindow):
     def _promote_clicked(self) -> None:
         domain = self.edit_param.text().strip()
         if not domain:
-            self._append("error: 公開する分野名を引数欄に入れてください", PALETTE["err"])
+            self._append(t("gui.msg.promote_need_domain"), PALETTE["err"])
             return
         stg = rad.staging_dir(domain, self.rad_docs_root)
         if not stg.is_dir():
-            self._append(f"error: staging がありません: {stg}", PALETTE["err"])
+            self._append(t("gui.msg.promote_no_staging", staging=stg), PALETTE["err"])
             return
         reply = QtWidgets.QMessageBox.question(
-            self, "RAD 公開ゲート",
-            f"分野「{domain}」の staging を共有 live へ公開しますか?\n"
-            f"  staging: {stg}\n  live: {rad.live_dir(domain, self.rad_docs_root)}\n"
-            f"既存 live はバックアップされます。",
+            self, t("gui.dialog.promote.title"),
+            t("gui.dialog.promote.body", domain=domain, staging=stg,
+              live=rad.live_dir(domain, self.rad_docs_root)),
         )
         if reply == QtWidgets.QMessageBox.StandardButton.Yes:
             self._do_promote(domain)
