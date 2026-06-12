@@ -63,6 +63,18 @@ MESSAGES: dict[str, dict[str, str]] = {
         "ja": "codex が見つかりません",
         "en": "codex was not found",
     },
+    "runner.openai.no_key": {
+        "ja": "{provider}: 環境変数 {env} に API キーが未設定です (fail-closed)",
+        "en": "{provider}: API key env var {env} is not set (fail-closed)",
+    },
+    "runner.openai.bad_provider": {
+        "ja": "provider '{provider}' を解決できません (base_url/model 未設定)",
+        "en": "cannot resolve provider '{provider}' (missing base_url/model)",
+    },
+    "runner.openai.bad_response": {
+        "ja": "OpenAI 互換 API の応答を解析できませんでした",
+        "en": "failed to parse the OpenAI-compatible API response",
+    },
     # ─── RAD 公開ゲート ──────────────────────────────────────────────
     "rad.staging_missing": {
         "ja": "staging が存在しません: {staging}",
