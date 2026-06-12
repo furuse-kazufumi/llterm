@@ -169,6 +169,20 @@ MESSAGES: dict[str, dict[str, str]] = {
               "working and switches back automatically once Claude's reset time "
               "arrives (ChatGPT Pro subscription = no extra billing). Real claude only",
     },
+    "gui.check.codex_first": {
+        "ja": "Codex 優先",
+        "en": "Codex first",
+    },
+    "gui.tip.codex_first": {
+        "ja": "ON: 作業の主役を Codex (ChatGPT Pro サブスク=Claude トークン非消費) にし、"
+              "Claude は保険 (Codex がレート制限のとき継続) に回す = token 節約。"
+              "OFF でも機械的テンプレ (green_keeper/rad_expand/doc_update/security_audit) は "
+              "自動で Codex 主になる。実 claude のみ有効。",
+        "en": "ON: makes Codex (ChatGPT Pro subscription = no Claude tokens) the primary "
+              "worker and keeps Claude as backup (continues if Codex is rate-limited) = token "
+              "saving. Even when OFF, mechanical templates (green_keeper/rad_expand/doc_update/"
+              "security_audit) auto-prefer Codex. Real claude only.",
+    },
     "gui.label.max_sessions": {
         "ja": "最大session:",
         "en": "Max sessions:",
