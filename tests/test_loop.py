@@ -585,6 +585,31 @@ def test_claude_runner_defaults_to_subscription() -> None:
     assert ClaudeRunner().use_subscription is True
 
 
+# ─── effort (--effort フラグ) ─────────────────────────────────────
+
+
+def test_build_args_appends_effort_when_set() -> None:
+    from llterm.host.loop import ClaudeRunner
+
+    args = ClaudeRunner(effort="max")._build_args(prompt="p", session_id="s", resume=False)
+    assert "--effort" in args
+    assert args[args.index("--effort") + 1] == "max"
+
+
+def test_build_args_omits_effort_by_default() -> None:
+    from llterm.host.loop import ClaudeRunner
+
+    args = ClaudeRunner()._build_args(prompt="p", session_id="s", resume=False)
+    assert "--effort" not in args  # 既定 (空) は claude 既定に委ねる
+
+
+def test_build_args_ignores_invalid_effort() -> None:
+    from llterm.host.loop import ClaudeRunner
+
+    args = ClaudeRunner(effort="ultracode")._build_args(prompt="p", session_id="s", resume=False)
+    assert "--effort" not in args  # vanilla claude に無い値 (ultracode 等) は付けない
+
+
 # ─── RAD 研究接地ヒント ───────────────────────────────────────────
 
 
