@@ -184,7 +184,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.output = QtWidgets.QPlainTextEdit()
         self.output.setReadOnly(True)
-        self.output.setMaximumBlockCount(5000)  # リングバッファ: 長時間でもメモリが膨張しない (R3)
+        self.output.setMaximumBlockCount(5000)  # リングバッファ (上限は表示行数でなく append エントリ数)
         self.output.setStyleSheet(_OUTPUT_STYLE)  # ダーク背景 + セマンティックカラー (PALETTE)
         mono = QtGui.QFont("Consolas")
         mono.setStyleHint(QtGui.QFont.StyleHint.Monospace)
