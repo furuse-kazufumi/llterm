@@ -536,7 +536,7 @@ class MainWindow(QtWidgets.QMainWindow):
             sid = str(data.get("session_id", ""))[:8]
             self.lbl_session.setText(self._session_label(idx))
             self.ctx_bar.setValue(0)  # 新セッションは fresh context = 0%
-            self._append(f"\n--- session {self._session_label(idx)} 開始 ({sid}) ---",
+            self._append(f"\n--- {self._session_label(idx)} 開始 ({sid}) ---",
                          PALETTE["session"], bold=True)
             self._streamed_text = 0
         elif kind == "task":
