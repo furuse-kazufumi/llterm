@@ -151,6 +151,57 @@ def test_maxcost_zero_means_unlimited(qapp: QtWidgets.QApplication, tmp_path: Pa
     _run_until_finished(qapp, win)
 
 
+# ─── テンプレ選択 (機能ごと) + 用途ツールチップ + RAD 公開ゲート ──
+
+
+def test_template_combobox_lists_all_with_tooltips(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path)
+    assert win.cmb_template.count() == len(templates.TEMPLATES)
+    for i in range(win.cmb_template.count()):
+        tip = win.cmb_template.itemData(i, QtCore.Qt.ItemDataRole.ToolTipRole)
+        assert tip  # 各テンプレに用途ツールチップ(description)が入る
+
+
+def test_template_default_and_param_enable(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, template_default="rad_expand")
+    assert win.cmb_template.currentData() == "rad_expand"
+    assert win.edit_param.isEnabled() is True             # rad_expand は引数(分野名)が要る
+    assert win.cmb_template.toolTip()                      # 選択中テンプレの用途が tooltip に
+    win.cmb_template.setCurrentIndex(win.cmb_template.findData("general"))
+    assert win.edit_param.isEnabled() is False            # general は引数不要
+
+
+def test_template_feeds_resume_prompt(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path,
+                     runner_factory=lambda: VirtualClaudeRunner(delay=0.0), max_sessions=1,
+                     template_default="rad_expand")
+    win.edit_param.setText("robotics")
+    win.start_loop()
+    assert win.worker is not None
+    rp = win.worker._loop_kw.get("resume_prompt", "")
+    assert "robotics" in rp and "staging" in rp            # テンプレ prompt が loop に渡る
+    _run_until_finished(qapp, win)
+
+
+def test_promote_via_gui_moves_staging_to_live(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, rad_docs_root=tmp_path)  # 実 D:/docs に触れない
+    stg = rad.staging_dir("robotics", tmp_path)
+    stg.mkdir(parents=True)
+    (stg / "INDEX.md").write_text("x", encoding="utf-8")
+    win.edit_param.setText("robotics")
+    win._do_promote("robotics")  # 確認ダイアログを介さず実処理 (ゲートの中身)
+    assert (rad.live_dir("robotics", tmp_path) / "INDEX.md").exists()
+    assert "公開:" in win.output.toPlainText()
+
+
+def test_promote_via_gui_reports_error_without_staging(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, rad_docs_root=tmp_path)
+    win._do_promote("nope")
+    assert "公開失敗" in win.output.toPlainText()  # staging 無し → fail-closed
+
+
 # ─── 描画スロット (スレッドなし・直接呼び出し) ─────────────────────
 
 
