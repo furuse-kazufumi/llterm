@@ -665,6 +665,25 @@ class SessionLoop:
         # rotation = 新 session-id = fresh context。UUID 衝突は事実上ゼロ。
         return str(uuid.uuid4())
 
+    def _wait_until(self, resets_at: int) -> bool:
+        """resetsAt (epoch秒) まで中断可能に待つ。Stop されたら False (= 自走を止める)。
+
+        resetsAt 不明/過去なら固定待ち。max_rate_limit_wait_s で 1 回の待機を上限する。
+        sleep は短い刻みで行い should_stop を頻繁に確認する (待機中も Stop が効く)。
+        """
+        now = self.now_fn()
+        if resets_at and resets_at > now:
+            target = float(resets_at) + 5.0  # リセット直後の取りこぼし回避に少し余裕
+        else:
+            target = now + self.rate_limit_fallback_wait_s
+        target = min(target, now + self.max_rate_limit_wait_s)  # 1 回の待機上限
+        while self.now_fn() < target:
+            if self._stop_requested():
+                return False
+            remaining = target - self.now_fn()
+            self.sleep_fn(min(2.0, max(0.0, remaining)))
+        return True
+
     def _handoff(self, sid: str) -> float:
         """停止要求時の作業記録 (exit準備 = SESSION_SUMMARY 更新) を 1 ターン回す。
 
