@@ -938,12 +938,11 @@ def main(argv: list[str] | None = None) -> int:
 
     workdir = Path(args.workdir).resolve()
     if not workdir.is_dir():
-        print(f"error: --workdir が存在しません: {workdir}", file=sys.stderr)
+        print(t("cli.loop.workdir_missing", workdir=workdir), file=sys.stderr)
         return 2
 
     if not args.dry_run and args.max_sessions is None and args.max_cost is None:
-        print("error: --max-sessions か --max-cost のどちらかを指定してください "
-              "(無制限自走は課金保護のため拒否)", file=sys.stderr)
+        print(t("cli.loop.no_budget"), file=sys.stderr)
         return 2
 
     ledger_path = Path(args.ledger) if args.ledger else workdir / ".llterm" / "loop_ledger.jsonl"
