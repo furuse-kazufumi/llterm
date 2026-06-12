@@ -782,7 +782,7 @@ def main(argv: list[str] | None = None) -> int:
         if max_sessions is None:
             max_sessions = 2
     else:
-        runner = ClaudeRunner()
+        runner = ClaudeRunner(effort=args.effort)
 
     from llterm import templates as _templates
 
