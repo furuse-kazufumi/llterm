@@ -50,6 +50,9 @@ class FakeRunner:
             raw_exit=int(spec.get("exit", 0)),
         )
 
+    def cancel(self) -> None:
+        pass
+
 
 def _loop(runner: FakeRunner, tmp_path: Path, **kw: object) -> SessionLoop:
     return SessionLoop(
