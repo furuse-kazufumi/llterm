@@ -107,6 +107,130 @@ def test_parse_tolerates_broken_lines() -> None:
     assert r.input_tokens == 5
 
 
+# ─── summarize_stream_event (リアルタイム表示の要約・純関数) ──────
+
+
+def test_summarize_init_event() -> None:
+    from llterm.host.loop import summarize_stream_event
+
+    items = summarize_stream_event(
+        {"type": "system", "subtype": "init", "model": "claude-fable-5", "session_id": "abc-123"}
+    )
+    assert items == [{"kind": "init", "model": "claude-fable-5", "session_id": "abc-123"}]
+
+
+def test_summarize_skips_hook_and_rate_limit_events() -> None:
+    from llterm.host.loop import summarize_stream_event
+
+    assert summarize_stream_event({"type": "system", "subtype": "hook_started"}) == []
+    assert summarize_stream_event({"type": "system", "subtype": "hook_response"}) == []
+    assert summarize_stream_event({"type": "rate_limit_event"}) == []
+    assert summarize_stream_event("not a dict") == []
+    assert summarize_stream_event({"type": "assistant", "message": "broken"}) == []
+
+
+def test_summarize_assistant_text_and_tool_use() -> None:
+    from llterm.host.loop import summarize_stream_event
+
+    items = summarize_stream_event({
+        "type": "assistant",
+        "message": {"content": [
+            {"type": "text", "text": "応答テキスト"},
+            {"type": "tool_use", "name": "Bash", "input": {"command": "echo hi", "timeout": 5}},
+            {"type": "tool_use", "name": "Edit", "input": {"file_path": "D:/x.py"}},
+        ]},
+    })
+    assert items[0] == {"kind": "text", "text": "応答テキスト"}
+    assert items[1] == {"kind": "tool_use", "name": "Bash", "detail": "echo hi"}
+    assert items[2] == {"kind": "tool_use", "name": "Edit", "detail": "D:/x.py"}
+
+
+def test_summarize_tool_result_string_and_blocks() -> None:
+    from llterm.host.loop import summarize_stream_event
+
+    items = summarize_stream_event({
+        "type": "user",
+        "message": {"content": [
+            {"type": "tool_result", "content": "line1\nline2", "is_error": False},
+            {"type": "tool_result", "is_error": True,
+             "content": [{"type": "text", "text": "boom happened"}]},
+        ]},
+    })
+    assert items[0] == {"kind": "tool_result", "is_error": False, "preview": "line1"}
+    assert items[1] == {"kind": "tool_result", "is_error": True, "preview": "boom happened"}
+
+
+def test_summarize_result_event() -> None:
+    from llterm.host.loop import summarize_stream_event
+
+    items = summarize_stream_event({"type": "result", "duration_ms": 4300, "is_error": False})
+    assert items == [{"kind": "result", "duration_ms": 4300, "is_error": False}]
+
+
+# ─── ClaudeRunner ストリーミング (偽の子プロセスで実走・課金ゼロ) ──
+
+
+_FAKE_CHILD = '''\
+import json, sys, time
+def p(ev):
+    print(json.dumps(ev), flush=True)
+p({"type": "system", "subtype": "init", "model": "fake-model", "session_id": "fake-sid"})
+p({"type": "assistant", "message": {"content": [
+    {"type": "text", "text": "streamed hello"},
+    {"type": "tool_use", "name": "Bash", "input": {"command": "echo hi"}}]}})
+p({"type": "user", "message": {"content": [
+    {"type": "tool_result", "content": "tool output", "is_error": False}]}})
+p({"type": "result", "subtype": "success", "is_error": False, "session_id": "fake-sid",
+   "result": "done", "num_turns": 1, "total_cost_usd": 0.01, "duration_ms": 10,
+   "usage": {"input_tokens": 100, "output_tokens": 20,
+             "cache_read_input_tokens": 50, "cache_creation_input_tokens": 0}})
+'''
+
+
+def _scripted_claude_runner(tmp_path: Path, on_stream) -> object:
+    """_build_args を差し替え、claude の代わりに偽 JSONL を吐く python 子を回す。"""
+    import sys as _sys
+
+    from llterm.host.loop import ClaudeRunner
+
+    script = tmp_path / "fake_claude.py"
+    script.write_text(_FAKE_CHILD, encoding="utf-8")
+
+    class ScriptedRunner(ClaudeRunner):
+        def _build_args(self, *, prompt: str, session_id: str, resume: bool) -> list[str]:
+            return [_sys.executable, str(script)]
+
+    return ScriptedRunner(on_stream=on_stream)
+
+
+def test_claude_runner_streams_events_and_parses_result(tmp_path: Path) -> None:
+    """ターン完了を待たずに on_stream へ要約イベントが流れ、最終 TurnResult も正しい。
+
+    これが「llterm に claude の応答が表示されない」バグの回帰テスト —
+    旧実装は communicate() 全ブロックで、ターン中に何も通知されなかった。
+    """
+    seen: list[dict] = []
+    runner = _scripted_claude_runner(tmp_path, seen.append)
+    res = runner.run_turn(prompt="p", session_id="fake-sid", resume=False, cwd=tmp_path)
+    kinds = [it["kind"] for it in seen]
+    assert kinds == ["init", "text", "tool_use", "tool_result", "result"]
+    assert {"kind": "text", "text": "streamed hello"} in seen
+    assert res.text == "done"
+    assert res.is_error is False
+    assert res.context_tokens == 150  # input 100 + cache_read 50
+    assert res.cost_usd == pytest.approx(0.01)
+
+
+def test_claude_runner_stream_observer_failure_is_safe(tmp_path: Path) -> None:
+    def boom(item: dict) -> None:
+        raise RuntimeError("observer exploded")
+
+    runner = _scripted_claude_runner(tmp_path, boom)
+    res = runner.run_turn(prompt="p", session_id="fake-sid", resume=False, cwd=tmp_path)
+    assert res.text == "done"  # 表示側の例外はターンを殺さない (fail-safe)
+    assert res.is_error is False
+
+
 # ─── used_pct ────────────────────────────────────────────────────
 
 
