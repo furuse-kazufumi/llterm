@@ -631,6 +631,15 @@ class MainWindow(QtWidgets.QMainWindow):
         self.lbl_cost.setStyleSheet(f"color:{PALETTE['err']};font-weight:bold"
                                     if self._cost_billed else "")
 
+    def _set_busy_cursor(self, on: bool) -> None:
+        """砂時計 (待機) カーソルの ON/OFF。set/restore のバランスを保つ。"""
+        if on and not self._busy_cursor:
+            QtWidgets.QApplication.setOverrideCursor(QtGui.QCursor(QtCore.Qt.CursorShape.WaitCursor))
+            self._busy_cursor = True
+        elif not on and self._busy_cursor:
+            QtWidgets.QApplication.restoreOverrideCursor()
+            self._busy_cursor = False
+
     def _set_progress(self, text: str, *, prefix: str = "進捗") -> None:
         """進捗バーを 1 行要約で更新する (全文はツールチップ)。空テキストは無視。"""
         line = next((ln.strip() for ln in str(text).splitlines() if ln.strip()), "")
