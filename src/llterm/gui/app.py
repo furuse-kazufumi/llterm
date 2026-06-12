@@ -556,18 +556,35 @@ class MainWindow(QtWidgets.QMainWindow):
         self._append(msg, PALETTE["inject"])
 
     def closeEvent(self, event: QtGui.QCloseEvent) -> None:  # noqa: N802 (Qt override 名)
-        """ウィンドウを閉じる際、ループ実行中なら停止を要求してから閉じる。
+        """× で閉じる際、ループ実行中なら確認ダイアログを出す (安全設計)。
 
-        Stop ボタンと同じく次ターン境界で止まる。現在の claude ターン完了を最大数秒待ち、
-        超過時はそのまま閉じる(child の孤児化を最小化)。
+        「はい」→ graceful 停止 (作業内容を記録) してから閉じる。記録完了は _on_finished が
+        検知し、そこで実際に close() する (記録中はウィンドウを開いたまま砂時計表示)。
+        「いいえ」→ 閉じない。実行中でなければそのまま閉じる。
         """
+        if self.worker is not None and self.worker.isRunning():
+            if self._closing_after_stop:
+                event.ignore()  # 既に graceful 停止中 — 二重ダイアログを出さない
+                return
+            reply = QtWidgets.QMessageBox.question(
+                self, "終了確認",
+                "ループが実行中です。作業内容を記録して安全に終了しますか?\n"
+                "「はい」= 記録してから終了 /「いいえ」= 終了しない\n"
+                "(記録完了までウィンドウは開いたまま・砂時計表示になります)",
+                QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
+                QtWidgets.QMessageBox.StandardButton.No,
+            )
+            if reply != QtWidgets.QMessageBox.StandardButton.Yes:
+                event.ignore()
+                return
+            self._closing_after_stop = True  # 記録完了後に _on_finished が close() する
+            event.ignore()
+            self.stop_loop()  # graceful 停止 (handoff + 砂時計)
+            return
         try:
             self._save_settings()  # 最後の設定を次回起動時に復元する
-        except Exception:  # noqa: BLE001 — 保存失敗で worker 停止 (子プロセス kill) をスキップさせない
+        except Exception:  # noqa: BLE001
             pass
-        if self.worker is not None and self.worker.isRunning():
-            self.worker.request_stop()  # 実行中ターンを kill → ループは即終了するので短く待てば足りる
-            self.worker.wait(8000)
         event.accept()
 
     # ---- ワーカーからのイベント (メインスレッドで実行) ----
