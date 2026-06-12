@@ -247,6 +247,8 @@ class MainWindow(QtWidgets.QMainWindow):
         loop_kw["window_tokens"] = self.spin_window.value()
         max_cost = self.spin_maxcost.value()
         loop_kw["max_total_cost_usd"] = max_cost if max_cost > 0 else None
+        tmpl = templates.get(self.cmb_template.currentData())
+        loop_kw.update(tmpl.build(self.edit_param.text()))  # テンプレが resume/continue を上書き
         if self.chk_rad.isChecked():
             from llterm.host.loop import DEFAULT_RAD_HINT
 
