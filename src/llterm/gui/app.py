@@ -315,6 +315,7 @@ class MainWindow(QtWidgets.QMainWindow):
             "max_cost": self.spin_maxcost.value(),
             "template": self.cmb_template.currentData(),
             "param": self.edit_param.text(),
+            "effort": self.cmb_effort.currentData(),
             "geometry": bytes(self.saveGeometry().toHex()).decode("ascii"),
         })
 
