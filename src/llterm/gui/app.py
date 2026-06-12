@@ -271,6 +271,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.cmb_project, self.chk_real, self.chk_rad, self.spin_sessions,
             self.spin_threshold, self.spin_window, self.spin_maxcost,
             self.cmb_template, self.edit_param, self.btn_publish, self.chk_autonomy,
+            self.cmb_effort,
         ]
 
     def _populate_projects(self, initial_workdir: Path | None) -> None:
