@@ -157,6 +157,7 @@ class MainWindow(QtWidgets.QMainWindow):
                        autonomy_default=autonomy_default,
                        param_default=str(saved.get("param") or ""),
                        effort_default=effort_default,
+                       model_default=model_default,
                        codex_fallback_default=codex_fallback_default)
         geo = saved.get("geometry")
         if isinstance(geo, str) and geo:  # ウィンドウ位置/サイズの復元 (壊れた値は無視)
