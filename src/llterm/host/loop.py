@@ -667,6 +667,33 @@ class SessionLoop:
         # rotation = 新 session-id = fresh context。UUID 衝突は事実上ゼロ。
         return str(uuid.uuid4())
 
+    # ─── provider chain (レート制限時のモデル使い分け) ───────────────
+
+    @property
+    def _chain(self) -> list[TurnRunner]:
+        """primary + fallback の優先順リスト。index 0 = primary (Claude)。"""
+        return [self.runner, *self.fallback_runners]
+
+    @staticmethod
+    def provider_name(runner: TurnRunner) -> str:
+        """表示用プロバイダ名 (claude / codex / クラス名)。"""
+        cls = type(runner).__name__
+        return {"ClaudeRunner": "claude", "CodexRunner": "codex"}.get(cls, cls)
+
+    def _select_available(self, now: float, *, exclude: int | None = None) -> int | None:
+        """利用可能 (ブロック解除済) な最優先プロバイダの index。無ければ None。"""
+        for idx in range(len(self._chain)):
+            if idx == exclude:
+                continue
+            if self._blocked_until.get(idx, 0.0) <= now:
+                return idx
+        return None
+
+    def _earliest_unblock(self) -> float:
+        """全プロバイダがブロック中のとき、最も早い解除時刻。無ければ 0。"""
+        times = [t for t in self._blocked_until.values() if t > 0.0]
+        return min(times) if times else 0.0
+
     def _wait_until(self, resets_at: int) -> bool:
         """resetsAt (epoch秒) まで中断可能に待つ。Stop されたら False (= 自走を止める)。
 
