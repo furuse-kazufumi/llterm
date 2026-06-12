@@ -128,6 +128,7 @@ def parse_stream_json(stdout: str, *, exit_code: int, stderr: str = "") -> TurnR
     num_turns = 0
     result_seen = False
     context_window = 0
+    last_ctx_usage: dict = {}  # 最後のメイン assistant の message.usage = 瞬間コンテキスト占有
     plain_lines: list[str] = []  # JSON でない行 = claude の診断/エラー出力 (auth 判定に使う)
 
     for line in stdout.splitlines():
@@ -144,6 +145,13 @@ def parse_stream_json(stdout: str, *, exit_code: int, stderr: str = "") -> TurnR
         etype = ev.get("type")
         if etype == "system" and ev.get("session_id"):
             session_id = str(ev["session_id"])
+        elif etype == "assistant" and not ev.get("parent_tool_use_id"):
+            # メイン (非サブエージェント) の各 assistant の usage = その時点の窓占有量。
+            # サブエージェントは別コンテキストなので除外 (メイン窓の占有に含めない)。
+            msg = ev.get("message")
+            mu = msg.get("usage") if isinstance(msg, dict) else None
+            if isinstance(mu, dict) and mu:
+                last_ctx_usage = mu
         elif etype == "result":
             result_seen = True
             session_id = str(ev.get("session_id", session_id))
@@ -162,10 +170,15 @@ def parse_stream_json(stdout: str, *, exit_code: int, stderr: str = "") -> TurnR
 
     input_tokens = _as_int(usage.get("input_tokens"))
     output_tokens = _as_int(usage.get("output_tokens"))
+    # コンテキスト占有 (rotate 判定の分子) は最後のメイン assistant の usage を使う。
+    # result.usage はターン内全 API 往復の累計で、キャッシュ再読込が往復ごとに重複加算され
+    # 実際の窓占有を大幅に過大評価する (実測: 単純ターンで約 2x、ツール多用で窓サイズ超過 156%)。
+    # last_ctx_usage が取れない場合 (error / assistant 無し) のみ result.usage にフォールバック。
+    occ = last_ctx_usage or usage
     context_tokens = (
-        input_tokens
-        + _as_int(usage.get("cache_read_input_tokens"))
-        + _as_int(usage.get("cache_creation_input_tokens"))
+        _as_int(occ.get("input_tokens"))
+        + _as_int(occ.get("cache_read_input_tokens"))
+        + _as_int(occ.get("cache_creation_input_tokens"))
     )
 
     error_kind = ""
