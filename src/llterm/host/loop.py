@@ -595,9 +595,13 @@ class SessionLoop:
         return self._augment(base)
 
     def used_pct(self, res: TurnResult) -> float:
-        if self.window_tokens <= 0:
+        # result イベントの実窓サイズ (modelUsage.contextWindow) があればそちらを分母にする。
+        # 設定既定 200K のまま 1M 窓モデル (fable-5 等) で回すと使用率を 5 倍過大評価し
+        # 早すぎる rotate を繰り返すため (2026-06-12 レビュー所見)。
+        denom = res.context_window or self.window_tokens
+        if denom <= 0:
             return 0.0
-        return res.context_tokens / self.window_tokens
+        return res.context_tokens / denom
 
     def _new_session_id(self) -> str:
         # rotation = 新 session-id = fresh context。UUID 衝突は事実上ゼロ。
