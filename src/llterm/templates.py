@@ -9,8 +9,11 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 
 from llterm.rad import build_expand_prompt, expand_continue_prompt
+
+RAPTOR_PY = Path("D:/tools/raptor/raptor.py")
 
 
 @dataclass(frozen=True)
