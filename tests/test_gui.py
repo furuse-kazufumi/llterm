@@ -114,6 +114,42 @@ def test_rad_checkbox_adds_hint_to_loop_kw(qapp: QtWidgets.QApplication, tmp_pat
     _run_until_finished(qapp, win)
 
 
+# ─── CLI 引数 ↔ GUI コントロールの同等性 (threshold / window / max-cost) ──
+
+
+def test_settings_widgets_init_from_loop_kw(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path,
+                     threshold=0.6, window_tokens=120_000, max_total_cost_usd=5.0)
+    assert win.spin_threshold.value() == pytest.approx(0.6)
+    assert win.spin_window.value() == 120_000
+    assert win.spin_maxcost.value() == pytest.approx(5.0)
+
+
+def test_settings_widgets_feed_loop_kw(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path,
+                     runner_factory=lambda: VirtualClaudeRunner(delay=0.0), max_sessions=1)
+    win.spin_threshold.setValue(0.55)
+    win.spin_window.setValue(150_000)
+    win.spin_maxcost.setValue(2.5)
+    win.start_loop()
+    assert win.worker is not None
+    lk = win.worker._loop_kw
+    assert lk["threshold"] == pytest.approx(0.55)
+    assert lk["window_tokens"] == 150_000
+    assert lk["max_total_cost_usd"] == pytest.approx(2.5)
+    _run_until_finished(qapp, win)
+
+
+def test_maxcost_zero_means_unlimited(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path,
+                     runner_factory=lambda: VirtualClaudeRunner(delay=0.0), max_sessions=1)
+    win.spin_maxcost.setValue(0.0)
+    win.start_loop()
+    assert win.worker is not None
+    assert win.worker._loop_kw["max_total_cost_usd"] is None  # 0 → 無制限 (None)
+    _run_until_finished(qapp, win)
+
+
 # ─── 描画スロット (スレッドなし・直接呼び出し) ─────────────────────
 
 
