@@ -434,6 +434,7 @@ class ClaudeRunner:
     skip_permissions: bool = True
     use_subscription: bool = True  # True: API キー env を外し claude.ai サブスク認証で回す (課金回避)
     effort: str = ""  # "" = claude 既定 / それ以外は --effort <level> を付与 (EFFORT_LEVELS)
+    model: str = ""  # "" = claude 保存既定 / 非空 (alias またはフル ID) は --model <model> を付与
     extra_args: Sequence[str] = ()
     on_stream: Callable[[dict], None] | None = None  # 要約イベントのリアルタイム購読 (GUI 用)
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
