@@ -680,8 +680,10 @@ class MainWindow(QtWidgets.QMainWindow):
             QtWidgets.QApplication.restoreOverrideCursor()
             self._busy_cursor = False
 
-    def _set_progress(self, text: str, *, prefix: str = "進捗") -> None:
+    def _set_progress(self, text: str, *, prefix: str | None = None) -> None:
         """進捗バーを 1 行要約で更新する (全文はツールチップ)。空テキストは無視。"""
+        if prefix is None:
+            prefix = t("gui.progress.prefix")
         line = next((ln.strip() for ln in str(text).splitlines() if ln.strip()), "")
         if not line:
             return
