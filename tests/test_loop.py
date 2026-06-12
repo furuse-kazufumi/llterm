@@ -306,6 +306,60 @@ def test_claude_runner_stream_observer_failure_is_safe(tmp_path: Path) -> None:
     assert res.is_error is False
 
 
+def test_claude_runner_watchdog_kills_hanging_child(tmp_path: Path) -> None:
+    """出力を止めてハングする子は watchdog がツリー kill し、タイムアウトエラーで返る。"""
+    runner = _scripted_claude_runner(tmp_path, None, script_body=_HANGING_CHILD, timeout=2.0)
+    t0 = time.monotonic()
+    res = runner.run_turn(prompt="p", session_id="hang-sid", resume=False, cwd=tmp_path)
+    assert time.monotonic() - t0 < 30  # 60s sleep の子を待たない
+    assert res.is_error is True
+    assert res.error_kind == "other"
+    assert res.raw_exit == -1
+
+
+def test_claude_runner_cancel_kills_running_turn(tmp_path: Path) -> None:
+    """実行中ターンへの cancel() (Stop ボタン経路) は子をツリー kill し cancelled で返る。"""
+    started = threading.Event()
+    runner = _scripted_claude_runner(tmp_path, lambda item: started.set(),
+                                     script_body=_HANGING_CHILD, timeout=60.0)
+    results: list = []
+
+    def _run() -> None:
+        results.append(runner.run_turn(prompt="p", session_id="hang-sid", resume=False, cwd=tmp_path))
+
+    th = threading.Thread(target=_run)
+    th.start()
+    assert started.wait(20)  # 子の最初の stream イベント到着 = 実行中であることの同期点
+    runner.cancel()
+    th.join(30)
+    assert not th.is_alive()
+    assert results[0].error_kind == "cancelled"
+
+
+def test_claude_runner_cancel_before_start_is_sticky(tmp_path: Path) -> None:
+    """ターン境界レース: 起動前に届いた cancel は消失せず、新しい子を起動しない。"""
+    runner = _scripted_claude_runner(tmp_path, None)
+    runner.cancel()
+    t0 = time.monotonic()
+    res = runner.run_turn(prompt="p", session_id="s", resume=False, cwd=tmp_path)
+    assert res.error_kind == "cancelled"
+    assert time.monotonic() - t0 < 1.0  # 子プロセスを spawn していない
+
+
+def test_exe_npm_shim_is_rejected_with_clear_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """claude.cmd (npm shim) しか無い環境では原因不明の exit 127 でなく明示エラーを返す。"""
+    from llterm.host import loop as loop_mod
+
+    monkeypatch.setattr(loop_mod.shutil, "which", lambda exe: r"C:\npm\claude.CMD")
+    runner = loop_mod.ClaudeRunner()
+    res = runner.run_turn(prompt="p", session_id="s", resume=False, cwd=tmp_path)
+    assert res.is_error is True
+    assert res.raw_exit == 127
+    assert "npm shim" in res.text
+
+
 # ─── used_pct ────────────────────────────────────────────────────
 
 
