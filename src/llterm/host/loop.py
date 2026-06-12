@@ -961,7 +961,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         _ov = _templates.get(args.template).build(args.param)
     except KeyError:
-        print(f"error: 未知のテンプレ: {args.template} (利用可能: {_templates.keys()})", file=sys.stderr)
+        print(t("cli.loop.unknown_template", template=args.template,
+                available=", ".join(_templates.keys())), file=sys.stderr)
         return 2
     loop = SessionLoop(
         runner=runner,
