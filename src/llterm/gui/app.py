@@ -86,6 +86,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.loop_kw = dict(loop_kw)
         self.worker: LoopWorker | None = None
         self._streamed_text = 0  # 現ターン中にリアルタイム表示した応答数 (turn 完了時の二重表示防止)
+        self._max_sessions = 0  # ステータス表示 (session N/max) 用。Start 時に確定
 
         # 前回設定の復元: CLI 明示指定 > 保存値 > 組込み既定
         saved = gui_settings.load_settings(self.settings_path)
