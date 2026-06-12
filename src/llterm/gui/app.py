@@ -485,9 +485,21 @@ class MainWindow(QtWidgets.QMainWindow):
 
     @QtCore.Slot()
     def stop_loop(self) -> None:
-        if self.worker is not None:
-            self.worker.request_stop()
-            self.lbl_state.setText("stopping…")
+        """1 回目: graceful 停止 (作業記録を残してから停止、完了まで砂時計)。2 回目: 強制停止。"""
+        if self.worker is None or not self.worker.isRunning():
+            return
+        if not self._stopping:
+            self._stopping = True
+            self.worker.request_stop(force=False)  # 現ターン完了後に handoff を残して停止
+            self.lbl_state.setText("stopping… (作業内容を記録して停止します)")
+            self.btn_stop.setText("強制停止")
+            self._set_busy_cursor(True)
+            self._append("■ 停止要求: 現ターン完了後に作業内容を記録してから停止します "
+                         "(もう一度 Stop で強制停止)", PALETTE["rotate"], ts=True)
+        else:
+            self.worker.request_stop(force=True)  # 実行中ターンを即 kill (記録なし)
+            self.lbl_state.setText("force stopping…")
+            self._append("■ 強制停止: 実行中ターンを中断します (作業記録なし)", PALETTE["err"], ts=True)
 
     @QtCore.Slot()
     def send_input(self) -> None:
