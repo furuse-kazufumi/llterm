@@ -751,8 +751,15 @@ class MainWindow(QtWidgets.QMainWindow):
             self._append(f"⏸ レート制限に到達。{when}待機して自動再開します (Stop で中断可)",
                          PALETTE["err"], bold=True, ts=True)
         elif kind == "rate_limit_resumed":
+            prov = data.get("provider")
             self.lbl_state.setText("running (制限解除・再開)")
-            self._append("▶ レート制限リセット — 自走を再開します", PALETTE["inject"], ts=True)
+            self._append(f"▶ レート制限リセット — 自走を再開します ({prov})" if prov
+                         else "▶ レート制限リセット — 自走を再開します", PALETTE["inject"], ts=True)
+        elif kind == "provider_switch":
+            prov = str(data.get("provider") or "?")
+            self.lbl_model.setText(f"model: {prov} (切替)")
+            self._append(f"⇄ プロバイダ切替 → {prov} で継続 (SESSION_SUMMARY から再開)",
+                         PALETTE["rotate"], bold=True, ts=True)
         elif kind == "task":
             # これから claude に送る指令。時刻を出して「指令時 → 応答受信時」の経過を見せる。
             if data.get("injected"):
