@@ -87,7 +87,7 @@ def _scripted_codex(tmp_path: Path, on_stream, *, body: str = _FAKE_CODEX) -> Co
     script.write_text(body, encoding="utf-8")
 
     class Scripted(CodexRunner):
-        def _build_args(self, *, prompt: str, resume: bool, cwd: Path) -> list[str]:
+        def _build_args(self, *, resume: bool, cwd: Path) -> list[str]:
             return [sys.executable, str(script)]
 
     return Scripted(on_stream=on_stream)
