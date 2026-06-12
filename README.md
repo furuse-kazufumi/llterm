@@ -1,3 +1,5 @@
+**日本語** | [English](README.en.md)
+
 # llterm
 
 **Claude Code 専用の自走ターミナルホスト** — Claude Code (または任意の CLI) を縮小 PTY でホストし、IME 安定な分離入力欄と、Claude 自身がセッションを制御できる構造化制御プレーン (llterm-ctl) を提供する。
