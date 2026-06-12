@@ -468,7 +468,10 @@ class MainWindow(QtWidgets.QMainWindow):
         Stop ボタンと同じく次ターン境界で止まる。現在の claude ターン完了を最大数秒待ち、
         超過時はそのまま閉じる(child の孤児化を最小化)。
         """
-        self._save_settings()  # 最後の設定を次回起動時に復元する
+        try:
+            self._save_settings()  # 最後の設定を次回起動時に復元する
+        except Exception:  # noqa: BLE001 — 保存失敗で worker 停止 (子プロセス kill) をスキップさせない
+            pass
         if self.worker is not None and self.worker.isRunning():
             self.worker.request_stop()  # 実行中ターンを kill → ループは即終了するので短く待てば足りる
             self.worker.wait(8000)
