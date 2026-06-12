@@ -856,6 +856,9 @@ def main(argv: list[str] | None = None) -> int:
                              "既定: 前回値)")
     parser.add_argument("--effort", default=None, choices=loop_mod.EFFORT_LEVELS,
                         help="claude の思考努力レベル (low/medium/high/xhigh/max。既定: 前回値→max)")
+    parser.add_argument("--model", default=None,
+                        help="実 claude のモデル (alias: opus/sonnet/haiku、またはフル ID。"
+                             "'' で claude 保存既定。token 節約は sonnet/haiku。既定: 前回値→Opus 4.8)")
     parser.add_argument("--threshold", type=float, default=None, help="既定: 前回値 (初回 0.70)")
     parser.add_argument("--window-tokens", type=int, default=None, help="既定: 前回値 (初回 200000)")
     parser.add_argument("--max-sessions", type=int, default=None)
