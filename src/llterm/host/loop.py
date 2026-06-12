@@ -207,12 +207,17 @@ def parse_stream_json(stdout: str, *, exit_code: int, stderr: str = "") -> TurnR
     error_kind = ""
     if exit_code != 0 or is_error or not result_seen:
         is_error = True
-        # auth 判定は制御系チャネル (stderr / 非 JSON 診断行 / result 本文) に限定する。
-        # stdout の JSON transcript 全文を検索すると、エージェントが読んだファイル内容
-        # (tool_result) 中の "authentication" 等の語彙で偶発エラーが auth に誤分類され、
-        # 自走ループ全体が不要に auth_required 停止してしまう (2026-06-12 レビュー所見)。
+        # auth/rate-limit 判定は制御系チャネル (stderr / 非 JSON 診断行 / result 本文) に限定する。
+        # stdout の JSON transcript 全文を検索すると、tool_result 中の語彙や常在する
+        # rate_limit_event の "five_hour" 等で誤分類され、不要に停止してしまう (レビュー所見)。
         blob = "\n".join((text, stderr, *plain_lines)).lower()
-        error_kind = "auth" if any(sig in blob for sig in _AUTH_SIGNALS) else "other"
+        rl_blocking = bool(rl_status) and rl_status not in ("allowed", "allowed_warning")
+        if any(sig in blob for sig in _AUTH_SIGNALS):
+            error_kind = "auth"
+        elif rl_blocking or any(sig in blob for sig in _RATE_LIMIT_SIGNALS):
+            error_kind = "rate_limited"
+        else:
+            error_kind = "other"
 
     return TurnResult(
         session_id=session_id,
@@ -226,6 +231,8 @@ def parse_stream_json(stdout: str, *, exit_code: int, stderr: str = "") -> TurnR
         num_turns=num_turns,
         raw_exit=exit_code,
         context_window=context_window,
+        rate_limit_status=rl_status,
+        rate_limit_resets_at=rl_resets,
     )
 
 
