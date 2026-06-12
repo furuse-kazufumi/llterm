@@ -768,6 +768,23 @@ class SessionLoop:
                     return self._finish("auth_required", sessions, turns, total_cost,
                                         "re-login required")
 
+                # レート制限 = resetsAt まで待って自動再開 (サブスク自走の主制約)。
+                # 待機中に Stop されたら停止。consec_err は増やさない (失敗ではなく待ち)。
+                if res.error_kind == "rate_limited" and self.auto_resume_on_rate_limit:
+                    self.ledger.append(
+                        event="rate_limited", cmd_id=sid, action="wait",
+                        detail=f"resets_at={res.rate_limit_resets_at} status={res.rate_limit_status}",
+                    )
+                    self._emit("rate_limited", session_id=sid,
+                               resets_at=res.rate_limit_resets_at, status=res.rate_limit_status)
+                    if not self._wait_until(res.rate_limit_resets_at):
+                        return self._finish("stopped", sessions, turns, total_cost,
+                                            "stop during rate-limit wait")
+                    self.ledger.append(event="rate_limit_resumed", cmd_id=sid, action="resume",
+                                       detail="")
+                    self._emit("rate_limit_resumed", session_id=sid)
+                    continue  # 同じ prompt を再試行 (consec_err は増やさない)
+
                 if res.is_error:
                     consec_err += 1
                     if consec_err >= self.max_consecutive_errors:
