@@ -681,6 +681,10 @@ class SessionLoop:
 
                 rotate = used >= self.threshold or session_turns >= self.max_turns_per_session
                 if rotate:
+                    # Stop 要求の再確認: ここで確認しないと Stop 後に exit準備の新規 claude が
+                    # 起動してしまう (check-then-act 競合, 2026-06-12 レビュー所見)。
+                    if self._stop_requested():
+                        return self._finish("stopped", sessions, turns, total_cost, "stop requested")
                     # exit準備: handoff (SESSION_SUMMARY / next_plan) を書かせてから畳む。
                     self.runner.run_turn(
                         prompt=self.exit_prep_prompt, session_id=sid, resume=True, cwd=self.workdir,
