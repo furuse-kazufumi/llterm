@@ -533,7 +533,8 @@ class MainWindow(QtWidgets.QMainWindow):
         tmpl = templates.get(key)
         self.cmb_template.setToolTip(tmpl.description)  # 用途をツールチップで表示
         self.edit_param.setEnabled(tmpl.needs_param)
-        self.edit_param.setPlaceholderText(tmpl.param_label if tmpl.needs_param else "(引数不要)")
+        self.edit_param.setPlaceholderText(
+            tmpl.param_label if tmpl.needs_param else t("gui.placeholder.param_unused"))
 
     @QtCore.Slot()
     def _promote_clicked(self) -> None:
