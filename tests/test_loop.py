@@ -505,8 +505,8 @@ def test_should_stop_halts_immediately(tmp_path: Path) -> None:
     assert runner.calls == []  # 1 ターンも回さず停止
 
 
-def test_rotate_rechecks_stop_before_exit_prep(tmp_path: Path) -> None:
-    """Stop がターン結果処理中に届いても、exit準備の新規 claude ターンは起動しない。"""
+def test_rotate_then_stop_records_handoff(tmp_path: Path) -> None:
+    """rotate 地点で Stop が届いたら、exit準備 (handoff) を記録してから停止する (graceful)。"""
     stop = {"flag": False}
 
     def on_event(kind: str, data: dict) -> None:
@@ -518,7 +518,52 @@ def test_rotate_rechecks_stop_before_exit_prep(tmp_path: Path) -> None:
                  should_stop=lambda: stop["flag"], on_event=on_event)
     outcome = loop.run()
     assert outcome.stop_reason == "stopped"
-    assert len(runner.calls) == 1  # exit準備ターンは起動していない
+    assert len(runner.calls) == 2  # 作業ターン + exit準備 (handoff) を記録してから停止
+    assert runner.calls[1][0] == DEFAULT_EXIT_PREP_PROMPT
+
+
+def test_graceful_stop_runs_handoff_mid_session(tmp_path: Path) -> None:
+    """セッション途中の graceful Stop は handoff (作業記録) を 1 回回してから停止する。"""
+    calls = {"n": 0}
+
+    def should_stop() -> bool:
+        # 1 ターン走った後に停止要求 (top-of-loop の 2 回目の check で True)
+        return calls["n"] >= 1
+
+    def on_event(kind: str, data: dict) -> None:
+        if kind == "turn":
+            calls["n"] += 1
+
+    handoff_seen: list[dict] = []
+    runner = FakeRunner()  # 常に閾値未満
+    loop = _loop(runner, tmp_path, window_tokens=200_000, threshold=0.70, max_sessions=1,
+                 max_turns_per_session=10, should_stop=should_stop,
+                 on_event=lambda k, d: (on_event(k, d), handoff_seen.append(d) if k == "handoff" else None))
+    outcome = loop.run()
+    assert outcome.stop_reason == "stopped"
+    assert len(handoff_seen) == 1  # handoff イベントが 1 回
+    assert runner.calls[-1][0] == DEFAULT_EXIT_PREP_PROMPT  # 最後が作業記録ターン
+
+
+def test_graceful_stop_no_handoff_without_work(tmp_path: Path) -> None:
+    """まだ作業していない (session_turns==0) Stop は handoff を回さず即停止。"""
+    runner = FakeRunner()
+    loop = _loop(runner, tmp_path, max_sessions=5, should_stop=lambda: True)
+    outcome = loop.run()
+    assert outcome.stop_reason == "stopped"
+    assert runner.calls == []  # 1 ターンも回さない (handoff も無し)
+
+
+def test_handoff_on_stop_false_skips_handoff(tmp_path: Path) -> None:
+    calls = {"n": 0}
+    runner = FakeRunner()
+    loop = _loop(runner, tmp_path, max_sessions=1, max_turns_per_session=10,
+                 handoff_on_stop=False,
+                 should_stop=lambda: calls["n"] >= 1,
+                 on_event=lambda k, d: calls.__setitem__("n", calls["n"] + (1 if k == "turn" else 0)))
+    outcome = loop.run()
+    assert outcome.stop_reason == "stopped"
+    assert all(c[0] != DEFAULT_EXIT_PREP_PROMPT for c in runner.calls)  # handoff 無し
 
 
 def test_cancelled_turn_stops_loop_immediately(tmp_path: Path) -> None:
