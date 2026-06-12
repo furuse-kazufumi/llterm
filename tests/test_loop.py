@@ -254,20 +254,28 @@ p({"type": "result", "subtype": "success", "is_error": False, "session_id": "fak
 '''
 
 
-def _scripted_claude_runner(tmp_path: Path, on_stream) -> object:
+_HANGING_CHILD = '''\
+import json, sys, time
+print(json.dumps({"type": "system", "subtype": "init", "session_id": "hang-sid"}), flush=True)
+time.sleep(60)
+'''
+
+
+def _scripted_claude_runner(tmp_path: Path, on_stream, *, script_body: str = _FAKE_CHILD,
+                            **runner_kw: object) -> object:
     """_build_args を差し替え、claude の代わりに偽 JSONL を吐く python 子を回す。"""
     import sys as _sys
 
     from llterm.host.loop import ClaudeRunner
 
     script = tmp_path / "fake_claude.py"
-    script.write_text(_FAKE_CHILD, encoding="utf-8")
+    script.write_text(script_body, encoding="utf-8")
 
     class ScriptedRunner(ClaudeRunner):
         def _build_args(self, *, prompt: str, session_id: str, resume: bool) -> list[str]:
             return [_sys.executable, str(script)]
 
-    return ScriptedRunner(on_stream=on_stream)
+    return ScriptedRunner(on_stream=on_stream, **runner_kw)  # type: ignore[arg-type]
 
 
 def test_claude_runner_streams_events_and_parses_result(tmp_path: Path) -> None:
