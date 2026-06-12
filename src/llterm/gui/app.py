@@ -25,6 +25,7 @@ from llterm.gui import settings as gui_settings
 from llterm.gui.settings import DEFAULT_SETTINGS_PATH
 from llterm.gui.virtual import VirtualClaudeRunner
 from llterm.gui.worker import LoopWorker
+from llterm.host import loop as loop_mod
 from llterm.host.loop import TurnRunner, _ensure_utf8_stdout
 
 DEFAULT_PROJECTS_ROOT = Path("D:/projects")
