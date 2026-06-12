@@ -510,8 +510,11 @@ class MainWindow(QtWidgets.QMainWindow):
         sub = bool(item.get("subagent"))
         prefix = "  ⤷ " if sub else ""
         if kind == "init":
+            model = str(item.get("model") or "?")
             sid = str(item.get("session_id", ""))[:8]
-            self._append(f"⏵ model={item.get('model')} session={sid}", PALETTE["dim"])
+            self.lbl_model.setText(f"model: {model}" + (f"  effort={self._run_effort}"
+                                                        if self._run_effort else ""))
+            self._append(f"⏵ model={model} session={sid}", PALETTE["dim"])
         elif kind == "text":
             text = str(item.get("text") or "")
             if sub:
