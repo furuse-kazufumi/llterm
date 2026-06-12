@@ -284,7 +284,9 @@ class MainWindow(QtWidgets.QMainWindow):
             runner=runner, workdir=workdir, ledger_path=ledger_path, loop_kw=loop_kw,
         )
         self.worker.event.connect(self._on_event)
+        self.worker.stream.connect(self._on_stream)  # ターン内リアルタイム表示
         self.worker.finished_outcome.connect(self._on_finished)
+        self._streamed_text = 0
         self.worker.start()
         self.btn_start.setEnabled(False)
         self.btn_stop.setEnabled(True)
