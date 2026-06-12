@@ -28,6 +28,10 @@ class Template:
     needs_param: bool = False
     param_label_key: str = ""  # 引数欄 placeholder の i18n key ("" = 引数なし)
     builder: Callable[[str], dict] | None = None
+    # token 節約ルーティングの既定プロバイダ。"codex" = 機械的/長時間タスクなので Codex
+    # (ChatGPT Pro サブスク = Claude トークン非消費) を主に寄せる。"" = 既定 (Claude 主)。
+    # GUI の「Codex 優先」トグルが ON ならテンプレ既定に依らず常に Codex 主。
+    prefer: str = ""
 
     @property
     def label(self) -> str:
