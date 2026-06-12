@@ -165,7 +165,7 @@ class MainWindow(QtWidgets.QMainWindow):
                   template_default: str, autonomy_default: bool = False,
                   param_default: str = "", effort_default: str = "max",
                   codex_fallback_default: bool = False) -> None:
-        self.setWindowTitle("llterm — Claude Code 自走ループ (GUI)")
+        self.setWindowTitle(t("gui.window.title"))
         icon = find_app_icon()
         if icon is not None:
             self.setWindowIcon(icon)  # タイトルバー/タスクバーのアイコン
