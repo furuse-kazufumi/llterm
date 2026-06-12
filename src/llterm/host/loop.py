@@ -482,6 +482,7 @@ def main(argv: list[str] | None = None) -> int:
         threshold=args.threshold,
         max_sessions=max_sessions,
         max_total_cost_usd=args.max_cost,
+        rad_hint=DEFAULT_RAD_HINT if args.rad else "",
     )
     outcome = loop.run()
     print(
