@@ -280,6 +280,7 @@ class CodexRunner:
         finally:
             watchdog.cancel()
             stderr_thread.join(timeout=5)
+            stdin_thread.join(timeout=5)
             with self._lock:
                 self._proc = None
 
