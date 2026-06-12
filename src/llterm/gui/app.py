@@ -256,6 +256,7 @@ class MainWindow(QtWidgets.QMainWindow):
             from llterm.host.loop import DEFAULT_RAD_HINT
 
             loop_kw["rad_hint"] = DEFAULT_RAD_HINT
+        loop_kw["autonomy"] = self.chk_autonomy.isChecked()  # 承認確認不要トグル
         ledger_path = workdir / ".llterm" / "loop_ledger.jsonl"
         self.worker = LoopWorker(
             runner=runner, workdir=workdir, ledger_path=ledger_path, loop_kw=loop_kw,
