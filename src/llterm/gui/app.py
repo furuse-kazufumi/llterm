@@ -133,6 +133,7 @@ class MainWindow(QtWidgets.QMainWindow):
         rad_default = rad_default or bool(saved.get("rad", False))
         autonomy_default = bool(saved.get("autonomy", False))
         codex_fallback_default = bool(saved.get("codex_fallback", False))
+        codex_first_default = bool(saved.get("codex_first", False))
         template_default = template_default or str(saved.get("template") or "general")
         # effort 既定: CLI 明示 > 保存値 > "max" (ユーザー方針「とりあえず max」2026-06-12)
         effort_default = self._effort_cli if self._effort_cli is not None else str(
