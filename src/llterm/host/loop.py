@@ -608,6 +608,11 @@ class SessionLoop:
     max_consecutive_errors: int = 3
     max_turns_per_session: int = DEFAULT_MAX_TURNS_PER_SESSION
     handoff_on_stop: bool = True  # 停止要求時、作業中なら exit準備 (handoff) を 1 回回してから止める
+    auto_resume_on_rate_limit: bool = True  # レート制限時 resetsAt まで待って自動再開する
+    max_rate_limit_wait_s: float = 6 * 3600.0  # 1 回の待機上限 (これを超えたら打ち切り再試行)
+    rate_limit_fallback_wait_s: float = 300.0  # resetsAt 不明時の固定待ち (5 分)
+    now_fn: Callable[[], float] = time.time  # 待機の時計 (テストで差し替え可能)
+    sleep_fn: Callable[[float], None] = time.sleep  # 待機の sleep (テストで差し替え可能)
     on_event: Callable[[str, dict], None] | None = None
     should_stop: Callable[[], bool] | None = None  # GUI の Stop ボタン等 (協調停止)
     next_prompt: Callable[[], str | None] | None = None  # GUI のタスク注入 (継続ターンで一度だけ優先)
