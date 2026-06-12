@@ -377,6 +377,51 @@ def test_ctx_bar_shows_rotate_threshold(qapp: QtWidgets.QApplication, tmp_path: 
     assert "rotate 65%" in win.ctx_bar.format()
 
 
+def test_model_label_updates_from_init_stream(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    """画面に現在のモデルを表示する (init イベントの model)。effort 併記。"""
+    win = _make_window(tmp_path)
+    win._run_effort = "max"
+    win._on_stream({"kind": "init", "model": "claude-fable-5", "session_id": "abcd1234"})
+    assert "model: claude-fable-5" in win.lbl_model.text()
+    assert "effort=max" in win.lbl_model.text()
+
+
+def test_subscription_cost_labeled_no_charge(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    """サブスク (実 claude) は『課金なし』と明示し、赤字警告は出さない。"""
+    from llterm.host.loop import ClaudeRunner
+
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    suffix, billed = win._cost_label_mode(ClaudeRunner(use_subscription=True))
+    assert suffix == "報告値・課金なし"
+    assert billed is False
+    win._cost_suffix, win._cost_billed = suffix, billed
+    win._set_cost(40.9024)
+    assert "課金なし" in win.lbl_cost.text()
+    assert "40.9024" in win.lbl_cost.text()
+    assert "color" not in win.lbl_cost.styleSheet()  # 警告色なし
+
+
+def test_virtual_cost_labeled_no_charge(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    win = _make_window(tmp_path)
+    suffix, billed = win._cost_label_mode(VirtualClaudeRunner())
+    assert suffix == "仮想・課金なし"
+    assert billed is False
+
+
+def test_api_key_cost_labeled_billed_and_red(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    """API キー認証 (use_subscription=False) は『実課金』で赤字警告。"""
+    from llterm.host.loop import ClaudeRunner
+
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    suffix, billed = win._cost_label_mode(ClaudeRunner(use_subscription=False))
+    assert suffix == "実課金"
+    assert billed is True
+    win._cost_suffix, win._cost_billed = suffix, billed
+    win._set_cost(40.9024)
+    assert "実課金" in win.lbl_cost.text()
+    assert PALETTE_ERR in win.lbl_cost.styleSheet()  # 警告色あり
+
+
 def test_render_slots_update_widgets(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
     win = _make_window(tmp_path)
     win._on_event("session_start", {"session_id": "abcdef123456", "session_index": 1})
