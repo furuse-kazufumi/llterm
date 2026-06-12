@@ -7,8 +7,6 @@ from __future__ import annotations
 
 import json
 
-import pytest
-
 from llterm.host.openai_compat_runner import (
     PROVIDERS,
     OpenAICompatRunner,
