@@ -28,7 +28,22 @@
 - `parse_stream_json` のフィールド名は実出力と一致 (result/total_cost_usd/usage/num_turns)
 - 実 claude 1 ターン smoke: 2.9s init → **18.1s 初回テキスト表示** → 38.4s ターン完了
   (旧実装では 38.4s まで無表示)
-- テスト 99 passed (新規 10: summarize 5 + ClaudeRunner ストリーミング 2 + GUI 描画 3)、ruff clean
+
+**多視点レビュー修正 (同日, 30 agents の敵対的検証で 17 件確定 → 全件修正)**:
+- **cancel 消失レース** — run_turn 入口の `_cancelled` リセット廃止 (cancel は恒久・runner は
+  Start ごと新規)。Popen 中の cancel も `_proc` 代入と同 lock 区間で検知し即 kill
+- **rotate 時の stop 再チェック** — Stop 後に exit準備の新規 claude が起動しない
+- **CREATE_NO_WINDOW** — pythonw (gui-scripts) 起動で毎ターン console window が出ていた
+- **rate_limit_event 可視化** — status≠allowed を赤太字 + リセット時刻表示 (黙殺しない)
+- **auth 誤分類の限定** — auth 判定を stderr/非JSON診断行/result 本文に限定 (transcript 内の
+  "authentication" 等で自走が不要停止しない)
+- **subagent 区別表示** — parent_tool_use_id 非 null は ⤷ 付き灰色 + 二重表示判定に数えない
+- **contextWindow 動的分母** — result の modelUsage.contextWindow (fable-5=1M) を used_pct の
+  分母に採用 (既定 200K のままでは使用率 5 倍過大 → rotate が 5 倍早かった)
+- その他: エラーターン text の握り潰し防止 / CR 正規化 (二重改行) / npm shim fail-closed /
+  EOF 後 wait(30s) 上限 / timeout-完了競合ガード / returncode None ガード / cancelled 即停止 /
+  worker の on_stream 上書き防止 / 巨大 tool_result の preview 走査を先頭 4KB に限定
+- テスト **117 passed** (新規 28: watchdog/cancel 経路・auth 限定・subagent・rate_limit 等)、ruff clean
 
 ---
 
