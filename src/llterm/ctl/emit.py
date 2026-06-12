@@ -41,17 +41,17 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     if ns.action not in ALLOWED_ACTIONS:
-        print(f"error: unknown action {ns.action!r} (allowed: {', '.join(ALLOWED_ACTIONS)})",
+        print(t("cli.emit.unknown_action", action=ns.action, allowed=", ".join(ALLOWED_ACTIONS)),
               file=sys.stderr)
         return 2
     if not ns.reason:
-        print("error: --reason is required (audit-mandatory)", file=sys.stderr)
+        print(t("cli.emit.reason_required"), file=sys.stderr)
         return 2
 
     args: dict[str, str] = {}
     for kv in ns.arg:
         if "=" not in kv:
-            print(f"error: --arg expects KEY=VALUE, got {kv!r}", file=sys.stderr)
+            print(t("cli.emit.bad_arg", value=kv), file=sys.stderr)
             return 2
         k, v = kv.split("=", 1)
         args[k] = v
