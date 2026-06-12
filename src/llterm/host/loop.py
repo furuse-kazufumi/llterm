@@ -653,6 +653,10 @@ class SessionLoop:
                     total_cost=total_cost, text=res.text, error_kind=res.error_kind,
                 )
 
+                # cancelled = Stop / ウィンドウ終了由来。リトライせず即停止する。
+                if res.error_kind == "cancelled":
+                    return self._finish("stopped", sessions, turns, total_cost, "turn cancelled")
+
                 # 認証切れ = 構造的上限。fail-closed で停止 (暴走させない / 人間を待つ)。
                 if res.error_kind == "auth":
                     self.ledger.append(
