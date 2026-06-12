@@ -504,15 +504,14 @@ class MainWindow(QtWidgets.QMainWindow):
         if not self._stopping:
             self._stopping = True
             self.worker.request_stop(force=False)  # 現ターン完了後に handoff を残して停止
-            self.lbl_state.setText("stopping… (作業内容を記録して停止します)")
-            self.btn_stop.setText("強制停止")
+            self.lbl_state.setText(t("gui.state.stopping"))
+            self.btn_stop.setText(t("gui.btn.force_stop"))
             self._set_busy_cursor(True)
-            self._append("■ 停止要求: 現ターン完了後に作業内容を記録してから停止します "
-                         "(もう一度 Stop で強制停止)", PALETTE["rotate"], ts=True)
+            self._append(t("gui.msg.stop_graceful"), PALETTE["rotate"], ts=True)
         else:
             self.worker.request_stop(force=True)  # 実行中ターンを即 kill (記録なし)
             self.lbl_state.setText("force stopping…")
-            self._append("■ 強制停止: 実行中ターンを中断します (作業記録なし)", PALETTE["err"], ts=True)
+            self._append(t("gui.msg.stop_force"), PALETTE["err"], ts=True)
 
     @QtCore.Slot()
     def send_input(self) -> None:
