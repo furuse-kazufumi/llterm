@@ -638,6 +638,7 @@ class SessionLoop:
                 opener = opener + AUTONOMY_DIRECTIVE  # 承認確認不要 → 停止せず自律継続
             prompt = self._augment(opener)
             resume = False
+            injected = False
             session_turns = 0
 
             while True:
@@ -646,6 +647,9 @@ class SessionLoop:
                 if self.max_total_cost_usd is not None and total_cost >= self.max_total_cost_usd:
                     return self._finish("max_cost", sessions, turns, total_cost, "cost cap reached")
 
+                # これから claude に送る prompt を GUI に見せる (特に注入タスクの実行点を可視化)。
+                self._emit("task", session_id=sid, session_index=sessions + 1, turn=turns + 1,
+                           injected=injected, prompt=prompt)
                 res = self.runner.run_turn(prompt=prompt, session_id=sid, resume=resume, cwd=self.workdir)
                 turns += 1
                 session_turns += 1
