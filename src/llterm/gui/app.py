@@ -575,6 +575,7 @@ def main(argv: list[str] | None = None) -> int:
         real_default=args.real,
         rad_default=args.rad,
         template_default=args.template,
+        effort_default=args.effort,
         window_tokens=args.window_tokens,
         threshold=args.threshold,
         max_sessions=args.max_sessions,
