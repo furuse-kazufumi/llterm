@@ -21,6 +21,8 @@ from pathlib import Path
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from llterm import rad, templates
+from llterm.gui import settings as gui_settings
+from llterm.gui.settings import DEFAULT_SETTINGS_PATH
 from llterm.gui.virtual import VirtualClaudeRunner
 from llterm.gui.worker import LoopWorker
 from llterm.host.loop import TurnRunner, _ensure_utf8_stdout
