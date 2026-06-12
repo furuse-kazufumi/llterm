@@ -180,6 +180,10 @@ class MainWindow(QtWidgets.QMainWindow):
         runner = self._build_runner()
         loop_kw = dict(self.loop_kw)
         loop_kw["max_sessions"] = self.spin_sessions.value()  # 常に上限つき (暴走/レート保護)
+        if self.chk_rad.isChecked():
+            from llterm.host.loop import DEFAULT_RAD_HINT
+
+            loop_kw["rad_hint"] = DEFAULT_RAD_HINT
         ledger_path = workdir / ".llterm" / "loop_ledger.jsonl"
         self.worker = LoopWorker(
             runner=runner, workdir=workdir, ledger_path=ledger_path, loop_kw=loop_kw,
