@@ -245,7 +245,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # テンプレ行 (機能ごとの自走テンプレ + RAD 公開ゲート)
         tmpl_row = QtWidgets.QHBoxLayout()
-        tmpl_row.addWidget(QtWidgets.QLabel("テンプレ:"))
+        tmpl_row.addWidget(QtWidgets.QLabel(t("gui.label.template")))
         self.cmb_template = QtWidgets.QComboBox()
         for i, t in enumerate(templates.TEMPLATES):
             self.cmb_template.addItem(t.label, t.key)
