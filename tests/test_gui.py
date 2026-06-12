@@ -97,6 +97,23 @@ def test_real_default_checks_the_box(qapp: QtWidgets.QApplication, tmp_path: Pat
     assert win.chk_real.isChecked() is True
 
 
+def test_rad_default_off_and_on(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    assert MainWindow(projects_root=tmp_path, workdir=tmp_path).chk_rad.isChecked() is False
+    assert MainWindow(projects_root=tmp_path, workdir=tmp_path, rad_default=True).chk_rad.isChecked() is True
+
+
+def test_rad_checkbox_adds_hint_to_loop_kw(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    win = MainWindow(
+        projects_root=tmp_path, workdir=tmp_path,
+        runner_factory=lambda: VirtualClaudeRunner(delay=0.0), max_sessions=1,
+    )
+    win.chk_rad.setChecked(True)
+    win.start_loop()
+    assert win.worker is not None
+    assert win.worker._loop_kw.get("rad_hint")  # RAD ヒントが loop に渡る
+    _run_until_finished(qapp, win)
+
+
 # ─── 描画スロット (スレッドなし・直接呼び出し) ─────────────────────
 
 
