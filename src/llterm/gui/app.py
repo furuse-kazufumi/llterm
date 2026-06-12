@@ -188,6 +188,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.chk_autonomy.setToolTip("ON: 人間確認を待たず自律で判断・継続(停止しない)。OFF(既定): 安全側")
         self.chk_autonomy.setChecked(autonomy_default)
         proj_row.addWidget(self.chk_autonomy)
+        self.chk_codex_fallback = QtWidgets.QCheckBox("Codex 切替")
+        self.chk_codex_fallback.setToolTip(
+            "ON: Claude がレート制限に達したら Codex に切り替えて作業を継続し、"
+            "Claude のリセット時刻が来たら自動で戻す (ChatGPT Pro サブスク=課金なし)。実 claude のみ有効")
+        self.chk_codex_fallback.setChecked(codex_fallback_default)
+        proj_row.addWidget(self.chk_codex_fallback)
         proj_row.addWidget(QtWidgets.QLabel("最大session:"))
         self.spin_sessions = QtWidgets.QSpinBox()
         self.spin_sessions.setRange(1, 100000)
