@@ -461,8 +461,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.worker.finished_outcome.connect(self._on_finished)
         self._streamed_text = 0
         self.worker.start()
+        self._stopping = False
         self.btn_start.setEnabled(False)
         self.btn_stop.setEnabled(True)
+        self.btn_stop.setText("Stop")
         for widget in self._run_widgets:
             widget.setEnabled(False)
         # cost 種別 (課金なし / 実課金) を確定し、idle 表示を更新
