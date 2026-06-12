@@ -405,6 +405,8 @@ class ClaudeRunner:
                 "--output-format", "stream-json", "--verbose", *session_flag]
         if self.skip_permissions:
             args.append("--dangerously-skip-permissions")
+        if self.effort and self.effort in EFFORT_LEVELS:  # 不正値は付けない (claude 既定に委ねる)
+            args.extend(["--effort", self.effort])
         args.extend(self.extra_args)
         return args
 
