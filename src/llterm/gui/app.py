@@ -422,7 +422,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if not text:
             return
         self.input.clear()
-        self._append(f">> [注入] {text}", PALETTE["inject"])
+        self._append(f">> [注入受付] {text}", PALETTE["inject"], ts=True)
         if self.worker is not None and self.worker.isRunning():
             self.worker.inject(text)
         else:
