@@ -121,10 +121,12 @@ class TurnResult:
     cost_usd: float
     text: str
     is_error: bool
-    error_kind: str  # "" | "auth" | "other" | "cancelled"
+    error_kind: str  # "" | "auth" | "rate_limited" | "other" | "cancelled"
     num_turns: int
     raw_exit: int
     context_window: int = 0  # result の modelUsage.contextWindow (実窓サイズ。0=不明→設定値を使う)
+    rate_limit_status: str = ""  # rate_limit_event の status (allowed / 制限種別)
+    rate_limit_resets_at: int = 0  # rate_limit_event の resetsAt (epoch秒。自動再開の待機目標)
 
 
 def parse_stream_json(stdout: str, *, exit_code: int, stderr: str = "") -> TurnResult:
