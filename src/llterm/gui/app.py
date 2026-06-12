@@ -220,13 +220,16 @@ class MainWindow(QtWidgets.QMainWindow):
         if param_default:
             self.edit_param.setText(param_default)  # 前回のテンプレ引数を復元
 
-        # ステータス行
+        # ステータス行 — 常時見える状態 (状態 / session 進捗 / context 使用率 / cost)
         status_row = QtWidgets.QHBoxLayout()
         self.lbl_state = QtWidgets.QLabel("idle")
-        self.lbl_session = QtWidgets.QLabel("session: -")
+        self.lbl_state.setToolTip("ループの状態 (idle / running / stopping / done)")
+        self.lbl_session = QtWidgets.QLabel("session -/-  turn -")
+        self.lbl_session.setToolTip("現在のセッション / 最大セッション と、セッション内ターン数")
         self.ctx_bar = QtWidgets.QProgressBar()
         self.ctx_bar.setRange(0, 100)
-        self.ctx_bar.setFormat("ctx %p%")
+        self.ctx_bar.setFormat(f"ctx %p%  (rotate {int(round(float(self.loop_kw.get('threshold') or 0.70) * 100))}%)")
+        self.ctx_bar.setToolTip("現セッションのコンテキスト使用率。rotate 閾値に達すると新セッションへ畳む")
         self.lbl_cost = QtWidgets.QLabel("cost(報告値): $0.0000")
         status_row.addWidget(self.lbl_state)
         status_row.addWidget(self.lbl_session)
