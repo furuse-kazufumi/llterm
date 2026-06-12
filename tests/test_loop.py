@@ -345,6 +345,63 @@ def test_rate_limit_auto_resume_waits_then_retries(tmp_path: Path) -> None:
     assert slept  # 実際に待機した
 
 
+def test_provider_switch_on_rate_limit(tmp_path: Path) -> None:
+    """Claude が rate_limited → 利用可能な fallback (Codex 役) に切り替えて継続する。"""
+    primary = FakeRunner([{"is_error": True, "error_kind": "rate_limited"}])
+    fallback = FakeRunner([{"ctx": 150_000}])  # 切替先は成功 → rotate → max_sessions
+    events: list[tuple[str, dict]] = []
+    loop = SessionLoop(
+        runner=primary, fallback_runners=(fallback,), workdir=tmp_path,
+        ledger=Ledger(tmp_path / "l.jsonl"),
+        window_tokens=200_000, threshold=0.70, max_sessions=2,
+        now_fn=lambda: 0.0, sleep_fn=lambda s: None,
+        on_event=lambda k, d: events.append((k, d)),
+    )
+    outcome = loop.run()
+    assert outcome.stop_reason in ("max_sessions", "stopped")
+    # 切替イベントが出て、fallback が実際に走った
+    switch = [d for k, d in events if k == "provider_switch"]
+    assert switch and switch[0]["provider"] == "FakeRunner"  # 名前は型名 (Codex でなくても切替する)
+    assert len(fallback.calls) >= 1  # fallback が 1 ターン以上走った
+
+
+def test_no_fallback_waits_and_resumes(tmp_path: Path) -> None:
+    """fallback が無ければ従来どおり resetsAt まで待って同プロバイダで再開する。"""
+    runner = FakeRunner([{"is_error": True, "error_kind": "rate_limited"}, {"ctx": 150_000}])
+    slept: list[float] = []
+    clock = {"t": 0.0}
+    loop = SessionLoop(
+        runner=runner, workdir=tmp_path, ledger=Ledger(tmp_path / "l.jsonl"),
+        window_tokens=200_000, threshold=0.70, max_sessions=1,
+        now_fn=lambda: clock["t"],
+        sleep_fn=lambda s: (slept.append(s), clock.__setitem__("t", clock["t"] + s)),
+        rate_limit_fallback_wait_s=10.0,
+    )
+    outcome = loop.run()
+    assert outcome.stop_reason == "max_sessions"
+    assert slept  # 待機した (切替先が無いので)
+
+
+def test_all_providers_blocked_waits_for_earliest(tmp_path: Path) -> None:
+    """primary も fallback も rate_limited なら、最も早い解除まで待ってから再開する。"""
+    primary = FakeRunner([{"is_error": True, "error_kind": "rate_limited"}])
+    fallback = FakeRunner([{"is_error": True, "error_kind": "rate_limited"}, {"ctx": 150_000}])
+    clock = {"t": 0.0}
+    slept: list[float] = []
+    loop = SessionLoop(
+        runner=primary, fallback_runners=(fallback,), workdir=tmp_path,
+        ledger=Ledger(tmp_path / "l.jsonl"),
+        window_tokens=200_000, threshold=0.70, max_sessions=3,
+        now_fn=lambda: clock["t"],
+        sleep_fn=lambda s: (slept.append(s), clock.__setitem__("t", clock["t"] + s)),
+        rate_limit_fallback_wait_s=10.0,
+    )
+    outcome = loop.run()
+    # primary rate_limited → fallback へ切替 → fallback も rate_limited → 両方ブロック → 待機 → 再開
+    assert outcome.stop_reason in ("max_sessions", "stopped")
+    assert slept  # 全ブロックで待機が発生
+
+
 def test_rate_limit_wait_interrupted_by_stop(tmp_path: Path) -> None:
     """待機中に Stop されたら自走を停止する (待機は中断可能)。"""
     state = {"turns": 0}
