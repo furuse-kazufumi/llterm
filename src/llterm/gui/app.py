@@ -330,11 +330,11 @@ class MainWindow(QtWidgets.QMainWindow):
     def _promote_clicked(self) -> None:
         domain = self.edit_param.text().strip()
         if not domain:
-            self._append("error: 公開する分野名を引数欄に入れてください")
+            self._append("error: 公開する分野名を引数欄に入れてください", PALETTE["err"])
             return
         stg = rad.staging_dir(domain, self.rad_docs_root)
         if not stg.is_dir():
-            self._append(f"error: staging がありません: {stg}")
+            self._append(f"error: staging がありません: {stg}", PALETTE["err"])
             return
         reply = QtWidgets.QMessageBox.question(
             self, "RAD 公開ゲート",
