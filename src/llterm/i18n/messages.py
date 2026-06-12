@@ -216,6 +216,22 @@ MESSAGES: dict[str, dict[str, str]] = {
               "Real claude only. Note: raptor's 'ultracode' does not exist in "
               "vanilla claude — use max",
     },
+    "gui.label.model": {
+        "ja": "model:",
+        "en": "model:",
+    },
+    "gui.model.default_item": {
+        "ja": "(claude既定)",
+        "en": "(claude default)",
+    },
+    "gui.tip.model_select": {
+        "ja": "実 claude のモデル (--model)。opus=高品質だが token 消費が大きい、"
+              "sonnet/haiku=軽量・高速で token 節約。(claude既定) は claude 側の保存既定に委ねる。"
+              "alias は最新世代へ解決。実 claude のみ有効。",
+        "en": "Real claude model (--model). opus = highest quality but heavy token use; "
+              "sonnet/haiku = lighter, faster, cheaper on tokens. '(claude default)' defers "
+              "to claude's saved default. Aliases resolve to the latest generation. Real claude only.",
+    },
     "gui.label.template": {
         "ja": "テンプレ:",
         "en": "Template:",
