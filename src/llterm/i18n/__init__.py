@@ -114,9 +114,10 @@ def t(key: str, /, **kwargs: object) -> str:
         if not isinstance(entry, dict) or not entry:
             return key
         template = entry.get(resolve_locale()) or entry.get(DEFAULT_LOCALE)
-        if not template:  # ja すら無い不完全エントリ → 任意の既存訳で粘る
-            template = next((v for v in entry.values() if v), None)
-            if not template:
+        if not isinstance(template, str) or not template:
+            # ja すら無い (または型不正な) 不完全エントリ → 任意の既存 str 訳で粘る
+            template = next((v for v in entry.values() if isinstance(v, str) and v), None)
+            if template is None:
                 return key
         if kwargs:
             try:
