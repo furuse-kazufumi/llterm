@@ -786,7 +786,7 @@ class SessionLoop:
                 # これから claude に送る prompt を GUI に見せる (特に注入タスクの実行点を可視化)。
                 self._emit("task", session_id=sid, session_index=sessions + 1, turn=turns + 1,
                            injected=injected, prompt=prompt)
-                res = self.runner.run_turn(prompt=prompt, session_id=sid, resume=resume, cwd=self.workdir)
+                res = active.run_turn(prompt=prompt, session_id=sid, resume=resume, cwd=self.workdir)
                 turns += 1
                 session_turns += 1
                 total_cost += res.cost_usd
