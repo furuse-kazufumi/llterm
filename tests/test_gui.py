@@ -216,6 +216,46 @@ def test_close_event_requests_worker_stop(qapp: QtWidgets.QApplication, tmp_path
 # ─── 描画スロット (スレッドなし・直接呼び出し) ─────────────────────
 
 
+def test_stream_slot_renders_realtime_events(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    """応答・ツール実行がターン完了を待たず逐次描画される (本バグ修正の中核)。"""
+    win = _make_window(tmp_path)
+    win._on_stream({"kind": "init", "model": "claude-fable-5", "session_id": "abcdef99"})
+    win._on_stream({"kind": "text", "text": "リアルタイム応答です"})
+    win._on_stream({"kind": "tool_use", "name": "Bash", "detail": "echo hi"})
+    win._on_stream({"kind": "tool_result", "is_error": False, "preview": "hi"})
+    win._on_stream({"kind": "tool_result", "is_error": True, "preview": "boom"})
+    text = win.output.toPlainText()
+    assert "model=claude-fable-5" in text
+    assert "リアルタイム応答です" in text
+    assert "⚙ Bash: echo hi" in text
+    assert "↳ hi" in text
+    assert "エラー: boom" in text
+
+
+def test_stream_then_turn_does_not_duplicate_text(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    """ストリーム表示済みの応答は turn 完了時に再表示しない (二重表示防止)。"""
+    win = _make_window(tmp_path)
+    win._on_stream({"kind": "text", "text": "ユニークな応答XYZ"})
+    win._on_event("turn", {"turn": 1, "used_pct": 0.1, "total_cost": 0.0,
+                           "text": "ユニークな応答XYZ", "error_kind": ""})
+    assert win.output.toPlainText().count("ユニークな応答XYZ") == 1
+    # 次の turn はストリームが無ければ通常どおり text を表示する (カウンタがリセットされる)
+    win._on_event("turn", {"turn": 2, "used_pct": 0.1, "total_cost": 0.0,
+                           "text": "二回目の応答ABC", "error_kind": ""})
+    assert "二回目の応答ABC" in win.output.toPlainText()
+
+
+def test_output_view_uses_colored_dark_style(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    """カラー表示: ダーク背景スタイル + イベント種別ごとの色つき HTML 描画。"""
+    win = _make_window(tmp_path)
+    assert "background-color" in win.output.styleSheet()
+    win._on_event("session_start", {"session_id": "abcdef123456", "session_index": 1})
+    html_doc = win.output.document().toHtml()
+    assert "#e5c07b" in html_doc  # セッション境界が PALETTE["session"] で着色されている
+
+
 def test_render_slots_update_widgets(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
     win = _make_window(tmp_path)
     win._on_event("session_start", {"session_id": "abcdef123456", "session_index": 1})
