@@ -59,14 +59,13 @@ class VirtualClaudeRunner:
         base = self._ctx.get(session_id, 0) if resume else 0
         ctx = base + int(self.window_tokens * self.step_pct)
         self._ctx[session_id] = ctx
-        text = (
-            f"[virtual claude] 処理: {prompt[:60].strip()}\n"
-            f"  session={session_id[:8]} ctx≈{ctx:,} tok (turn #{self._n})"
-        )
+        text = t("virtual.turn_text", prompt=prompt[:60].strip(),
+                 sid=session_id[:8], ctx=ctx, n=self._n)
         # 実 claude と同じ流れの stream イベントを擬似発行 (GUI のリアルタイム表示経路を課金ゼロで検証)
         if not resume:
             self._emit({"kind": "init", "model": "virtual-claude", "session_id": session_id})
-        self._emit({"kind": "tool_use", "name": "VirtualTool", "detail": f"turn #{self._n} を擬似実行"})
-        self._emit({"kind": "tool_result", "is_error": False, "preview": "(仮想ツール結果)"})
+        self._emit({"kind": "tool_use", "name": "VirtualTool",
+                    "detail": t("virtual.tool_detail", n=self._n)})
+        self._emit({"kind": "tool_result", "is_error": False, "preview": t("virtual.tool_result")})
         self._emit({"kind": "text", "text": text})
         return TurnResult(session_id, ctx, 400, ctx, self.cost_per_turn, text, False, "", 1, 0)
