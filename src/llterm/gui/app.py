@@ -30,6 +30,9 @@ from llterm.gui.worker import LoopWorker
 from llterm.host import loop as loop_mod
 from llterm.host.loop import TurnRunner, _ensure_utf8_stdout
 
+if TYPE_CHECKING:
+    from llterm.host.openai_compat_runner import OpenAICompatRunner
+
 DEFAULT_PROJECTS_ROOT = Path("D:/projects")
 _PROJECT_MARKERS = (".git", "pyproject.toml", "CLAUDE.md", "package.json", "Cargo.toml")
 
