@@ -76,6 +76,12 @@ DEFAULT_EXIT_PREP_PROMPT = (
 )
 DEFAULT_CONTINUE_PROMPT = "前回の続きを自律継続せよ。確認は求めない。"
 
+# 全テンプレ共通: 各セッション冒頭に必ず付与し、handoff から前回の続きを再開させる
+CONTINUITY_PREAMBLE = (
+    "【継続】最初に docs/SESSION_SUMMARY.md と next_plan を読み、前回の続き"
+    "(中断 / ローテーション地点)から再開して重複作業を避けよ。その上で以下を実施:\n"
+)
+
 DEFAULT_RAD_HINT = (
     "【RAD 研究接地】新規の設計・実装・調査に着手する前に、まず RAD コーパス "
     "(D:/docs/<分野>_corpus_v2/ および D:/docs/hacker_corpus_v2/) を grep して "
