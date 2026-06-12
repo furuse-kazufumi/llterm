@@ -137,6 +137,7 @@ class MainWindow(QtWidgets.QMainWindow):
         proj_row.addWidget(self.chk_rad)
         self.chk_autonomy = QtWidgets.QCheckBox("承認確認不要(完全自律)")
         self.chk_autonomy.setToolTip("ON: 人間確認を待たず自律で判断・継続(停止しない)。OFF(既定): 安全側")
+        self.chk_autonomy.setChecked(autonomy_default)
         proj_row.addWidget(self.chk_autonomy)
         proj_row.addWidget(QtWidgets.QLabel("最大session:"))
         self.spin_sessions = QtWidgets.QSpinBox()
