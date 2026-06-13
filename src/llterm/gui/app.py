@@ -539,6 +539,13 @@ class MainWindow(QtWidgets.QMainWindow):
         free = self._free_runner()
         if free is not None and free.key_available():
             fallbacks = [*fallbacks, free]
+        # レビュー奏者を選んでいれば、主奏者を OrchestraRunner で包む = 分業
+        # (指揮者=主奏者が実装 → レビュー奏者が批評 → 指揮者が修正)。1 ターンに束ねるので
+        # fallbacks (フェイルオーバー) はそのまま (主奏者が枯れたら従来どおり次の奏者へ)。
+        reviewer = self._reviewer_runner()
+        if reviewer is not None:
+            from llterm.host.orchestra_runner import OrchestraRunner
+            primary = OrchestraRunner(conductor=primary, reviewer=reviewer)
         return primary, fallbacks
 
     def _free_runner(self) -> OpenAICompatRunner | None:
