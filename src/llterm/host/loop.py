@@ -762,6 +762,24 @@ class SessionLoop:
             return prompt
         return prompt + "".join(f"\n\n{h}" for h in hints)
 
+    def _autonomy_on(self) -> bool:
+        """承認確認不要 (完全自律) の現在値。autonomy_fn があれば毎ターン動的取得する
+        (GUI のチェックボックスを走行中にトグルしても次ターンから効く)。"""
+        if self.autonomy_fn is not None:
+            try:
+                return bool(self.autonomy_fn())
+            except Exception:  # noqa: BLE001
+                return self.autonomy
+        return self.autonomy
+
+    def _with_autonomy(self, prompt: str) -> str:
+        """autonomy が ON なら自律指令を末尾に付ける。OFF = 承認確認モード (停止/handoff が効く)。
+
+        毎ターン (opener + 継続) に適用するので、タスク注入時に GUI が autonomy を OFF にすると
+        その後のターンは『人間確認を待たず停止しない』指令が外れ、安全な Stop/引継ぎが効く。
+        """
+        return prompt + AUTONOMY_DIRECTIVE if self._autonomy_on() else prompt
+
     def _continue_prompt(self) -> tuple[str, bool]:
         """継続ターンの prompt と「注入タスクか」フラグ。GUI inject があれば一度だけ優先する。"""
         base = self.continue_prompt
