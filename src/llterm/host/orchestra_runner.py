@@ -282,6 +282,20 @@ class OrchestraRunner:
             rate_limit_status=final.rate_limit_status, rate_limit_resets_at=final.rate_limit_resets_at,
         )
 
+    def run_turn_unreviewed(self, *, prompt: str, session_id: str, resume: bool,
+                            cwd: Path) -> TurnResult:
+        """指揮者のみで 1 ターン回す (パネル/集約/修正/sign-off を一切掛けない)。
+
+        handoff / exit準備のような「記録目的」ターン向け。これらに 3-AI フルレビューを
+        掛けるのは過剰 (ユーザー指摘 2026-06-13: レビューにレビューを重ねている)。loop は
+        ``getattr(runner, "run_turn_unreviewed", ...)`` でこの経路を優先する。
+        """
+        if self._is_cancelled():
+            return TurnResult(session_id, 0, 0, 0, 0.0, "", True, "cancelled", 0, -1)
+        self.conductor.on_stream = self._emit  # type: ignore[attr-defined]
+        return self.conductor.run_turn(
+            prompt=prompt, session_id=session_id, resume=resume, cwd=cwd)
+
     def _sub_review(self, runner: TurnRunner, prompt: str, session_id: str,
                     cwd: Path) -> tuple[float, int, str, bool]:
         """レビュー系の 1 サブターンを stateless (resume=False) で回す (best-effort)。
