@@ -1010,6 +1010,7 @@ def main(argv: list[str] | None = None) -> int:
         max_sessions=max_sessions,
         max_total_cost_usd=args.max_cost,
         rad_hint=DEFAULT_RAD_HINT if args.rad else "",
+        offload_hint="" if args.no_offload else build_offload_hint(),
     )
     outcome = loop.run()
     print(
