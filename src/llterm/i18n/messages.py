@@ -301,6 +301,27 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "Free player '{provider}' was excluded from the chain because its API key is unset "
               "(set the matching env var to enroll it as a backup player)",
     },
+    "gui.label.reviewer": {
+        "ja": "レビュー奏者:",
+        "en": "Reviewer:",
+    },
+    "gui.reviewer.none": {
+        "ja": "(なし)",
+        "en": "(none)",
+    },
+    "gui.tip.reviewer": {
+        "ja": "分業オーケストラ: 選ぶと 1 ターンが【指揮者(主奏者)が実装 → レビュー奏者が"
+              "git diff を批評 → 指揮者が修正反映】の協働になる。レビュー奏者を無料 AI "
+              "(Gemini/Groq/Codex 等) にすればレビュー分の token を Claude から逃がせる。"
+              "★『Codex優先』と併用すれば指揮者も無料 → Claude token を使わず分業できる。"
+              "未導入/キー未設定の奏者は自動で無効。実 claude のみ有効。",
+        "en": "Division-of-labor orchestra: when set, each turn becomes [conductor (primary) "
+              "implements → reviewer critiques the git diff → conductor applies fixes]. Using a "
+              "free AI (Gemini/Groq/Codex) as reviewer offloads review tokens away from Claude. "
+              "Combined with 'Codex first', the conductor is also free → division of labor with no "
+              "Claude tokens. Unavailable players (not installed / no key) are auto-disabled. "
+              "Real claude only.",
+    },
     "gui.tip.model_select": {
         "ja": "実 claude のモデル (--model)。opus=高品質だが token 消費が大きい、"
               "sonnet/haiku=軽量・高速で token 節約。(claude既定) は claude 側の保存既定に委ねる。"
