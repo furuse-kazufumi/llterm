@@ -779,6 +779,7 @@ def test_mechanical_template_auto_prefers_codex(
 def test_general_template_stays_claude(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
     """general テンプレは prefer なし → Claude 主のまま。"""
     win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    win.chk_codex_first.setChecked(False)
     win.chk_real.setChecked(True)
     win.cmb_template.setCurrentIndex(win.cmb_template.findData("general"))
     assert _provider_names(win)[0] == "ClaudeRunner"
