@@ -625,13 +625,16 @@ class MainWindow(QtWidgets.QMainWindow):
                 ts: bool = False) -> None:
         """出力ビューへ 1 エントリ追記する (色つき HTML。色未指定は本文色)。
 
-        ts=True で先頭に [HH:MM:SS] を付ける (指令/応答/境界の時刻を見せる)。
+        ★ 各行の先頭に必ず [HH:MM:SS] を付ける (ユーザー要望 2026-06-13: トレーサビリティ)。
+        空行は素通し。``ts`` 引数は後方互換のため残すが常時付与なので無視する。
+        同じ時刻つき本文をローテーションログ (termlog) にも 1 行ずつ append する。
         """
-        if ts:
-            text = f"[{datetime.now():%H:%M:%S}] {text}"
         # CR 正規化: Qt は残留 \r も改行扱いするため CRLF 入りテキストが二重改行になる
         text = text.replace("\r\n", "\n").replace("\r", "\n")
-        esc = html.escape(text).replace("\n", "<br/>")
+        stamp = f"[{datetime.now():%H:%M:%S}] "
+        stamped = "\n".join((stamp + ln) if ln.strip() else ln for ln in text.split("\n"))
+        self._termlog.write(stamped)  # トレーサビリティ: 時刻つき plaintext を行単位で永続化
+        esc = html.escape(stamped).replace("\n", "<br/>")
         style = f"color:{color or PALETTE['text']};white-space:pre-wrap"
         if bold:
             style += ";font-weight:bold"
