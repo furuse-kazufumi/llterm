@@ -909,7 +909,8 @@ def test_cli_dry_run_wires_end_to_end(tmp_path: Path) -> None:
     assert (tmp_path / ".llterm" / "loop_ledger.jsonl").exists()
 
 
-def test_next_prompt_injection_overrides_continue(tmp_path: Path) -> None:
+def test_next_prompt_injection_is_high_priority(tmp_path: Path) -> None:
+    """注入タスクは最優先: 次のターン境界 (opener 含む) で即消費され、一度だけ実行される。"""
     injected = ["割り込みタスク X"]
 
     def nxt() -> str | None:
@@ -920,9 +921,50 @@ def test_next_prompt_injection_overrides_continue(tmp_path: Path) -> None:
                  max_sessions=1, max_turns_per_session=3, next_prompt=nxt)
     loop.run()
     work = [c for c in runner.calls if c[0] != DEFAULT_EXIT_PREP_PROMPT]
-    assert DEFAULT_RESUME_PROMPT in work[0][0]        # 1 回目=新セッションの再開 prompt(継続preamble付)
-    assert work[1][0].startswith("割り込みタスク X")  # 2 回目=注入タスクが優先 (末尾に指令が付く)
-    assert not work[2][0].startswith("割り込みタスク X")  # 注入は一度だけ (以降は continue)
+    assert work[0][0].startswith("割り込みタスク X")     # 1 回目=注入が最優先で消費 (末尾に指令)
+    assert not work[1][0].startswith("割り込みタスク X")  # 注入は一度だけ (以降は通常の継続)
+
+
+def test_injection_consumed_after_rotate_not_starved(tmp_path: Path) -> None:
+    """ctx 超過で毎ターン rotate する状況でも、注入は新セッション opener で消費され飢餓しない。
+
+    旧挙動では注入は継続ターン (_continue_prompt) でしか消費されず、rotate ばかりだと
+    そこへ到達せず永久に飲み込まれた (orchestra で実際に発生・ユーザー指摘 2026-06-13)。
+    """
+    state = {"calls": 0}
+
+    def nxt() -> str | None:
+        state["calls"] += 1
+        # 1 回目 (session1 opener) は注入なし → 走行中に注入が到着した状況を、
+        # 2 回目 (rotate 後の opener) で返すことで模す。
+        return "割り込みタスク Y" if state["calls"] == 2 else None
+
+    runner = FakeRunner([{"ctx": 150_000}] * 10)  # 150k/200k=75% ≥ 70% → 毎ターン rotate
+    loop = _loop(runner, tmp_path, window_tokens=200_000, threshold=0.70,
+                 max_sessions=4, next_prompt=nxt)
+    loop.run()
+    work = [c for c in runner.calls if c[0] != DEFAULT_EXIT_PREP_PROMPT]
+    assert any(c[0].startswith("割り込みタスク Y") for c in work), \
+        "rotate ばかりでも注入が opener で消費されるはず (飢餓しない)"
+
+
+def test_exit_prep_uses_unreviewed_path_when_available(tmp_path: Path) -> None:
+    """run_turn_unreviewed を持つ runner (orchestra 等) では exit準備をレビュー無しで回す。"""
+
+    class ReviewedRunner(FakeRunner):
+        def __init__(self, script: list[dict] | None = None) -> None:
+            super().__init__(script)
+            self.unreviewed_calls: list[str] = []
+
+        def run_turn_unreviewed(self, *, prompt: str, session_id: str, resume: bool,
+                                cwd: Path) -> TurnResult:
+            self.unreviewed_calls.append(prompt)
+            return self.run_turn(prompt=prompt, session_id=session_id, resume=resume, cwd=cwd)
+
+    runner = ReviewedRunner([{"ctx": 150_000}])  # 1 ターンで rotate → exit準備が走る
+    loop = _loop(runner, tmp_path, window_tokens=200_000, threshold=0.70, max_sessions=1)
+    loop.run()
+    assert DEFAULT_EXIT_PREP_PROMPT in runner.unreviewed_calls  # exit準備は unreviewed 経路
 
 
 # ─── サブスク認証 (API キー env を外す) ───────────────────────────
