@@ -492,10 +492,28 @@ def test_output_view_uses_colored_dark_style(qapp: QtWidgets.QApplication, tmp_p
 
 
 def test_append_normalizes_carriage_returns(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
-    """CRLF/CR 入りテキストが二重改行にならない (Qt は残留 \\r も改行扱いするため)。"""
+    """CRLF/CR 入りテキストが二重改行にならない (Qt は残留 \\r も改行扱いするため)。
+
+    各行に時刻が付くようになったので、a/b/c が時刻つきで 3 行に分かれることを確認する。
+    """
     win = _make_window(tmp_path)
     win._append("a\r\nb\rc")
-    assert "a\nb\nc" in win.output.toPlainText()
+    text = win.output.toPlainText()
+    assert "\r" not in text  # CR は正規化される
+    for ch in ("a", "b", "c"):
+        assert f"] {ch}" in text  # 各文字が時刻つきで別行に出る (二重改行にならない)
+
+
+def test_append_prepends_timestamp_each_line(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    """各行の先頭に [HH:MM:SS] が付く (ユーザー要望: トレーサビリティ)。空行は素通し。"""
+    import re
+
+    win = _make_window(tmp_path)
+    win._append("行1\n\n行2")
+    lines = win.output.toPlainText().splitlines()
+    stamped = [ln for ln in lines if "行" in ln]
+    assert len(stamped) == 2
+    assert all(re.match(r"^\[\d\d:\d\d:\d\d\] 行", ln) for ln in stamped)
 
 
 def test_error_turn_text_shown_even_after_stream(
