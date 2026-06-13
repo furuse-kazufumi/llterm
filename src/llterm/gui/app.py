@@ -617,11 +617,11 @@ class MainWindow(QtWidgets.QMainWindow):
         """Gemini CLI 奏者 (agentic) を使う設定のとき、無料枠期限の通知文を返す ("" = 通知なし)。
 
         Gemini CLI の個人無料枠は GEMINI_CLI_FREE_TIER_END (2026-06-18) で停止する。期限が
-        間近/超過していて、かつ Gemini CLI を使う設定 (Gemini切替 ON / レビュー奏者=Gemini CLI)
-        のときだけ通知する。移行先 = Gemini API (provider 'gemini-api')。
+        間近/超過していて、かつ Gemini CLI を使う見込み (gemini が PATH にある自動可用 /
+        レビュー奏者=Gemini CLI) のときだけ通知する。移行先 = Gemini API (provider 'gemini-api')。
         """
         reviewer_is_gemini_cli = self.chk_reviewers["gemini"].isChecked()
-        uses_cli = self.chk_gemini_fallback.isChecked() or reviewer_is_gemini_cli
+        uses_cli = (shutil.which("gemini") is not None) or reviewer_is_gemini_cli
         if not uses_cli:
             return ""
         from llterm.host.gemini_runner import gemini_cli_free_tier_status
