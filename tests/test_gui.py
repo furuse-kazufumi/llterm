@@ -513,11 +513,11 @@ def test_append_prepends_timestamp_each_line(qapp: QtWidgets.QApplication, tmp_p
     import re
 
     win = _make_window(tmp_path)
-    win._append("行1\n\n行2")
+    win._append("ZZUNIQ_A\n\nZZUNIQ_B")  # 起動時メッセージと衝突しない一意トークン
     lines = win.output.toPlainText().splitlines()
-    stamped = [ln for ln in lines if "行" in ln]
-    assert len(stamped) == 2
-    assert all(re.match(r"^\[\d\d:\d\d:\d\d\] 行", ln) for ln in stamped)
+    stamped = [ln for ln in lines if "ZZUNIQ_" in ln]
+    assert len(stamped) == 2  # 空行は素通しで時刻が付かない
+    assert all(re.match(r"^\[\d\d:\d\d:\d\d\] ZZUNIQ_", ln) for ln in stamped)
 
 
 def test_error_turn_text_shown_even_after_stream(
