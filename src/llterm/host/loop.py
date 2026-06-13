@@ -879,6 +879,20 @@ class SessionLoop:
             self.sleep_fn(min(2.0, max(0.0, remaining)))
         return True
 
+    def _handoff_run_turn(self, runner: TurnRunner, *, prompt: str, sid: str,
+                          resume: bool) -> TurnResult:
+        """handoff / exit準備ターンを実行する。
+
+        orchestra のようなフルレビュー型 runner が ``run_turn_unreviewed`` を持つ場合はそれを使い、
+        記録目的のターンに 3-AI のフルレビュー (実装→3レビュー→集約→修正→sign-off) を掛けない
+        (ユーザー指摘 2026-06-13: レビューにレビューを重ねている / 時間がかかりすぎ)。
+        持たない通常 runner は run_turn にフォールバックする (後方互換)。
+        """
+        fn = getattr(runner, "run_turn_unreviewed", None)
+        if callable(fn):
+            return fn(prompt=prompt, session_id=sid, resume=resume, cwd=self.workdir)
+        return runner.run_turn(prompt=prompt, session_id=sid, resume=resume, cwd=self.workdir)
+
     def _handoff(self, runner: TurnRunner, sid: str) -> float:
         """停止要求時の作業記録 (exit準備 = SESSION_SUMMARY 更新) を 1 ターン回す。
 
@@ -887,8 +901,7 @@ class SessionLoop:
         """
         self._emit("handoff", session_id=sid)
         try:
-            r = runner.run_turn(prompt=self.exit_prep_prompt, session_id=sid,
-                                resume=True, cwd=self.workdir)
+            r = self._handoff_run_turn(runner, prompt=self.exit_prep_prompt, sid=sid, resume=True)
             self.ledger.append(event="exit_prep", cmd_id=sid, action="shutdown",
                                detail="handoff on stop")
             return r.cost_usd
