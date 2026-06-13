@@ -680,8 +680,9 @@ def test_model_default_is_opus_and_feeds_real_runner(
     """既定 model は Opus 4.8 (ユーザー方針 2026-06-13)、実 claude runner に --model として渡る。"""
     win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
     assert win.cmb_model.currentData() == "claude-opus-4-8"
+    win.chk_codex_first.setChecked(False)
     win.chk_real.setChecked(True)
-    runner = win._build_runner()
+    runner = _conductor(win)
     assert runner.model == "claude-opus-4-8"
 
 
