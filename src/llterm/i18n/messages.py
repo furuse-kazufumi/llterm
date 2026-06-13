@@ -731,6 +731,43 @@ MESSAGES: dict[str, dict[str, str]] = {
               "tree?\n  staging: {staging}\n  live: {live}\n"
               "The existing live tree will be backed up.",
     },
+    # ─── 選択ダイアログ (ChoiceDialog) ──────────────────────────────
+    "gui.dialog.choice.title": {
+        "ja": "選択してください",
+        "en": "Please choose",
+    },
+    "gui.dialog.choice.default_heading": {
+        "ja": "次のいずれかを選んでください",
+        "en": "Please pick one of the following",
+    },
+    "gui.dialog.choice.hint_single": {
+        "ja": "1 つ選んで OK を押してください",
+        "en": "Pick one, then press OK",
+    },
+    "gui.dialog.choice.hint_multi": {
+        "ja": "あてはまるものを選んで OK を押してください (複数可)",
+        "en": "Select all that apply, then press OK (multiple allowed)",
+    },
+    "gui.dialog.choice.ok": {
+        "ja": "OK",
+        "en": "OK",
+    },
+    "gui.dialog.choice.cancel": {
+        "ja": "キャンセル",
+        "en": "Cancel",
+    },
+    "gui.msg.choice_detected": {
+        "ja": "❓ 選択要求を検知 — ダイアログで選んでください",
+        "en": "❓ Choice request detected — please choose in the dialog",
+    },
+    "gui.msg.choice_replied": {
+        "ja": "✔ {reply} を次ターンに注入します",
+        "en": "✔ Injecting \"{reply}\" into the next turn",
+    },
+    "gui.msg.choice_cancelled": {
+        "ja": "選択をキャンセルしました (注入なし。注入欄に自由入力できます)",
+        "en": "Choice cancelled (nothing injected; you may type freely in the inject box)",
+    },
     "gui.dialog.close.title": {
         "ja": "終了確認",
         "en": "Confirm exit",
