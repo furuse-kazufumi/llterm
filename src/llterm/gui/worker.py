@@ -43,6 +43,9 @@ class LoopWorker(QtCore.QThread):
         self._stop = threading.Event()
         self._inject_lock = threading.Lock()
         self._injected: list[str] = []
+        # 承認確認不要 (完全自律) の現在値。GUI が走行中に set_autonomy で更新し、ループは
+        # autonomy_fn 経由で毎ターン読む (bool 代入/読取は CPython で atomic なのでロック不要)。
+        self._autonomy = bool(self._loop_kw.get("autonomy", False))
         # 全 runner (primary + fallback) の on_stream を購読する。呼び出し側が既に独自
         # コールバックを設定済みの場合は上書きしない。emit はスレッド安全 (queued connection)。
         for r in (runner, *self._fallback_runners):
