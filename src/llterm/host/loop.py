@@ -576,7 +576,10 @@ class ClaudeRunner:
     def run_turn(self, *, prompt: str, session_id: str, resume: bool, cwd: Path) -> TurnResult:
         exe_err = self._exe_error()
         if exe_err:
-            return TurnResult(session_id, 0, 0, 0, 0.0, exe_err, True, "other", 0, 127)
+            # claude を起動できない (shim のみ / 未導入) = このプロバイダは使用不能。
+            # err=other だと loop が 3 回叩いて silent circuit_open するため "unavailable" にし、
+            # loop に別プロバイダへの即フォールバック (または明示停止) をさせる。
+            return TurnResult(session_id, 0, 0, 0, 0.0, exe_err, True, "unavailable", 0, 127)
         args = self._build_args(prompt=prompt, session_id=session_id, resume=resume)
         # cancel は恒久 (リセットしない): Stop 後〜次ターン起動前に届いた cancel を消失させない。
         # GUI は Start ごとに新しい runner を作るので、次の走行に持ち越されることはない。
