@@ -72,6 +72,7 @@ class OrchestraRunner:
     on_stream: Callable[[dict], None] | None = None
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
     _cancelled: bool = field(default=False, repr=False, compare=False)
+    _interrupted: bool = field(default=False, repr=False, compare=False)  # 緊急注入の一発中断
     # 旧 API (`reviewer=` 単一・`reviewers` 未指定) で構築されたか。True のとき派生 session_id を
     # `-review` (無印) にして既存テスト/呼び出しと後方互換を保つ (複数パネルは `-review{i}`)。
     _legacy_single: bool = field(default=False, repr=False, compare=False)
