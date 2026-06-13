@@ -792,7 +792,7 @@ class SessionLoop:
             if got:
                 base = got
                 injected = True
-        return self._augment(base), injected
+        return self._with_autonomy(self._augment(base)), injected
 
     def used_pct(self, res: TurnResult) -> float:
         # result イベントの実窓サイズ (modelUsage.contextWindow) があればそちらを分母にする。
