@@ -614,13 +614,17 @@ class MainWindow(QtWidgets.QMainWindow):
         free = self._free_runner()
         if free is not None and free.key_available():
             fallbacks = [*fallbacks, free]
-        # レビュー奏者を選んでいれば、主奏者を OrchestraRunner で包む = 分業
-        # (指揮者=主奏者が実装 → レビュー奏者が批評 → 指揮者が修正)。1 ターンに束ねるので
-        # fallbacks (フェイルオーバー) はそのまま (主奏者が枯れたら従来どおり次の奏者へ)。
-        reviewer = self._reviewer_runner()
-        if reviewer is not None:
+        # オーケストラ (4 役) を組む: レビュー奏者パネル (複数・独立) or 真偽確認奏者が居れば、
+        # 主奏者を指揮者として OrchestraRunner で包む。責任者 (lead=Claude) がレビュー + 真偽確認を
+        # 取りまとめ → 統合指示 → 指揮者が修正 → 最終 sign-off でループを閉じる。指揮者==lead==Claude
+        # でもブロックしない (ダブルチェック許容)。1 ターンに束ねるので fallbacks はそのまま。
+        reviewers = self._reviewer_runners()
+        factchecker = self._factcheck_runner()
+        if reviewers or factchecker is not None:
             from llterm.host.orchestra_runner import OrchestraRunner
-            primary = OrchestraRunner(conductor=primary, reviewer=reviewer)
+            primary = OrchestraRunner(
+                conductor=primary, reviewers=reviewers, factchecker=factchecker,
+                lead=self._lead_runner(), apply_review=True, final_signoff=True)
         return primary, fallbacks
 
     def _free_runner(self) -> OpenAICompatRunner | None:
