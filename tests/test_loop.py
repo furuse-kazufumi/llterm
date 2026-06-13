@@ -948,6 +948,29 @@ def test_injection_consumed_after_rotate_not_starved(tmp_path: Path) -> None:
         "rotate ばかりでも注入が opener で消費されるはず (飢餓しない)"
 
 
+def test_used_pct_clamped_to_window(tmp_path: Path) -> None:
+    """過大計上 (context_tokens > 窓) でも used_pct は 100% にクランプされる (rotate 判定の防御)。"""
+    loop = _loop(FakeRunner(), tmp_path, window_tokens=200_000)
+    over = TurnResult("s", 5_000_000, 0, 5_000_000, 0.0, "x", False, "", 1, 0)  # 2500%
+    assert loop.used_pct(over) == 1.0
+    half = TurnResult("s", 100_000, 0, 100_000, 0.0, "x", False, "", 1, 0)
+    assert loop.used_pct(half) == 0.5
+
+
+def test_codex_zero_context_rotates_on_turn_count_not_tokens(tmp_path: Path) -> None:
+    """context_tokens=0 (codex 自前管理) のターンは閾値超で rotate せず、turn 数で rotate する。"""
+    # 全ターン ctx=0 → used=0% < 閾値。max_turns_per_session=2 で rotate するはず
+    runner = FakeRunner([{"ctx": 0}, {"ctx": 0}, {"ctx": 0}, {"ctx": 0}])
+    seen: list[tuple[str, dict]] = []
+    loop = _loop(runner, tmp_path, window_tokens=200_000, threshold=0.70,
+                 max_sessions=1, max_turns_per_session=2,
+                 on_event=lambda k, d: seen.append((k, d)))
+    loop.run()
+    assert any(k == "rotate" for k, _ in seen)  # トークンでなく turn 数で rotate した
+    used = [d["used_pct"] for k, d in seen if k == "turn"]
+    assert all(u == 0.0 for u in used)  # 占有率は 0 のまま (過大計上しない)
+
+
 def test_interrupted_turn_continues_and_consumes_injection(tmp_path: Path) -> None:
     """error_kind=interrupted はループを止めず、注入タスクを次ターンで消費する (スキップしない)。"""
     state = {"n": 0}
