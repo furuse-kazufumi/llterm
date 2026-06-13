@@ -1035,6 +1035,58 @@ def test_build_args_coerces_non_uuid_session_id() -> None:
     assert sid1 != sid2  # 毎回ユニーク = 同一セッション内の --session-id 再利用衝突を防ぐ
 
 
+# ─── 指令 (安全弁 / autonomy / 監督モード) ───────────────────────
+
+
+def test_apply_directives_autonomy_on(tmp_path: Path) -> None:
+    """autonomy ON: 安全弁(常時) + 自律指令が付き、監督指令は付かない。"""
+    from llterm.host.loop import AUTONOMY_DIRECTIVE, SAFETY_DIRECTIVE, SUPERVISED_DIRECTIVE
+
+    out = _loop(FakeRunner(), tmp_path, autonomy_fn=lambda: True)._apply_directives("BASE")
+    assert "BASE" in out
+    assert SAFETY_DIRECTIVE in out          # 不可逆操作の承認 = autonomy 不問で常時
+    assert AUTONOMY_DIRECTIVE in out
+    assert SUPERVISED_DIRECTIVE not in out
+
+
+def test_apply_directives_autonomy_off(tmp_path: Path) -> None:
+    """autonomy OFF (監督): 安全弁 + 監督指令が付き、自律指令は付かない。"""
+    from llterm.host.loop import AUTONOMY_DIRECTIVE, SAFETY_DIRECTIVE, SUPERVISED_DIRECTIVE
+
+    out = _loop(FakeRunner(), tmp_path, autonomy_fn=lambda: False)._apply_directives("BASE")
+    assert SAFETY_DIRECTIVE in out
+    assert SUPERVISED_DIRECTIVE in out
+    assert AUTONOMY_DIRECTIVE not in out
+
+
+def test_apply_directives_dynamic_toggle(tmp_path: Path) -> None:
+    """autonomy_fn は毎回評価される (走行中トグルが次ターンから効く)。"""
+    from llterm.host.loop import AUTONOMY_DIRECTIVE, SUPERVISED_DIRECTIVE
+
+    state = {"auto": True}
+    loop = _loop(FakeRunner(), tmp_path, autonomy_fn=lambda: state["auto"])
+    assert AUTONOMY_DIRECTIVE in loop._apply_directives("X")
+    state["auto"] = False  # 走行中にトグル OFF した相当
+    assert SUPERVISED_DIRECTIVE in loop._apply_directives("X")
+
+
+def test_apply_directives_static_autonomy_fallback(tmp_path: Path) -> None:
+    """autonomy_fn 未指定なら静的 autonomy にフォールバックする (後方互換)。"""
+    from llterm.host.loop import AUTONOMY_DIRECTIVE
+
+    assert AUTONOMY_DIRECTIVE in _loop(FakeRunner(), tmp_path, autonomy=True)._apply_directives("X")
+    assert AUTONOMY_DIRECTIVE not in _loop(FakeRunner(), tmp_path, autonomy=False)._apply_directives("X")
+
+
+def test_opener_includes_safety_directive(tmp_path: Path) -> None:
+    """実際の 1 ターン目 opener にも安全弁が乗る (毎ターン適用の回帰)。"""
+    from llterm.host.loop import SAFETY_DIRECTIVE
+
+    runner = FakeRunner([{"ctx": 150_000}])  # 1 ターンで rotate → max_sessions=1 到達
+    _loop(runner, tmp_path, max_sessions=1, autonomy_fn=lambda: True).run()
+    assert SAFETY_DIRECTIVE in runner.calls[0][0]
+
+
 def test_default_model_is_opus_4_8() -> None:
     from llterm.host.loop import DEFAULT_MODEL
 
