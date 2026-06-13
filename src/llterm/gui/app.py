@@ -504,15 +504,21 @@ class MainWindow(QtWidgets.QMainWindow):
         claude = ClaudeRunner(use_subscription=True,
                               effort=str(self.cmb_effort.currentData() or ""),
                               model=str(self.cmb_model.currentData() or ""))
+        # Gemini (agentic 奏者 = ファイル編集可) を fallback に。未インストールなら入れない。
+        gemini = self._gemini_runner()
         primary: TurnRunner
         fallbacks: list[TurnRunner]
         if self._codex_is_primary():
-            primary, fallbacks = CodexRunner(), [claude]  # Claude を保険に残す = 動き続ける
+            # Codex 主。無料 agent (Gemini) を Claude より先に、Claude を最後の保険に置く。
+            primary = CodexRunner()
+            fallbacks = ([gemini] if gemini else []) + [claude]
         else:
             primary = claude
             fallbacks = [CodexRunner()] if self.chk_codex_fallback.isChecked() else []
-        # 無料奏者 (OpenAI 互換) を chain 末尾に追加。テキスト専用なので keep-alive 保険として
-        # 最後尾に置く。APIキー未設定 (Ollama 以外) なら入れない = loop を auth 停止させない。
+            if gemini is not None:
+                fallbacks = [*fallbacks, gemini]
+        # 無料奏者 (OpenAI 互換 = テキスト専用) は keep-alive 保険として最後尾。
+        # APIキー未設定 (Ollama 以外) なら入れない = loop を auth 停止させない。
         free = self._free_runner()
         if free is not None and free.key_available():
             fallbacks = [*fallbacks, free]
@@ -525,6 +531,19 @@ class MainWindow(QtWidgets.QMainWindow):
             return None
         from llterm.host.openai_compat_runner import OpenAICompatRunner
         return OpenAICompatRunner(provider=key)
+
+    def _gemini_runner(self) -> GeminiRunner | None:
+        """Gemini fallback が ON かつ gemini が PATH にあれば GeminiRunner、無ければ None。
+
+        未インストールの gemini を chain に入れると毎ターン not_found で空転するため、
+        事前に shutil.which で除外する (free 奏者の key_available と同じ fail-safe)。
+        """
+        if not self.chk_gemini_fallback.isChecked():
+            return None
+        if shutil.which("gemini") is None:
+            return None
+        from llterm.host.gemini_runner import GeminiRunner
+        return GeminiRunner()
 
     def _build_runner(self) -> TurnRunner:
         """このランの primary runner (= provider chain の先頭) を返す。"""
