@@ -572,6 +572,24 @@ class MainWindow(QtWidgets.QMainWindow):
         from llterm.host.gemini_runner import GeminiRunner
         return GeminiRunner()
 
+    def _gemini_cli_deadline_note(self) -> str:
+        """Gemini CLI 奏者 (agentic) を使う設定のとき、無料枠期限の通知文を返す ("" = 通知なし)。
+
+        Gemini CLI の個人無料枠は GEMINI_CLI_FREE_TIER_END (2026-06-18) で停止する。期限が
+        間近/超過していて、かつ Gemini CLI を使う設定 (Gemini切替 ON / レビュー奏者=Gemini CLI)
+        のときだけ通知する。移行先 = Gemini API (provider 'gemini-api')。
+        """
+        uses_cli = self.chk_gemini_fallback.isChecked() or self.cmb_reviewer.currentData() == "gemini"
+        if not uses_cli:
+            return ""
+        from llterm.host.gemini_runner import gemini_cli_free_tier_status
+        status, days = gemini_cli_free_tier_status()
+        if status == "expired":
+            return t("gui.msg.gemini_cli_expired", days=-days)
+        if status == "soon":
+            return t("gui.msg.gemini_cli_expiring", days=days)
+        return ""
+
     def _reviewer_runner(self) -> TurnRunner | None:
         """選択中のレビュー奏者 runner、未選択/未導入/キー無は None (分業を組まない fail-safe)。"""
         key = str(self.cmb_reviewer.currentData() or "")
