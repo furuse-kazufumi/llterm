@@ -992,6 +992,28 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             self._append(t("gui.msg.inject_pending"), PALETTE["dim"])
 
+    def emergency_inject(self) -> None:
+        """入力中タスクを緊急注入する: 現ターンを即中断し、最優先で実行する。
+
+        通常注入と違い現ターンの完了を待たない。中断はループ停止ではなく、注入タスクは
+        キュー先頭に積まれてスキップされず必ず次ターンで実行される (ユーザー要望 2026-06-13)。
+        loop 未起動時は緊急の意味が無いので通常注入として queue に積む。
+        """
+        text = self.input.toPlainText().strip()
+        if not text:
+            return
+        self.input.clear()
+        if self.worker is not None and self.worker.isRunning():
+            self._append(t("gui.msg.emergency_accepted", text=text), PALETTE["inject"],
+                         bold=True, ts=True)
+            self.worker.inject(text, emergency=True)  # 先頭挿入 + 現ターン interrupt
+            if self.chk_autonomy.isChecked():
+                self.chk_autonomy.setChecked(False)  # 介入 → 監督モードへ (送信と同方針)
+        else:
+            self._append(t("gui.msg.inject_accepted", text=text), PALETTE["inject"], ts=True)
+            self._append(t("gui.msg.emergency_pending"), PALETTE["dim"])
+            self.worker.inject(text) if self.worker is not None else None
+
     @QtCore.Slot(bool)
     def _on_autonomy_toggled(self, on: bool) -> None:
         """承認確認不要トグルを走行中の worker に即反映する (次ターンから効く)。
