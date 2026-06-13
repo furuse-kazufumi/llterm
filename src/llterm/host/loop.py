@@ -37,6 +37,7 @@ from pathlib import Path
 from typing import Protocol
 
 from llterm.ctl.ledger import Ledger
+from llterm.host.offload_tools import build_offload_hint
 from llterm.i18n import t
 
 
