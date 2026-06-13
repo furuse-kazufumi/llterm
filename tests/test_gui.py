@@ -744,6 +744,7 @@ def test_default_chain_is_claude_primary(qapp: QtWidgets.QApplication, tmp_path:
 def test_codex_fallback_toggle_appends_codex(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
     """Codex フォールバック ON: Claude 主 + Codex を保険に。"""
     win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    win.chk_codex_first.setChecked(False)
     win.chk_real.setChecked(True)
     win.chk_codex_fallback.setChecked(True)
     primary, fallbacks = _provider_names(win)
