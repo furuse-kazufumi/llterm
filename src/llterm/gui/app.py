@@ -568,6 +568,9 @@ class MainWindow(QtWidgets.QMainWindow):
         if real and free is not None and not free.key_available():
             self._append(t("gui.msg.free_player_no_key", provider=str(self.cmb_free_provider.currentData())),
                          PALETTE["err"])
+        # Gemini fallback を選んだのに gemini 未インストールで除外された場合も明示する
+        if real and self.chk_gemini_fallback.isChecked() and shutil.which("gemini") is None:
+            self._append(t("gui.msg.gemini_not_installed"), PALETTE["err"])
         loop_kw = dict(self.loop_kw)
         loop_kw["max_sessions"] = self.spin_sessions.value()  # 常に上限つき (暴走/レート保護)
         loop_kw["threshold"] = self.spin_threshold.value()
