@@ -717,6 +717,7 @@ class SessionLoop:
     offload_hint: str = ""  # 非空なら作業 prompt に計算オフロード指令を付ける (offload_tools)
     continuity: bool = True  # 各セッション冒頭で handoff を読み「前回の続き」から再開する
     autonomy: bool = False  # True: 承認確認不要(人間確認を待たず継続)。既定 False=安全側
+    autonomy_fn: Callable[[], bool] | None = None  # 非None: 毎ターン autonomy を動的取得 (GUI トグル即反映)
     window_tokens: int = DEFAULT_WINDOW_TOKENS
     threshold: float = DEFAULT_THRESHOLD
     max_sessions: int | None = None
