@@ -334,6 +334,14 @@ class GeminiRunner:
         if proc is not None and proc.poll() is None:
             self._kill(proc)
 
+    def interrupt(self) -> None:
+        """現ターンだけを kill する (恒久 cancel と違い、次の run_turn は新規に起動できる)。緊急注入用。"""
+        with self._lock:
+            self._interrupted = True
+            proc = self._proc
+        if proc is not None and proc.poll() is None:
+            self._kill(proc)
+
     def _kill(self, proc: subprocess.Popen) -> None:
         try:
             if sys.platform == "win32":
