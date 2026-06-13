@@ -163,6 +163,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self._build_ui(initial_workdir=Path(workdir) if workdir else None,
                        real_default=real_default, rad_default=rad_default,
+                       offload_default=offload_default,
                        template_default=template_default,
                        autonomy_default=autonomy_default,
                        param_default=str(saved.get("param") or ""),
