@@ -293,13 +293,13 @@ class MainWindow(QtWidgets.QMainWindow):
         # 注入欄が見えるように最下部固定をやめる。フォーカス時に見える化する。
         vbox.addWidget(self.input)
 
-        # 出力ログ (主) と 進捗サマリ (下部) を縦 QSplitter で積む (狭幅では横並びを避ける)。
+        # 出力ログ (主) と 進捗サマリ タブ (下部) を縦 QSplitter で積む (狭幅では横並びを避ける)。
         self.split_main = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
         self.split_main.addWidget(self.output)
-        self.split_main.addWidget(self._summary_panel)
+        self.split_main.addWidget(self.summary_tabs)
         self.split_main.setChildrenCollapsible(False)  # どちらの pane も潰さない
         self.output.setMinimumHeight(120)
-        self._summary_panel.setMinimumHeight(80)
+        self.summary_tabs.setMinimumHeight(80)
         self.split_main.setStretchFactor(0, 3)  # ログを広めに
         self.split_main.setStretchFactor(1, 2)
         self.split_main.setSizes([380, 200])
