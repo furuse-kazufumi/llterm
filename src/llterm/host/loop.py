@@ -931,9 +931,16 @@ class SessionLoop:
             opener = self.resume_prompt
             if self.continuity:
                 opener = CONTINUITY_PREAMBLE + opener  # 全テンプレで前回の続きから再開
+            # 注入タスクは最優先: 新セッション opener (rotate 直後を含む) でも先に消費する。
+            # 従来は継続ターンの _continue_prompt でしか消費せず、ctx 超過で毎ターン rotate する
+            # orchestra では _continue_prompt に到達せず注入が永久に飲み込まれた (= 飢餓)。
+            # ユーザー指摘 2026-06-13「注入の優先度は高くあるべき」への対処。
+            injected = False
+            got = self._take_injection()
+            if got:
+                opener, injected = got, True
             prompt = self._apply_directives(self._augment(opener))  # 安全弁/autonomy は毎ターン動的評価
             resume = False
-            injected = False
             session_turns = 0
 
             while True:
