@@ -33,6 +33,18 @@
 - **注入で自動 OFF(監督モード)** / **確認回答後に自動 ON(ループ復帰)**。注入はキュー積み。
 - **安全弁(常時・autonomy 不問)**: 不可逆/危険操作は ①next_plan.md 更新 → ②`⟦LLTERM_CHOICE⟧` で承認 → ③回答後に決定要約を next_plan.md へ追記、を必須化。
 
+### ctx 過大計上 (2549%) の是正 (2026-06-13 17:10、本セッション・残課題を解消)
+- **原因**: Codex の `turn.completed.usage` は 1 ターン内の全内部 API 往復の **累積**(各往復で文脈を再送 →
+  N×文脈)。`input+cached ≈ 5.1M = 窓 200k の 2549%`(物理的に窓超え=累積の証拠)。これを占有率にすると
+  毎ターン閾値超で rotate し 1 セッション=1 ターンに縮退していた。
+- **修正**: `parse_codex_jsonl` の `context_tokens` を **0 固定**(codex は exec resume で自前圧縮するため
+  占有ベース rotate 不要 → turn 数 `max_turns_per_session=50` で rotate)。`used_pct` を **[0,1] にクランプ**
+  (どの runner の累積 usage が紛れても rotate 判定を壊さない防御)。input/output tokens は情報として保持。
+- 検証: **全 424 テスト pass**。codex_runner は ruff/mypy クリーン。
+- ★ 表示の注記: orchestra/codex のターンは ctx% が低く (≒0%) 出る = 「codex 自前管理」の正しい挙動。
+  進捗は session/turn カウンタと出力ログで追える。codex の累積トークンを「今ターンの使用量」として
+  別表示したい場合は GUI 拡張で対応可 (任意・占有率とは別欄)。
+
 ### 緊急注入 + 全行タイムスタンプ + ローテログ + 記事ストック (2026-06-13 16:56、本セッション)
 - **緊急注入 (interrupt)**: 恒久 cancel と別に **一発 interrupt** を全 runner (Claude/Codex/Gemini/Orchestra) へ追加。
   run_turn は `error_kind="interrupted"` を返し、loop は**停止せず注入を次ターンで必ず消費 (スキップ防止)**。
