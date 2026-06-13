@@ -287,8 +287,9 @@ class MainWindow(QtWidgets.QMainWindow):
         set_row.addWidget(QtWidgets.QLabel(t("gui.label.free_player")))
         self.cmb_free_provider = QtWidgets.QComboBox()
         self.cmb_free_provider.addItem(t("gui.free_player.none"), "")
-        for _key, _label in (("groq", "Groq"), ("cerebras", "Cerebras"),
-                             ("openrouter", "OpenRouter"), ("ollama", "Ollama (local)")):
+        for _key, _label in (("gemini-api", "Gemini API"), ("groq", "Groq"),
+                             ("cerebras", "Cerebras"), ("openrouter", "OpenRouter"),
+                             ("ollama", "Ollama (local)")):
             self.cmb_free_provider.addItem(_label, _key)
         _fpidx = self.cmb_free_provider.findData(free_provider_default)
         self.cmb_free_provider.setCurrentIndex(_fpidx if _fpidx >= 0 else 0)
