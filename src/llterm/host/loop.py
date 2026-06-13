@@ -844,7 +844,10 @@ class SessionLoop:
         denom = res.context_window or self.window_tokens
         if denom <= 0:
             return 0.0
-        return res.context_tokens / denom
+        # 占有率は物理的に窓 (ハード上限) を超えない。> 100% は過大計上アーティファクトなので
+        # [0, 1] にクランプし、累積 usage が紛れても rotate 判定 (used >= threshold) を壊さない
+        # (ユーザー指摘 2026-06-13: orchestra で ctx 2549% → 毎ターン rotate していた)。
+        return min(1.0, max(0.0, res.context_tokens / denom))
 
     def _new_session_id(self) -> str:
         # rotation = 新 session-id = fresh context。UUID 衝突は事実上ゼロ。
