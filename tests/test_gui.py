@@ -861,6 +861,7 @@ def test_free_player_appended_to_chain_when_key_set(
     """Groq を選び GROQ_API_KEY 設定済みなら chain 末尾に無料奏者が入る。"""
     monkeypatch.setenv("GROQ_API_KEY", "sk-test")
     win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    win.chk_codex_first.setChecked(False)
     win.chk_real.setChecked(True)
     win.cmb_free_provider.setCurrentIndex(win.cmb_free_provider.findData("groq"))
     primary, fallbacks = _provider_names(win)
