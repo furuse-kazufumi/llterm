@@ -402,6 +402,38 @@ def test_all_providers_blocked_waits_for_earliest(tmp_path: Path) -> None:
     assert slept  # 全ブロックで待機が発生
 
 
+def test_unavailable_provider_falls_back(tmp_path: Path) -> None:
+    """主プロバイダの実行ファイルが使用不能 (error_kind='unavailable') なら、待たずに
+    別プロバイダへ即切替して継続する (claude が PATH 不在等で起動できない場合の保険)。"""
+    primary = FakeRunner([{"is_error": True, "error_kind": "unavailable"}])
+    fallback = FakeRunner([{"ctx": 150_000}])  # 切替先は成功 → rotate → max_sessions
+    events: list[tuple[str, dict]] = []
+    loop = SessionLoop(
+        runner=primary, fallback_runners=(fallback,), workdir=tmp_path,
+        ledger=Ledger(tmp_path / "l.jsonl"),
+        window_tokens=200_000, threshold=0.70, max_sessions=2,
+        now_fn=lambda: 0.0, sleep_fn=lambda s: None,
+        on_event=lambda k, d: events.append((k, d)),
+    )
+    outcome = loop.run()
+    assert outcome.stop_reason in ("max_sessions", "stopped")
+    assert any(k == "provider_unavailable" for k, _ in events)
+    assert len(fallback.calls) >= 1  # fallback が実際に走った
+
+
+def test_unavailable_provider_no_fallback_stops_clearly(tmp_path: Path) -> None:
+    """使用不能で切替先も無ければ、3 連続エラー (circuit_open) でなく原因を明示して即停止する。"""
+    runner = FakeRunner([{"is_error": True, "error_kind": "unavailable"}])
+    loop = SessionLoop(
+        runner=runner, workdir=tmp_path, ledger=Ledger(tmp_path / "l.jsonl"),
+        window_tokens=200_000, threshold=0.70, max_sessions=3,
+        now_fn=lambda: 0.0, sleep_fn=lambda s: None,
+    )
+    outcome = loop.run()
+    assert outcome.stop_reason == "provider_unavailable"
+    assert len(runner.calls) == 1  # 3 回叩かず 1 回で停止 (silent circuit_open を回避)
+
+
 def test_rate_limit_wait_interrupted_by_stop(tmp_path: Path) -> None:
     """待機中に Stop されたら自走を停止する (待機は中断可能)。"""
     state = {"turns": 0}
