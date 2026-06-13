@@ -957,6 +957,9 @@ def main(argv: list[str] | None = None) -> int:
                         help="claude を呼ばず仮想 claude で配線確認 (課金ゼロ)")
     parser.add_argument("--rad", action="store_true",
                         help="RAD コーパス研究接地を有効化 (新規作業前に D:/docs/*_corpus_v2 を grep)")
+    parser.add_argument("--no-offload", action="store_true",
+                        help="計算オフロード指令の自動注入を無効化 (既定は有効: 利用可能な "
+                             "kaggle/gh/oci 等を検出し、重い計算を自律的に投げる指令を付ける)")
     parser.add_argument("--effort", default="", choices=EFFORT_LEVELS,
                         help="claude の思考努力レベル (low/medium/high/xhigh/max。既定: claude 既定)")
     parser.add_argument("--model", default=DEFAULT_MODEL,
