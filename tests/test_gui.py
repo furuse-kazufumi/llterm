@@ -650,8 +650,9 @@ def test_effort_default_is_max_and_feeds_real_runner(
     """既定 effort は max (ユーザー方針)、実 claude runner に --effort として渡る。"""
     win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
     assert win.cmb_effort.currentData() == "max"
+    win.chk_codex_first.setChecked(False)
     win.chk_real.setChecked(True)
-    runner = win._build_runner()
+    runner = _conductor(win)
     assert runner.effort == "max"
 
 
