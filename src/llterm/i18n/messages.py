@@ -332,6 +332,55 @@ MESSAGES: dict[str, dict[str, str]] = {
         "ja": "レビュー奏者:",
         "en": "Reviewer:",
     },
+    "gui.label.review_panel": {
+        "ja": "レビュー奏者パネル:",
+        "en": "Review panel:",
+    },
+    "gui.tip.review_panel": {
+        "ja": "分業オーケストラのレビュー奏者パネル。複数選択でき、各 AI が**独立に** git diff を"
+              "コードレビューする。責任者 (Claude) がそれらを取りまとめて総合判断 → 指揮者へ統合指示。"
+              "実装者と同じプロバイダを選んでも禁止しない (『ダブルチェック(同系)』とラベル表示)。"
+              "未導入/キー未設定の奏者は自動で無効。実 claude のみ有効。",
+        "en": "Review panel for the division-of-labor orchestra. Multi-select; each AI reviews the "
+              "git diff **independently**. The lead (Claude) aggregates them into an overall "
+              "judgment → unified instructions to the conductor. Picking the same provider as the "
+              "implementer is allowed (shown as 'double-check (same family)'). Unavailable players "
+              "(not installed / no key) are auto-disabled. Real claude only.",
+    },
+    "gui.label.factcheck": {
+        "ja": "真偽確認奏者:",
+        "en": "Fact-check player:",
+    },
+    "gui.factcheck.none": {
+        "ja": "(なし)",
+        "en": "(none)",
+    },
+    "gui.tip.factcheck": {
+        "ja": "調査・真偽確認奏者 (任意・単一)。Perplexity 等の web 接地 AI が、実装報告/diff の"
+              "事実主張・根拠を裏取りする。実装はしない。PERPLEXITY_API_KEY 未設定なら自動で無効。"
+              "実 claude のみ有効。",
+        "en": "Investigation / fact-check player (optional, single). A web-grounded AI like "
+              "Perplexity verifies the factual claims and evidence in the implementation report / "
+              "diff. It does not implement. Auto-disabled if PERPLEXITY_API_KEY is unset. "
+              "Real claude only.",
+    },
+    "gui.label.lead": {
+        "ja": "総合判断:",
+        "en": "Lead:",
+    },
+    "gui.lead.value": {
+        "ja": "Claude (責任者)",
+        "en": "Claude (lead)",
+    },
+    "gui.tip.lead": {
+        "ja": "責任者/総合判断は Claude Code に固定。レビュー奏者パネル各所見 + 真偽確認結果を"
+              "取りまとめ、重複排除した優先度付き修正指示を指揮者へ渡し、修正後に最終 sign-off で"
+              "ループを閉じる (レビューやりっぱなしを防ぐ)。",
+        "en": "The lead / overall judge is fixed to Claude Code. It aggregates each review-panel "
+              "finding plus the fact-check result, hands deduplicated prioritized fix instructions "
+              "to the conductor, and closes the loop with a final sign-off after fixes (so reviews "
+              "are never left dangling).",
+    },
     "gui.reviewer.none": {
         "ja": "(なし)",
         "en": "(none)",
