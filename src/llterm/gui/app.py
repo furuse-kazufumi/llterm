@@ -137,6 +137,7 @@ class MainWindow(QtWidgets.QMainWindow):
             workdir = wd if wd.is_dir() else None  # 消えたプロジェクトは復元しない (fail-safe)
         real_default = real_default or bool(saved.get("real", False))
         rad_default = rad_default or bool(saved.get("rad", False))
+        offload_default = bool(saved.get("offload", True))  # 既定 ON = 必要なら自動オフロード
         autonomy_default = bool(saved.get("autonomy", False))
         codex_fallback_default = bool(saved.get("codex_fallback", False))
         codex_first_default = bool(saved.get("codex_first", False))
