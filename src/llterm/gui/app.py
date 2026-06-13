@@ -188,6 +188,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     # ---- UI 構築 ----
     def _build_ui(self, *, initial_workdir: Path | None, real_default: bool, rad_default: bool,
+                  offload_default: bool = True,
                   template_default: str, autonomy_default: bool = False,
                   param_default: str = "", effort_default: str = "max",
                   model_default: str = loop_mod.DEFAULT_MODEL,
