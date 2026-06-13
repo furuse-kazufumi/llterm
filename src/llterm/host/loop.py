@@ -595,7 +595,9 @@ class ClaudeRunner:
                 env=_subscription_env() if self.use_subscription else None,
             )
         except FileNotFoundError:
-            return TurnResult(session_id, 0, 0, 0, 0.0, "", True, "other", 0, 127)
+            # PATH にも native install 先にも claude が無い = 使用不能 → fallback/明示停止に委ねる。
+            return TurnResult(session_id, 0, 0, 0, 0.0, t("runner.claude.not_found"),
+                              True, "unavailable", 0, 127)
         with self._lock:
             self._proc = proc
             kill_now = self._cancelled  # Popen 中 (=_proc 未設定) に cancel が来た窓を閉じる
