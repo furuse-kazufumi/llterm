@@ -384,6 +384,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.btn_stop = QtWidgets.QPushButton(t("gui.btn.stop"))
         self.btn_stop.setEnabled(False)
         self.btn_send = QtWidgets.QPushButton(t("gui.btn.send"))
+        self.btn_emergency = QtWidgets.QPushButton(t("gui.btn.emergency"))
+        self.btn_emergency.setToolTip(t("gui.tip.emergency"))
         self.btn_settings = QtWidgets.QPushButton(t("gui.btn.settings"))
         self.btn_settings.setToolTip(t("gui.tip.settings"))
 
