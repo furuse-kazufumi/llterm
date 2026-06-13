@@ -297,7 +297,7 @@ class OrchestraRunner:
         return r.cost_usd, r.num_turns, text, r.is_error
 
     def _aggregate(self, work: str, diff: str, panel: list[tuple[str, str]], factcheck: str,
-                   session_id: str, cwd: Path, *, total_cost_turns: None) -> tuple[str, float, int]:
+                   session_id: str, cwd: Path) -> tuple[str, float, int]:
         """責任者にパネル + factcheck を集約させ統合修正指示を得る。
 
         効率ルール:
