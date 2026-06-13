@@ -182,12 +182,16 @@ class CodexRunner:
         オプション集合が異なり、``-s/--sandbox`` ・ ``-C/--cd`` ・ ``--color`` を**受け付けない**。
         これらを resume に渡すと codex は exit 2 (usage エラー) で即失敗し、**resume ターンが全滅**
         する (新規ターンは成功するのに 2 ターン目以降が err=other → consec_err 累積 → circuit_open)。
-        resume では cwd は ``Popen(cwd=...)`` で担保し、sandbox は記録済みセッションのものが使われる。
+
+        さらに resume は ``-s`` が無いと sandbox を継承せず、danger-full-access でも**書込み不可**に
+        なる (2026-06-13 実証)。resume が受け付ける ``-c`` で ``sandbox_mode`` を渡して回避する。
+        cwd は ``Popen(cwd=...)`` で担保 (resume は -C 非対応)。
         """
         exe = self._resolved_exe()
         if resume and self._thread_id:
-            # resume サブコマンドが受け付けるオプションのみ (sandbox/cd/color は付けない)
-            base = [exe, "exec", "resume", self._thread_id, "--json", "--skip-git-repo-check"]
+            # resume は -s/-C/--color 非対応。sandbox は -c sandbox_mode で渡す (無いと書けない)。
+            base = [exe, "exec", "resume", self._thread_id, "--json", "--skip-git-repo-check",
+                    "-c", f'sandbox_mode="{self.sandbox}"']
         else:
             base = [exe, "exec", "--json", "--skip-git-repo-check",
                     "-s", self.sandbox, "-C", str(cwd), "--color", "never"]
