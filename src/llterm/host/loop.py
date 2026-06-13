@@ -433,6 +433,17 @@ def _subscription_env() -> dict[str, str]:
     return env
 
 
+def _native_claude_dirs() -> tuple[Path, ...]:
+    """native claude installer の既定配置先 (claude 2.x は ``~/.local/bin``)。
+
+    GUI が古い PATH を抱えたまま native claude へ移行した直後など、claude が PATH に
+    乗っていなくてもここを直接探して見つけられるようにする (PATH 陳腐化に耐える)。
+    ``Path.home()`` は PATH に依存しないので、長時間稼働中の GUI でも解決できる。
+    テストで差し替え可能 (monkeypatch する)。
+    """
+    return (Path.home() / ".local" / "bin",)
+
+
 class TurnRunner(Protocol):
     """1 ターンを実行して結果を返す抽象 (テスト/GUI は mock や仮想 claude を注入する)。"""
 
