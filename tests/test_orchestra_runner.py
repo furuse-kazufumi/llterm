@@ -204,6 +204,17 @@ def test_lead_aggregates_panel_findings(tmp_path: Path) -> None:
     assert res.text == "修正した"
 
 
+def test_run_turn_unreviewed_runs_only_conductor(tmp_path: Path) -> None:
+    """run_turn_unreviewed は指揮者だけを回し、レビュー/集約/sign-off を一切しない。"""
+    orch, c, r = _orch(conductor_results=[_tr("記録した", cost=1.0, ctx=42)],
+                       reviewer_results=[_tr("- 指摘")])
+    res = orch.run_turn_unreviewed(prompt="記録せよ", session_id="s", resume=True, cwd=tmp_path)
+    assert len(c.calls) == 1          # 指揮者のみ
+    assert len(r.calls) == 0          # レビュー奏者は呼ばれない
+    assert res.text == "記録した" and res.cost_usd == 1.0 and res.context_tokens == 42
+    assert c.calls[0]["resume"] is True
+
+
 def test_final_signoff_called_after_fix(tmp_path: Path) -> None:
     """(d) 修正後に責任者が新 diff を 1 回だけ再レビューする (sign-off)。"""
     c = FakeRunner([_tr("実装"), _tr("修正した")])
