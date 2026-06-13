@@ -66,9 +66,9 @@
 3. **【Claude・任意】注入を orchestra フルレビュー対象から外す**検討(「要約して」等の問い合わせ系注入に
    実装+3レビュー+修正は過剰。注入ターンは run_turn_unreviewed 寄せ or 簡易判定の余地)。
 4. **【人間・任意】`pip install -e .` 再実行**で `llterm-progress` を `.exe` コマンド登録(`py -3.11 -m llterm.progress` なら即利用可)。
-4. **【Claude】共通サマリの自動更新トリガ配線**(loop rotate 後に `write_common_summary` / または Windows スケジュールタスクで `llterm-progress`)。
-5. **【Claude・任意】共通タブを project 別サブタブ化**(現状は共通タブ 1 枚に全 project を時刻順で収録。1 project=1 タブが必要なら拡張)。
-6. **【Claude】exit-prep プロンプトの標準フォーマット化**(next_plan.md を `## 現在地/直近の成果/次の一手/環境メモ` で更新)+ 他 project の next_plan.md 整備。
+5. **【Claude】共通サマリの自動更新トリガ配線**(loop rotate 後に `write_common_summary` / または Windows スケジュールタスクで `llterm-progress`)。
+6. **【Claude・任意】共通タブを project 別サブタブ化**(現状は共通タブ 1 枚に全 project を時刻順で収録。1 project=1 タブが必要なら拡張)。
+7. **【Claude】exit-prep プロンプトの標準フォーマット化**(next_plan.md を `## 現在地/直近の成果/次の一手/環境メモ` で更新)+ 他 project の next_plan.md 整備。
 
 ## 環境メモ
 
