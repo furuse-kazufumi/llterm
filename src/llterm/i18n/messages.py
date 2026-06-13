@@ -209,6 +209,20 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "Gemini fallback was excluded because gemini is not installed "
               "(install with npm i -g @google/gemini-cli to enroll it)",
     },
+    "gui.msg.gemini_cli_expiring": {
+        "ja": "⚠ Gemini CLI の個人無料枠はあと {days} 日 (2026-06-18) で停止します。"
+              "移行先 = レビュー奏者/無料奏者の『Gemini API』(GEMINI_API_KEY を "
+              "aistudio.google.com/apikey で取得)。Antigravity CLI は headless 非対応のため非推奨。",
+        "en": "⚠ Gemini CLI's personal free tier stops in {days} days (2026-06-18). Migrate to "
+              "'Gemini API' (reviewer/free-player; get GEMINI_API_KEY at aistudio.google.com/apikey). "
+              "Antigravity CLI is not recommended (no headless support).",
+    },
+    "gui.msg.gemini_cli_expired": {
+        "ja": "⛔ Gemini CLI の個人無料枠は {days} 日前 (2026-06-18) に停止済みです。"
+              "Gemini CLI 奏者はもう無料では動きません → 『Gemini API』(GEMINI_API_KEY) に切替を。",
+        "en": "⛔ Gemini CLI's personal free tier ended {days} days ago (2026-06-18). The Gemini CLI "
+              "player no longer runs for free → switch to 'Gemini API' (GEMINI_API_KEY).",
+    },
     "gui.tip.codex_first": {
         "ja": "ON: 作業の主役を Codex (ChatGPT Pro サブスク=Claude トークン非消費) にし、"
               "Claude は保険 (Codex がレート制限のとき継続) に回す = token 節約。"
