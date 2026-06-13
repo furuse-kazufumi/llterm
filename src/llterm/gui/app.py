@@ -343,20 +343,41 @@ class MainWindow(QtWidgets.QMainWindow):
         self.cmb_free_provider.setCurrentIndex(_fpidx if _fpidx >= 0 else 0)
         self.cmb_free_provider.setToolTip(t("gui.tip.free_player"))
         set_row.addWidget(self.cmb_free_provider)
-        set_row.addWidget(QtWidgets.QLabel(t("gui.label.reviewer")))
-        self.cmb_reviewer = QtWidgets.QComboBox()
-        self.cmb_reviewer.addItem(t("gui.reviewer.none"), "")
-        for _key, _label in (("codex", "Codex"), ("gemini", "Gemini CLI"),
-                             ("gemini-api", "Gemini API"), ("groq", "Groq"),
-                             ("cerebras", "Cerebras"), ("openrouter", "OpenRouter"),
-                             ("ollama", "Ollama")):
-            self.cmb_reviewer.addItem(_label, _key)
-        _rvidx = self.cmb_reviewer.findData(reviewer_default)
-        self.cmb_reviewer.setCurrentIndex(_rvidx if _rvidx >= 0 else 0)
-        self.cmb_reviewer.setToolTip(t("gui.tip.reviewer"))
-        set_row.addWidget(self.cmb_reviewer)
         set_row.addStretch(1)
         vbox.addLayout(set_row)
+
+        # オーケストラ役割行 (ユーザー確定の 4 役): レビュー奏者パネル (複数) + 真偽確認奏者 +
+        # 責任者 (固定 Claude)。指揮者は主奏者 (上の Codex 優先/モデル選択) が務める。
+        orch_row = QtWidgets.QHBoxLayout()
+        panel_label = QtWidgets.QLabel(t("gui.label.review_panel"))
+        panel_label.setToolTip(t("gui.tip.review_panel"))
+        orch_row.addWidget(panel_label)
+        reviewers_default = reviewers_default or ["claude"]
+        self.chk_reviewers: dict[str, QtWidgets.QCheckBox] = {}
+        for _key, _label in REVIEWER_CHOICES:
+            cb = QtWidgets.QCheckBox(_label)
+            cb.setChecked(_key in reviewers_default)
+            cb.setToolTip(t("gui.tip.review_panel"))
+            self.chk_reviewers[_key] = cb
+            orch_row.addWidget(cb)
+        # 調査・真偽確認奏者 (任意・単一)。Perplexity ほか web 系。既定 = なし。
+        fc_label = QtWidgets.QLabel(t("gui.label.factcheck"))
+        fc_label.setToolTip(t("gui.tip.factcheck"))
+        orch_row.addWidget(fc_label)
+        self.cmb_factcheck = QtWidgets.QComboBox()
+        self.cmb_factcheck.addItem(t("gui.factcheck.none"), "")
+        for _key, _label in (("perplexity", "Perplexity"),):
+            self.cmb_factcheck.addItem(_label, _key)
+        _fcidx = self.cmb_factcheck.findData(factcheck_default)
+        self.cmb_factcheck.setCurrentIndex(_fcidx if _fcidx >= 0 else 0)
+        self.cmb_factcheck.setToolTip(t("gui.tip.factcheck"))
+        orch_row.addWidget(self.cmb_factcheck)
+        # 責任者/総合判断 (固定 Claude)。レビュー取りまとめ → 総合判断 → 最終 sign-off。
+        lead_label = QtWidgets.QLabel(f"{t('gui.label.lead')} {t('gui.lead.value')}")
+        lead_label.setToolTip(t("gui.tip.lead"))
+        orch_row.addWidget(lead_label)
+        orch_row.addStretch(1)
+        vbox.addLayout(orch_row)
 
         # テンプレ行 (機能ごとの自走テンプレ + RAD 公開ゲート)
         tmpl_row = QtWidgets.QHBoxLayout()
