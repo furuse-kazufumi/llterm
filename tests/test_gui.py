@@ -968,75 +968,170 @@ def test_gemini_fallback_persists(qapp: QtWidgets.QApplication, tmp_path: Path) 
     assert win2.chk_gemini_fallback.isChecked() is True
 
 
-# ─── 分業オーケストラ (レビュー奏者) の chain 配線 ─────────────────
+# ─── 分業オーケストラ v2 (パネル / 真偽確認 / 責任者) の chain 配線 ──
 
 
-def test_reviewer_wraps_primary_in_orchestra(
-    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
-) -> None:
-    """レビュー奏者(Groq, キー設定済み)を選ぶと主奏者が OrchestraRunner で包まれる。"""
-    monkeypatch.setenv("GROQ_API_KEY", "sk-test")
+def _set_panel(win, *keys: str) -> None:
+    """レビュー奏者パネルを指定 key だけ checked にする (他は外す)。"""
+    for k, cb in win.chk_reviewers.items():
+        cb.setChecked(k in keys)
+
+
+def test_default_panel_is_claude_only(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    """既定プロファイル = パネル ["claude"] のみ checked。"""
     win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    assert win.chk_reviewers["claude"].isChecked() is True
+    assert all(not cb.isChecked() for k, cb in win.chk_reviewers.items() if k != "claude")
+    assert win._selected_reviewer_keys() == ["claude"]
+
+
+def test_default_profile_wraps_with_claude_review(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    """既定 (パネル=[claude]) で実 claude → 主奏者が OrchestraRunner、責任者=Claude。"""
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    win.chk_codex_first.setChecked(False)
     win.chk_real.setChecked(True)
-    win.cmb_reviewer.setCurrentIndex(win.cmb_reviewer.findData("groq"))
     primary, _ = win._resolve_providers()
     assert type(primary).__name__ == "OrchestraRunner"
-    assert type(primary.conductor).__name__ == "ClaudeRunner"
-    assert type(primary.reviewer).__name__ == "OpenAICompatRunner"
+    assert type(primary.conductor).__name__ == "ClaudeRunner"   # 指揮者=Claude (codex優先 OFF)
+    assert [type(r).__name__ for r in primary.reviewers] == ["ClaudeRunner"]  # ダブルチェック許容
+    assert type(primary.lead).__name__ == "ClaudeRunner"        # 責任者=Claude (固定)
+    assert primary.factchecker is None
 
 
-def test_reviewer_none_no_wrap(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
-    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
-    win.chk_real.setChecked(True)
-    primary, _ = win._resolve_providers()
-    assert type(primary).__name__ == "ClaudeRunner"  # 未選択 = 包まない
-
-
-def test_reviewer_dropped_when_key_missing(
+def test_panel_multiple_reviewers_wired(
     qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
 ) -> None:
-    """キー未設定のレビュー奏者は分業を組まない (fail-safe)。"""
+    """複数レビュー奏者 (Claude + Groq) を選ぶと reviewers パネルに両方入る。"""
+    monkeypatch.setenv("GROQ_API_KEY", "sk-test")
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    win.chk_codex_first.setChecked(False)
+    win.chk_real.setChecked(True)
+    _set_panel(win, "claude", "groq")
+    primary, _ = win._resolve_providers()
+    assert type(primary).__name__ == "OrchestraRunner"
+    names = [type(r).__name__ for r in primary.reviewers]
+    assert names == ["ClaudeRunner", "OpenAICompatRunner"]  # REVIEWER_CHOICES 順
+
+
+def test_panel_empty_with_no_factcheck_does_not_wrap(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    """パネル全解除 + 真偽確認なし → OrchestraRunner で包まない (素の chain)。"""
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    win.chk_codex_first.setChecked(False)
+    win.chk_real.setChecked(True)
+    _set_panel(win)  # 全解除
+    primary, _ = win._resolve_providers()
+    assert type(primary).__name__ == "ClaudeRunner"
+
+
+def test_panel_reviewer_dropped_when_key_missing(
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
+) -> None:
+    """キー未設定のレビュー奏者だけのパネルは分業を組まない (fail-safe)。"""
     monkeypatch.delenv("GROQ_API_KEY", raising=False)
     win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    win.chk_codex_first.setChecked(False)
     win.chk_real.setChecked(True)
-    win.cmb_reviewer.setCurrentIndex(win.cmb_reviewer.findData("groq"))
+    _set_panel(win, "groq")  # キー無 → runner 化されない
     primary, _ = win._resolve_providers()
-    assert type(primary).__name__ == "ClaudeRunner"  # キー無 = 包まない
+    assert type(primary).__name__ == "ClaudeRunner"  # 可用な reviewer なし = 包まない
 
 
-def test_reviewer_gemini_dropped_when_not_installed(
+def test_panel_reviewer_gemini_dropped_when_not_installed(
     qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
 ) -> None:
     monkeypatch.setattr("llterm.gui.app.shutil.which", lambda name: None)
     win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
     win.chk_real.setChecked(True)
-    win.cmb_reviewer.setCurrentIndex(win.cmb_reviewer.findData("gemini"))
+    _set_panel(win, "gemini")
     primary, _ = win._resolve_providers()
     assert type(primary).__name__ == "ClaudeRunner"
 
 
-def test_reviewer_with_codex_first_conductor_is_codex(
+def test_factchecker_perplexity_wires_when_key_set(
     qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
 ) -> None:
-    """Codex優先 + レビュー奏者: 指揮者=Codex(無料) / レビュー=Groq → Claude token 不使用の分業。"""
+    """真偽確認奏者 (Perplexity, キー設定済み) を選ぶと factchecker が配線される。"""
+    monkeypatch.setenv("PERPLEXITY_API_KEY", "pplx-test")
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    win.chk_codex_first.setChecked(False)
+    win.chk_real.setChecked(True)
+    win.cmb_factcheck.setCurrentIndex(win.cmb_factcheck.findData("perplexity"))
+    primary, _ = win._resolve_providers()
+    assert type(primary).__name__ == "OrchestraRunner"
+    assert type(primary.factchecker).__name__ == "OpenAICompatRunner"
+    assert primary.factchecker.provider == "perplexity"
+
+
+def test_factchecker_dropped_when_key_missing(
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
+) -> None:
+    """PERPLEXITY_API_KEY 未設定なら factchecker は None (fail-safe)。"""
+    monkeypatch.delenv("PERPLEXITY_API_KEY", raising=False)
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    win.chk_codex_first.setChecked(False)
+    win.chk_real.setChecked(True)
+    _set_panel(win)  # パネルも空にして factchecker 単独で判定
+    win.cmb_factcheck.setCurrentIndex(win.cmb_factcheck.findData("perplexity"))
+    primary, _ = win._resolve_providers()
+    assert type(primary).__name__ == "ClaudeRunner"  # factcheck もパネルも無 = 包まない
+
+
+def test_panel_with_codex_first_conductor_is_codex(
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
+) -> None:
+    """Codex優先 + パネル(Groq): 指揮者=Codex(無料) / レビュー=Groq → Claude token 不使用の分業。"""
     monkeypatch.setenv("GROQ_API_KEY", "sk-test")
     win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
     win.chk_real.setChecked(True)
     win.chk_codex_first.setChecked(True)
-    win.cmb_reviewer.setCurrentIndex(win.cmb_reviewer.findData("groq"))
+    _set_panel(win, "groq")
     primary, fallbacks = win._resolve_providers()
     assert type(primary).__name__ == "OrchestraRunner"
     assert type(primary.conductor).__name__ == "CodexRunner"
     assert "ClaudeRunner" in [type(f).__name__ for f in fallbacks]  # Claude は保険のまま
 
 
-def test_reviewer_persists(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+def test_panel_persists(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    """パネル選択 (複数) が保存・復元される。"""
     sp = tmp_path / "s.json"
     win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=sp)
-    win.cmb_reviewer.setCurrentIndex(win.cmb_reviewer.findData("gemini"))
+    _set_panel(win, "claude", "gemini")
     win._save_settings()
     win2 = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=sp)
-    assert win2.cmb_reviewer.currentData() == "gemini"
+    assert win2._selected_reviewer_keys() == ["claude", "gemini"]
+
+
+def test_legacy_reviewer_setting_migrates_to_panel(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    """旧単一 "reviewer" 文字列のみの設定は "reviewers" パネルへ migrate される。"""
+    from llterm.gui import settings as gs
+
+    sp = tmp_path / "s.json"
+    gs.save_settings(sp, {"reviewer": "codex"})  # 旧形式 (reviewers 無し)
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=sp)
+    assert win._selected_reviewer_keys() == ["codex"]
+
+
+def test_factchecker_persists(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    sp = tmp_path / "s.json"
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=sp)
+    win.cmb_factcheck.setCurrentIndex(win.cmb_factcheck.findData("perplexity"))
+    win._save_settings()
+    win2 = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=sp)
+    assert win2.cmb_factcheck.currentData() == "perplexity"
+
+
+def test_lead_is_fixed_claude(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    """責任者 (lead) は常に Claude (固定)。"""
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    lead = win._lead_runner()
+    assert type(lead).__name__ == "ClaudeRunner"
+    assert lead.use_subscription is True
 
 
 # ─── Gemini CLI 無料枠 期限通知 (GUI) ─────────────────────────────
