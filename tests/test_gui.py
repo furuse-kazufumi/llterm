@@ -1363,3 +1363,148 @@ def test_auth_stops_loop_end_to_end(qapp: QtWidgets.QApplication, tmp_path: Path
     win.start_loop()
     _run_until_finished(qapp, win)
     assert "done: auth_required" in win.lbl_state.text()
+
+
+# ─── 狭幅 (スマホ RDP) 再構成: メイン窓最小化 + Settings 別画面 ──────
+
+
+def test_settings_button_exists_in_main_window(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    """⚙Settings ボタンがメイン窓 (操作バー) に存在する (狭幅再構成の入口)。"""
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    assert hasattr(win, "btn_settings")
+    assert win.btn_settings.text()  # ラベルあり (i18n)
+
+
+def test_settings_dialog_opens_and_is_held(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    """⚙Settings で別ダイアログが開き、強参照で保持される (非モーダル・ダングリング防止)。"""
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    assert win.settings_dialog is not None  # 生成済みで強参照保持
+    win._open_settings()
+    assert win.settings_dialog.isVisible()
+    assert not win.settings_dialog.isModal()  # 非モーダル (ループ操作を妨げない)
+
+
+def test_settings_widgets_survive_repeated_open_close(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    """Settings を複数回 開閉しても設定ウィジェットが同一 instance で生存する (ダングリング検出)。"""
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    before = {
+        "cmb_effort": win.cmb_effort, "cmb_model": win.cmb_model,
+        "chk_real": win.chk_real, "chk_rad": win.chk_rad,
+        "spin_threshold": win.spin_threshold, "cmb_factcheck": win.cmb_factcheck,
+        "edit_param": win.edit_param,
+        **{f"rev_{k}": cb for k, cb in win.chk_reviewers.items()},
+    }
+    for _ in range(3):
+        win._open_settings()
+        win.settings_dialog.close()
+    # 同一 Python オブジェクト + 生きた C++ オブジェクト (アクセスで例外を出さない)
+    assert win.cmb_effort is before["cmb_effort"]
+    assert win.cmb_model is before["cmb_model"]
+    assert win.chk_real is before["chk_real"]
+    assert win.cmb_effort.currentData() is not None or win.cmb_effort.currentData() == ""
+    assert win.chk_real.isChecked() in (True, False)  # C++ 側が生存 (RuntimeError を出さない)
+    for k, cb in win.chk_reviewers.items():
+        assert cb is before[f"rev_{k}"]
+        assert cb.isChecked() in (True, False)
+
+
+def test_start_reads_current_widget_values_while_settings_open(
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
+) -> None:
+    """Settings open 中に変更したウィジェット値を Start (_resolve_providers) が現在値で拾う。"""
+    _patch_which(monkeypatch, "codex")
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    win.chk_real.setChecked(True)
+    win._open_settings()  # 設定画面を開いたまま
+    win.chk_codex_first.setChecked(True)  # ダイアログ上のウィジェットを変更 (Apply ボタンなし)
+    primary, _ = win._resolve_providers()  # Start が拾うのと同じ live 読み取り
+    conductor = primary.conductor if type(primary).__name__ == "OrchestraRunner" else primary
+    assert type(conductor).__name__ == "CodexRunner"  # 現在値が即反映される
+
+
+def test_load_settings_no_signal_side_effects(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    """load_settings/初期化でウィジェット値を流しても余計な保存/解決の副作用が出ない。"""
+    from llterm.gui import settings as gs
+
+    sp = tmp_path / "s.json"
+    gs.save_settings(sp, {"effort": "high", "model": "sonnet", "real": True,
+                          "reviewers": ["claude", "codex"], "factchecker": "perplexity"})
+    calls: list[str] = []
+    orig_save = MainWindow._save_settings
+    orig_resolve = MainWindow._resolve_providers
+    MainWindow._save_settings = lambda self: calls.append("save")  # type: ignore[assignment]
+    MainWindow._resolve_providers = lambda self: calls.append("resolve") or (  # type: ignore[assignment]
+        VirtualClaudeRunner(), [])
+    try:
+        win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=sp)
+    finally:
+        MainWindow._save_settings = orig_save  # type: ignore[assignment]
+        MainWindow._resolve_providers = orig_resolve  # type: ignore[assignment]
+    # 構築/復元中に provider 解決も再保存も走らない (signal blocker で副作用を抑止)
+    assert "resolve" not in calls
+    assert "save" not in calls
+    assert win.cmb_effort.currentData() == "high"  # 値はちゃんと流れている
+
+
+def test_input_is_above_splitter_in_main_layout(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    """タスク注入欄が操作バー上寄り = 出力/サマリ スプリッタより前に配置される。"""
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    layout = win.centralWidget().layout()
+    order: list[object] = []
+    for i in range(layout.count()):
+        item = layout.itemAt(i)
+        w = item.widget()
+        if w is win.input or w is win.split_main:
+            order.append(w)
+    assert order == [win.input, win.split_main]  # input が splitter より前 (上)
+
+
+def test_main_splitter_is_vertical_non_collapsible(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    """出力ログ と 進捗サマリ は縦 QSplitter で積み、各 pane は collapse 不可。"""
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    assert win.split_main.orientation() == QtCore.Qt.Orientation.Vertical
+    assert win.split_main.childrenCollapsible() is False
+
+
+def test_project_and_sessions_stay_in_main_window(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    """cmb_project と spin_sessions はメイン窓に残る (Settings へ移さない)。"""
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    # メイン窓の中央ウィジェット配下に居る (Settings ダイアログ配下ではない)
+    assert win.cmb_project.window() is win
+    assert win.spin_sessions.window() is win
+
+
+def test_settings_widgets_live_in_dialog(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    """設定系ウィジェットは Settings ダイアログ配下に置かれる (メイン窓の最小化)。"""
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    for w in (win.chk_real, win.chk_rad, win.cmb_effort, win.cmb_model,
+              win.cmb_template, win.edit_param, win.cmb_factcheck, win.chk_summary_raw):
+        assert w.window() is win.settings_dialog
+
+
+def test_settings_close_does_not_save(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    """Settings ダイアログ Close では保存しない (closeEvent との二重保存を避ける)。"""
+    sp = tmp_path / "s.json"
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=sp)
+    assert not sp.exists()  # まだ保存していない
+    win._open_settings()
+    win.settings_dialog.close()
+    assert not sp.exists()  # ダイアログ Close は純粋に閉じるだけ (保存しない)
