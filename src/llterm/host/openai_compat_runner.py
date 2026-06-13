@@ -52,6 +52,12 @@ PROVIDERS: dict[str, OpenAICompatProvider] = {
         "meta-llama/llama-3.3-70b-instruct:free"),  # 既定は非中国系 free モデル
     "ollama": OpenAICompatProvider(
         "ollama", "http://localhost:11434/v1", "", "llama3.1:8b"),  # ローカル=外部送信なし
+    # Gemini API (Google AI Studio) の OpenAI 互換エンドポイント。CLI の "gemini" (agentic, npm,
+    # 6/18 無料停止) と別物の **テキスト奏者**で、headless stdout drop も JSON 欠落も無く durable。
+    # 無料枠 = gemini-2.5-flash 1,500 req/日 (AI Studio で GEMINI_API_KEY 取得)。
+    "gemini-api": OpenAICompatProvider(
+        "gemini-api", "https://generativelanguage.googleapis.com/v1beta/openai",
+        "GEMINI_API_KEY", "gemini-2.5-flash"),
 }
 
 
