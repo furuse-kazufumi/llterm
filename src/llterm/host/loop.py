@@ -658,8 +658,14 @@ class SessionLoop:
             return False
 
     def _augment(self, prompt: str) -> str:
-        """作業 prompt に RAD 研究接地ヒントを付ける (rad_hint 設定時のみ。exit準備には付けない)。"""
-        return f"{prompt}\n\n{self.rad_hint}" if self.rad_hint else prompt
+        """作業 prompt に各種ヒント (RAD 研究接地 / 計算オフロード) を付ける。
+
+        設定済みのものだけ末尾に連結する (exit準備プロンプトには付けない)。
+        """
+        hints = [h for h in (self.rad_hint, self.offload_hint) if h]
+        if not hints:
+            return prompt
+        return prompt + "".join(f"\n\n{h}" for h in hints)
 
     def _continue_prompt(self) -> tuple[str, bool]:
         """継続ターンの prompt と「注入タスクか」フラグ。GUI inject があれば一度だけ優先する。"""
