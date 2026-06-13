@@ -1181,20 +1181,22 @@ def test_lead_is_fixed_claude(qapp: QtWidgets.QApplication, tmp_path: Path) -> N
 def test_deadline_note_empty_when_gemini_cli_not_used(
     qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
 ) -> None:
-    """Gemini CLI を使わない設定なら期限通知は出ない (期限超過でも無関係なら黙る)。"""
+    """Gemini CLI を使わない (未導入 + レビュー奏者≠gemini) なら期限通知は出ない。"""
+    _patch_which(monkeypatch)  # gemini 未導入 = Gemini CLI を使う見込みなし
     monkeypatch.setattr("llterm.host.gemini_runner.gemini_cli_free_tier_status",
                         lambda today=None: ("expired", -3))
     win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
-    assert win._gemini_cli_deadline_note() == ""  # Gemini切替 OFF / レビュー奏者≠gemini
+    assert win._gemini_cli_deadline_note() == ""  # gemini 未導入 / レビュー奏者≠gemini
 
 
-def test_deadline_note_expired_when_gemini_fallback_on(
+def test_deadline_note_expired_when_gemini_installed(
     qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
 ) -> None:
+    """gemini が導入済み (自動可用見込み) かつ無料枠失効なら超過通知を出す。"""
+    _patch_which(monkeypatch, "gemini")
     monkeypatch.setattr("llterm.host.gemini_runner.gemini_cli_free_tier_status",
                         lambda today=None: ("expired", -3))
     win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
-    win.chk_gemini_fallback.setChecked(True)
     note = win._gemini_cli_deadline_note()
     assert note and ("3" in note)  # 3 日超過の通知
 
@@ -1202,6 +1204,8 @@ def test_deadline_note_expired_when_gemini_fallback_on(
 def test_deadline_note_soon_when_reviewer_is_gemini_cli(
     qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
 ) -> None:
+    """gemini 未導入でもレビュー奏者で Gemini CLI を選べば期限間近通知を出す。"""
+    _patch_which(monkeypatch)  # gemini 未導入 = 自動可用ではない (レビュー奏者選択で発火)
     monkeypatch.setattr("llterm.host.gemini_runner.gemini_cli_free_tier_status",
                         lambda today=None: ("soon", 5))
     win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
@@ -1213,10 +1217,11 @@ def test_deadline_note_soon_when_reviewer_is_gemini_cli(
 def test_deadline_note_silent_when_ok(
     qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
 ) -> None:
+    """gemini 導入済みでも無料枠に余裕があれば黙る。"""
+    _patch_which(monkeypatch, "gemini")
     monkeypatch.setattr("llterm.host.gemini_runner.gemini_cli_free_tier_status",
                         lambda today=None: ("ok", 30))
     win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
-    win.chk_gemini_fallback.setChecked(True)
     assert win._gemini_cli_deadline_note() == ""  # 期限まで余裕 = 黙る
 
 
