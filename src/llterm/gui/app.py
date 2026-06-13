@@ -554,9 +554,13 @@ class MainWindow(QtWidgets.QMainWindow):
 
         - テスト override 最優先。
         - 仮想 claude モードは Codex を使わない (課金/サブスク不要のプレビュー)。
-        - 実 claude モード: Codex 主なら ``(Codex, [Claude])`` = 作業を無料の Codex に寄せ、
-          Claude は保険 (Codex レート制限時に継続) に回す。Claude 主なら従来どおり
-          ``(Claude, [Codex] if フォールバック ON else [])``。
+        - 実 claude モード (可用性で自動 include/exclude — トグルではない):
+          - **Codex** は ``shutil.which("codex")`` で導入済みなら使える奏者。
+          - **Gemini** は導入済み (PATH) かつ無料枠未失効 (2026-06-18) なら使える奏者。
+          - Codex 主 (codex_first or 機械的テンプレ かつ codex 可用): ``(Codex, [Gemini?, Claude])``
+            = 作業を無料の Codex に寄せ、Gemini を次の無料 agent、Claude を最後の保険に置く。
+          - それ以外 (Claude 主): ``(Claude, [Codex?, Gemini?])`` = 可用な無料 agent を保険に。
+        - **Claude は常に primary か fallback に居る** (backbone) — chain は決して空にならない。
         """
         if self.runner_factory_override is not None:
             return self.runner_factory_override(), []
@@ -569,24 +573,19 @@ class MainWindow(QtWidgets.QMainWindow):
         claude = ClaudeRunner(use_subscription=True,
                               effort=str(self.cmb_effort.currentData() or ""),
                               model=str(self.cmb_model.currentData() or ""))
-        # Gemini (agentic 奏者 = ファイル編集可) を fallback に。未インストールなら入れない。
-        gemini = self._gemini_runner()
+        # 可用性判定 (トグルでなく自動 include/exclude)。codex/gemini が使えなければ chain に入れない。
+        codex_available = shutil.which("codex") is not None
+        gemini = self._gemini_runner()  # 導入済み かつ 無料枠未失効なら GeminiRunner、else None
         primary: TurnRunner
         fallbacks: list[TurnRunner]
-        if self._codex_is_primary():
+        if self._codex_is_primary():  # _codex_is_primary は codex 不可用なら False を返す
             # Codex 主。無料 agent (Gemini) を Claude より先に、Claude を最後の保険に置く。
             primary = CodexRunner()
             fallbacks = ([gemini] if gemini else []) + [claude]
         else:
+            # Claude 主。可用な無料 agent (Codex → Gemini) を保険に並べる。
             primary = claude
-            fallbacks = [CodexRunner()] if self.chk_codex_fallback.isChecked() else []
-            if gemini is not None:
-                fallbacks = [*fallbacks, gemini]
-        # 無料奏者 (OpenAI 互換 = テキスト専用) は keep-alive 保険として最後尾。
-        # APIキー未設定 (Ollama 以外) なら入れない = loop を auth 停止させない。
-        free = self._free_runner()
-        if free is not None and free.key_available():
-            fallbacks = [*fallbacks, free]
+            fallbacks = ([CodexRunner()] if codex_available else []) + ([gemini] if gemini else [])
         # オーケストラ (4 役) を組む: レビュー奏者パネル (複数・独立) or 真偽確認奏者が居れば、
         # 主奏者を指揮者として OrchestraRunner で包む。責任者 (lead=Claude) がレビュー + 真偽確認を
         # 取りまとめ → 統合指示 → 指揮者が修正 → 最終 sign-off でループを閉じる。指揮者==lead==Claude
@@ -600,25 +599,18 @@ class MainWindow(QtWidgets.QMainWindow):
                 lead=self._lead_runner(), apply_review=True, final_signoff=True)
         return primary, fallbacks
 
-    def _free_runner(self) -> OpenAICompatRunner | None:
-        """選択中の無料奏者 (OpenAI 互換) runner、未選択なら None。"""
-        key = str(self.cmb_free_provider.currentData() or "")
-        if not key:
-            return None
-        from llterm.host.openai_compat_runner import OpenAICompatRunner
-        return OpenAICompatRunner(provider=key)
-
     def _gemini_runner(self) -> GeminiRunner | None:
-        """Gemini fallback が ON かつ gemini が PATH にあれば GeminiRunner、無ければ None。
+        """gemini が PATH にあり、かつ無料枠が未失効なら GeminiRunner、無ければ None。
 
-        未インストールの gemini を chain に入れると毎ターン not_found で空転するため、
-        事前に shutil.which で除外する (free 奏者の key_available と同じ fail-safe)。
+        トグルは廃止し可用性で自動 include/exclude する: 未インストールの gemini を chain に
+        入れると毎ターン not_found で空転し、無料枠失効後 (2026-06-18) は無料では動かないため、
+        どちらでも自動除外する (fail-safe)。
         """
-        if not self.chk_gemini_fallback.isChecked():
-            return None
         if shutil.which("gemini") is None:
             return None
-        from llterm.host.gemini_runner import GeminiRunner
+        from llterm.host.gemini_runner import GeminiRunner, gemini_cli_free_tier_status
+        if gemini_cli_free_tier_status()[0] == "expired":
+            return None  # 無料枠失効後は agentic Gemini CLI を無料では使えない → 自動除外
         return GeminiRunner()
 
     def _gemini_cli_deadline_note(self) -> str:
