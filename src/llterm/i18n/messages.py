@@ -215,6 +215,25 @@ MESSAGES: dict[str, dict[str, str]] = {
               "saving. Even when OFF, mechanical templates (green_keeper/rad_expand/doc_update/"
               "security_audit) auto-prefer Codex. Real claude only.",
     },
+    "gui.btn.settings": {
+        "ja": "⚙ 設定",
+        "en": "⚙ Settings",
+    },
+    "gui.tip.settings": {
+        "ja": "設定を別画面で開く (実行モード/閾値/モデル/テンプレ/レビュー奏者 等)。"
+              "狭幅 (スマホ Remote Desktop) 向けにメイン窓を最小化している。",
+        "en": "Open settings in a separate window (run mode / thresholds / model / template / "
+              "review panel, etc.). The main window is minimized for narrow (mobile Remote "
+              "Desktop) screens.",
+    },
+    "gui.dialog.settings.title": {
+        "ja": "llterm 設定",
+        "en": "llterm Settings",
+    },
+    "gui.dialog.settings.close": {
+        "ja": "閉じる",
+        "en": "Close",
+    },
     "gui.label.max_sessions": {
         "ja": "最大session:",
         "en": "Max sessions:",
