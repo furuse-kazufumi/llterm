@@ -188,6 +188,7 @@ class MainWindow(QtWidgets.QMainWindow):
                   codex_fallback_default: bool = False,
                   codex_first_default: bool = False,
                   gemini_fallback_default: bool = False,
+                  reviewer_default: str = "",
                   summary_raw_default: bool = False,
                   free_provider_default: str = "") -> None:
         self.setWindowTitle(t("gui.window.title"))
