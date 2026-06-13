@@ -338,7 +338,7 @@ def test_turn_with_choice_marker_shows_dialog_and_injects(
 
 def test_choice_ok_overrides_auto_continue(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
     """choice 応答が auto-continue より優先される (next_prompt が回答を返す)。"""
-    win = _make_window(tmp_path, max_sessions=1)
+    win = _make_window(tmp_path, max_sessions=1, delay=0.5)  # worker をブロックして race 回避
     win.start_loop()
     assert win.worker is not None
     _install_choice_stub(win, accept=True, indices=[0])
@@ -346,6 +346,7 @@ def test_choice_ok_overrides_auto_continue(qapp: QtWidgets.QApplication, tmp_pat
     # SessionLoop の next_prompt は GUI inject を一度だけ優先する設計 — 回答が先頭に来る
     nxt = win.worker._next_prompt()
     assert nxt == "選択: 1) yes"
+    win.worker.request_stop(force=True)
     _run_until_finished(qapp, win)
 
 
