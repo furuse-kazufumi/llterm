@@ -1012,7 +1012,6 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             self._append(t("gui.msg.inject_accepted", text=text), PALETTE["inject"], ts=True)
             self._append(t("gui.msg.emergency_pending"), PALETTE["dim"])
-            self.worker.inject(text) if self.worker is not None else None
 
     @QtCore.Slot(bool)
     def _on_autonomy_toggled(self, on: bool) -> None:
