@@ -959,6 +959,26 @@ class SessionLoop:
                                provider=self.provider_name(active))
                     continue  # 同じ prompt を再試行 (consec_err は増やさない)
 
+                # プロバイダの実行ファイルを起動できない (未導入 / PATH 不在 / shim のみ)。
+                # 待っても直らないのでこのプロバイダを恒久ブロックし、別プロバイダがあれば即切替、
+                # 無ければ原因を明示して停止する (空テキストの err=other で silent circuit_open
+                # していた回帰を防ぐ)。consec_err は増やさない (タスク失敗ではなく使用不能)。
+                if res.error_kind == "unavailable":
+                    self._blocked_until[active_idx] = float("inf")
+                    detail = (res.text or "").strip()[:160]
+                    self.ledger.append(
+                        event="provider_unavailable", cmd_id=sid, action="rotate",
+                        detail=f"provider={self.provider_name(active)}: {detail}",
+                    )
+                    self._emit("provider_unavailable", session_id=sid,
+                               provider=self.provider_name(active), detail=detail)
+                    if self._select_available(self.now_fn(), exclude=active_idx) is not None:
+                        break  # → 外側ループが次の利用可能プロバイダで新セッション開始
+                    return self._finish(
+                        "provider_unavailable", sessions, turns, total_cost,
+                        f"{self.provider_name(active)} unavailable and no fallback available",
+                    )
+
                 if res.is_error:
                     consec_err += 1
                     if consec_err >= self.max_consecutive_errors:
