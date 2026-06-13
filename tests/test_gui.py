@@ -581,6 +581,35 @@ def test_worker_accepts_runner_without_on_stream(
     assert w.isFinished()
 
 
+def test_worker_emergency_inject_is_front_and_interrupts(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    """緊急注入はキュー先頭に積まれ (最優先)、実行中ターンへ interrupt を投げる。"""
+    from llterm.gui.worker import LoopWorker
+    from llterm.host.loop import TurnResult
+
+    class IRunner:
+        def __init__(self) -> None:
+            self.interrupts = 0
+
+        def run_turn(self, *, prompt: str, session_id: str, resume: bool, cwd: Path) -> TurnResult:
+            return TurnResult(session_id, 0, 0, 0, 0.0, "", False, "", 1, 0)
+
+        def cancel(self) -> None:
+            pass
+
+        def interrupt(self) -> None:
+            self.interrupts += 1
+
+    r = IRunner()
+    w = LoopWorker(runner=r, workdir=tmp_path, ledger_path=tmp_path / "l.jsonl", loop_kw={})
+    w.inject("通常")
+    w.inject("緊急", emergency=True)
+    assert w._next_prompt() == "緊急"   # 先頭挿入で最優先 (通常より先に出る)
+    assert w._next_prompt() == "通常"
+    assert r.interrupts == 1            # 緊急注入で現ターンへ interrupt が飛ぶ
+
+
 def test_injected_task_shown_at_consumption(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
     """注入タスクが実際に実行される瞬間 (task イベント injected=True) に画面表示する。"""
     win = _make_window(tmp_path)
