@@ -476,8 +476,10 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "docs/SESSION_SUMMARY.md does not exist yet",
     },
     "gui.placeholder.input": {
-        "ja": "タスク注入 / 指示 (Ctrl+Enter で送信)",
-        "en": "Inject task / instruction (Ctrl+Enter to send)",
+        # 先頭に改行を入れて薄い文字を 2 行目に出す。IME 日本語入力の未確定文字 (1 行目に出る)
+        # とプレースホルダが重なって見づらい問題への対処 (ユーザー要望 2026-06-13)。
+        "ja": "\nタスク注入 / 指示 (Ctrl+Enter で送信)",
+        "en": "\nInject task / instruction (Ctrl+Enter to send)",
     },
     "gui.btn.start": {
         "ja": "Start",
