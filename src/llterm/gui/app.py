@@ -324,6 +324,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.btn_settings.clicked.connect(self._open_settings)
         self.btn_publish.clicked.connect(self._promote_clicked)
         self.chk_summary_raw.toggled.connect(self._refresh_summary)
+        self.chk_autonomy.toggled.connect(self._on_autonomy_toggled)  # 走行中も即反映
         self.btn_refresh_summary.clicked.connect(self._refresh_summary)
         self.cmb_template.currentIndexChanged.connect(self._on_template_changed)
         # Enter=改行のまま / 送信は Ctrl+Enter (R12: 誤送信の構造的防止)
