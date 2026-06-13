@@ -935,3 +935,32 @@ def test_no_rad_hint_by_default(tmp_path: Path) -> None:
     loop = _loop(runner, tmp_path, window_tokens=200_000, threshold=0.70, max_sessions=1)
     loop.run()
     assert DEFAULT_RESUME_PROMPT in runner.calls[0][0]           # 未設定なら rad_hint 無し
+
+
+# ─── 計算オフロード指令 ───────────────────────────────────────────
+
+
+def test_offload_hint_augments_work_not_exit_prep(tmp_path: Path) -> None:
+    runner = FakeRunner([{"ctx": 150_000}])
+    loop = _loop(runner, tmp_path, window_tokens=200_000, threshold=0.70,
+                 max_sessions=1, offload_hint="OFFLOAD-XYZ")
+    loop.run()
+    assert "OFFLOAD-XYZ" in runner.calls[0][0]                    # 作業 prompt に付く
+    exit_calls = [c for c in runner.calls if c[0] == DEFAULT_EXIT_PREP_PROMPT]
+    assert exit_calls and "OFFLOAD-XYZ" not in exit_calls[0][0]   # exit準備 には付けない
+
+
+def test_rad_and_offload_hints_both_appended(tmp_path: Path) -> None:
+    runner = FakeRunner()  # 常に閾値未満
+    loop = _loop(runner, tmp_path, max_sessions=1, max_turns_per_session=2,
+                 rad_hint="RADHINT-XYZ", offload_hint="OFFLOAD-XYZ")
+    loop.run()
+    work = [c for c in runner.calls if c[0] != DEFAULT_EXIT_PREP_PROMPT]
+    assert all("RADHINT-XYZ" in c[0] and "OFFLOAD-XYZ" in c[0] for c in work)
+
+
+def test_no_offload_hint_by_default(tmp_path: Path) -> None:
+    runner = FakeRunner([{"ctx": 150_000}])
+    loop = _loop(runner, tmp_path, window_tokens=200_000, threshold=0.70, max_sessions=1)
+    loop.run()
+    assert "OFFLOAD" not in runner.calls[0][0]  # 未設定なら offload_hint 無し
