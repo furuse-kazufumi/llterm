@@ -689,7 +689,7 @@ class ClaudeRunner:
 
 @dataclass(frozen=True)
 class Outcome:
-    stop_reason: str  # "max_sessions" | "max_cost" | "auth_required" | "circuit_open" | "stopped"
+    stop_reason: str  # "max_sessions"|"max_cost"|"auth_required"|"circuit_open"|"provider_unavailable"|"stopped"
     sessions: int
     turns: int
     total_cost_usd: float
