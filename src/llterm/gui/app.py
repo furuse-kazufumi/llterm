@@ -702,14 +702,9 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         real = self.runner_factory_override is None and self.chk_real.isChecked()
         runner, fallback_runners = self._resolve_providers()
-        # 無料奏者を選んだのに APIキー未設定で chain に入らなかった場合は明示する (honest disclosure)
-        free = self._free_runner()
-        if real and free is not None and not free.key_available():
-            self._append(t("gui.msg.free_player_no_key", provider=str(self.cmb_free_provider.currentData())),
-                         PALETTE["err"])
-        # Gemini fallback を選んだのに gemini 未インストールで除外された場合も明示する
-        if real and self.chk_gemini_fallback.isChecked() and shutil.which("gemini") is None:
-            self._append(t("gui.msg.gemini_not_installed"), PALETTE["err"])
+        # 奏者構成と除外理由を 1 行 dim 表示 (可用性判定で自動 include/exclude したことを可視化)。
+        if real:
+            self._append(self._provider_status_line(runner, fallback_runners), PALETTE["dim"], ts=True)
         # Gemini CLI 無料枠の期限 (2026-06-18) が間近/超過なら通知 (移行先=Gemini API)
         deadline_note = self._gemini_cli_deadline_note()
         if real and deadline_note:
