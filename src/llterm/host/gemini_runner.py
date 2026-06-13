@@ -12,6 +12,11 @@ Gemini CLI (`@google/gemini-cli`, 2026-06 時点 v0.46.0) の headless 仕様で
   Windows は ``gemini.CMD`` shim = argv の複数行プロンプトは cmd.exe が改行で切断する
   ため (memory: feedback_npm_cli_shim_stdin_prompt)、**argv に載せず stdin** で渡す。
 - 自走では tool 承認を自動化する ``--yolo`` が必要 (非対話で確認を待たない)。
+- v0.46.0 で **trusted-folder ゲート**追加: ``--skip-trust`` (または env
+  ``GEMINI_CLI_TRUST_WORKSPACE=true``) が無いと yolo が ``default`` に降格され承認待ちで
+  止まる (2026-06-13 実機検証で確認)。自走には ``--skip-trust`` を付ける。
+- ``-p`` は付けなくてよい: piped stdin + ``--output-format json`` (非 TTY) で headless 起動する
+  (実機検証済)。プロンプトは stdin の入力としてそのまま渡る。
 - モデルは ``-m`` (例 gemini-2.5-flash / gemini-3 系)。空なら CLI 既定。
 - 認証は GEMINI_API_KEY env または OAuth キャッシュ (CLI が管理)。
 - 終了コード: 0=成功 / 1=一般エラー・API失敗 / 42=入力エラー / 53=ターン上限。
