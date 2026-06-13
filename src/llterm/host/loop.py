@@ -495,6 +495,7 @@ class ClaudeRunner:
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
     _proc: subprocess.Popen | None = field(default=None, repr=False, compare=False)
     _cancelled: bool = field(default=False, repr=False, compare=False)
+    _interrupted: bool = field(default=False, repr=False, compare=False)  # 緊急注入の一発中断
 
     def _native_claude_path(self) -> str | None:
         """PATH に native exe が無いとき、既知の install 先 (``~/.local/bin``) を直接探す。
