@@ -32,6 +32,18 @@
 - **注入で自動 OFF(監督モード)** / **確認回答後に自動 ON(ループ復帰)**。注入はキュー積み。
 - **安全弁(常時・autonomy 不問)**: 不可逆/危険操作は ①next_plan.md 更新 → ②`⟦LLTERM_CHOICE⟧` で承認 → ③回答後に決定要約を next_plan.md へ追記、を必須化。
 
+### 緊急注入 + 全行タイムスタンプ + ローテログ + 記事ストック (2026-06-13 16:56、本セッション)
+- **緊急注入 (interrupt)**: 恒久 cancel と別に **一発 interrupt** を全 runner (Claude/Codex/Gemini/Orchestra) へ追加。
+  run_turn は `error_kind="interrupted"` を返し、loop は**停止せず注入を次ターンで必ず消費 (スキップ防止)**。
+  worker `inject(emergency=True)` = **キュー先頭挿入 + 全 runner interrupt**。GUI に「⚡緊急注入」ボタン。
+- **出力ログの各行に時刻**: `_append` (唯一のファネル) で全行先頭に `[HH:MM:SS]` を一括付与 (空行は素通し)。
+- **ローテログ**: `gui/termlog.py` `TerminalLog` — **1 時間単位ファイル・行単位 append・1 週間保持・古いものから削除・fail-safe**。
+  置き場 = `~/.llterm/logs/`。Qt 非依存で単体テスト済。
+- **記事ストック**: 本セッションの内容を `docs/ARTICLE_SEEDS.md` に 5 種 (注入飢餓/過剰レビュー/緊急割り込み/
+  トレーサビリティ/flaky 教訓) として保存。ja 正本→en/zh/ko 展開・honest disclosure 核。
+- 検証: **全 421 テスト pass (2 回連続・choice 系 race を delay で決定論化)**。変更箇所は ruff/mypy クリーン
+  (既存 lint 2 件=uuid セミコロン / QThread.event 名衝突 は本変更外)。
+
 ### 注入の高優先化 + orchestra レビュー過剰の削減 (2026-06-13 16:25、本セッション・実走ログから発覚)
 - **注入の飢餓を解消**: `loop.py` は注入を **継続ターン (`_continue_prompt`) でしか消費していなかった**。
   orchestra は ctx 過大計上 (実走で **ctx 2549%**) で毎ターン rotate するため `_continue_prompt` に
