@@ -303,8 +303,13 @@ class GeminiRunner:
 
         with self._lock:
             cancelled = self._cancelled
+            interrupted = self._interrupted
+            self._interrupted = False  # 一発: 次の run_turn は通常起動できる
         if cancelled:
             return TurnResult(session_id, 0, 0, 0, 0.0, "", True, "cancelled", 0,
+                              proc.returncode or -1)
+        if interrupted:  # 緊急注入による中断 = 停止ではない
+            return TurnResult(session_id, 0, 0, 0, 0.0, "", True, "interrupted", 0,
                               proc.returncode or -1)
         if timed_out.is_set():
             return TurnResult(session_id, 0, 0, 0, 0.0, "", True, "other", 0, -1)
