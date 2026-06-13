@@ -1007,6 +1007,18 @@ class SessionLoop:
                 if res.error_kind == "cancelled":
                     return self._finish("stopped", sessions, turns, total_cost, "turn cancelled")
 
+                # interrupted = 緊急注入による現ターン中断。ループは止めず、注入タスクを
+                # 次ターンで必ず消費する (スキップしない)。中断はエラーに数えない。
+                if res.error_kind == "interrupted":
+                    self.ledger.append(
+                        event="interrupted", cmd_id=sid, action="inject",
+                        detail="emergency injection — continue with injected task",
+                    )
+                    self._emit("interrupted", session_id=sid, session_index=sessions + 1, turn=turns)
+                    consec_err = 0
+                    (prompt, injected), resume = self._continue_prompt(), True
+                    continue
+
                 # 認証切れ = 構造的上限。fail-closed で停止 (暴走させない / 人間を待つ)。
                 if res.error_kind == "auth":
                     self.ledger.append(
