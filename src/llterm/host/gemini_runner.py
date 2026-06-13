@@ -33,10 +33,32 @@ import sys
 import threading
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 
 from llterm.host.loop import _NO_WINDOW, _RATE_LIMIT_SIGNALS, TurnResult, _as_int
 from llterm.i18n import t
+
+# Gemini CLI 個人無料枠 (Google One/unpaid, OAuth) の提供停止日 (2026-06-18, Google 公式・延期なし)。
+# これ以降は agentic な Gemini CLI 奏者は無料では動かない → Gemini API (provider "gemini-api")
+# へ移行する。GUI はこの日付を見て期限間近/超過を通知する (project_llterm_orchestra_free_players)。
+GEMINI_CLI_FREE_TIER_END = date(2026, 6, 18)
+_FREE_TIER_SOON_DAYS = 7  # 何日前から「間近」通知を出すか
+
+
+def gemini_cli_free_tier_status(today: date | None = None) -> tuple[str, int]:
+    """Gemini CLI 無料枠の期限ステータスを返す。
+
+    Returns ``(status, days)``: status = "expired" (超過) / "soon" (間近) / "ok"。
+    days = 期限までの残日数 (負 = 超過日数)。``today`` を渡せばテストで固定できる。
+    """
+    today = today or date.today()
+    days = (GEMINI_CLI_FREE_TIER_END - today).days
+    if days < 0:
+        return ("expired", days)
+    if days <= _FREE_TIER_SOON_DAYS:
+        return ("soon", days)
+    return ("ok", days)
 
 # 認証切れを示す既知シグナル (制御系チャネル=stderr/error 本文のみに適用)。
 _AUTH_SIGNALS: tuple[str, ...] = (
