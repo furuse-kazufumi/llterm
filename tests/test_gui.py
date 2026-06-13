@@ -394,7 +394,7 @@ def test_ask_user_question_stream_event_triggers_dialog(
     qapp: QtWidgets.QApplication, tmp_path: Path
 ) -> None:
     """AskUserQuestion の stream choice イベントでも同じダイアログ経路に乗る (bonus)。"""
-    win = _make_window(tmp_path, max_sessions=1)
+    win = _make_window(tmp_path, max_sessions=1, delay=0.5)  # worker をブロックして race 回避
     win.start_loop()
     assert win.worker is not None
     seen = _install_choice_stub(win, accept=True, indices=[1])
@@ -402,6 +402,7 @@ def test_ask_user_question_stream_event_triggers_dialog(
                     "options": ["A", "B"]})
     assert seen["choice"].options == ["A", "B"]
     assert win.worker._next_prompt() == "選択: 2) B"
+    win.worker.request_stop(force=True)
     _run_until_finished(qapp, win)
 
 
