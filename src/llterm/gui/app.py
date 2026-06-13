@@ -502,7 +502,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.spin_threshold, self.spin_window, self.spin_maxcost,
             self.cmb_template, self.edit_param, self.btn_publish, self.chk_autonomy,
             self.cmb_effort, self.cmb_model, self.chk_codex_fallback, self.chk_codex_first,
-            self.chk_gemini_fallback, self.cmb_free_provider, self.cmb_reviewer,
+            self.chk_gemini_fallback, self.cmb_free_provider, self.cmb_factcheck,
+            *self.chk_reviewers.values(),
         ]
 
     def _populate_projects(self, initial_workdir: Path | None) -> None:
