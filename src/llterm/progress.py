@@ -93,10 +93,17 @@ def collect_progress(projects_root: Path) -> list[ProjectProgress]:
             continue
         try:
             text = path.read_text(encoding="utf-8", errors="replace")
-            updated = path.stat().st_mtime
+            mtime = path.stat().st_mtime
         except OSError:
             continue
-        items.append(ProjectProgress(d.name, path, text, updated, source))
+        # 並び順の正 = 本文に記録された最終更新時刻 (内容ベース = git checkout や
+        # auto-commit で mtime が書き換わっても正しい)。無ければ mtime にフォールバック。
+        header = parse_updated_at(text)
+        if header is not None:
+            updated, updated_source = header, "header"
+        else:
+            updated, updated_source = mtime, "mtime"
+        items.append(ProjectProgress(d.name, path, text, updated, source, mtime, updated_source))
     return items
 
 
