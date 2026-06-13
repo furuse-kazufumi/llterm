@@ -948,6 +948,77 @@ def test_gemini_fallback_persists(qapp: QtWidgets.QApplication, tmp_path: Path) 
     assert win2.chk_gemini_fallback.isChecked() is True
 
 
+# ─── 分業オーケストラ (レビュー奏者) の chain 配線 ─────────────────
+
+
+def test_reviewer_wraps_primary_in_orchestra(
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
+) -> None:
+    """レビュー奏者(Groq, キー設定済み)を選ぶと主奏者が OrchestraRunner で包まれる。"""
+    monkeypatch.setenv("GROQ_API_KEY", "sk-test")
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    win.chk_real.setChecked(True)
+    win.cmb_reviewer.setCurrentIndex(win.cmb_reviewer.findData("groq"))
+    primary, _ = win._resolve_providers()
+    assert type(primary).__name__ == "OrchestraRunner"
+    assert type(primary.conductor).__name__ == "ClaudeRunner"
+    assert type(primary.reviewer).__name__ == "OpenAICompatRunner"
+
+
+def test_reviewer_none_no_wrap(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    win.chk_real.setChecked(True)
+    primary, _ = win._resolve_providers()
+    assert type(primary).__name__ == "ClaudeRunner"  # 未選択 = 包まない
+
+
+def test_reviewer_dropped_when_key_missing(
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
+) -> None:
+    """キー未設定のレビュー奏者は分業を組まない (fail-safe)。"""
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    win.chk_real.setChecked(True)
+    win.cmb_reviewer.setCurrentIndex(win.cmb_reviewer.findData("groq"))
+    primary, _ = win._resolve_providers()
+    assert type(primary).__name__ == "ClaudeRunner"  # キー無 = 包まない
+
+
+def test_reviewer_gemini_dropped_when_not_installed(
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr("llterm.gui.app.shutil.which", lambda name: None)
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    win.chk_real.setChecked(True)
+    win.cmb_reviewer.setCurrentIndex(win.cmb_reviewer.findData("gemini"))
+    primary, _ = win._resolve_providers()
+    assert type(primary).__name__ == "ClaudeRunner"
+
+
+def test_reviewer_with_codex_first_conductor_is_codex(
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
+) -> None:
+    """Codex優先 + レビュー奏者: 指揮者=Codex(無料) / レビュー=Groq → Claude token 不使用の分業。"""
+    monkeypatch.setenv("GROQ_API_KEY", "sk-test")
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    win.chk_real.setChecked(True)
+    win.chk_codex_first.setChecked(True)
+    win.cmb_reviewer.setCurrentIndex(win.cmb_reviewer.findData("groq"))
+    primary, fallbacks = win._resolve_providers()
+    assert type(primary).__name__ == "OrchestraRunner"
+    assert type(primary.conductor).__name__ == "CodexRunner"
+    assert "ClaudeRunner" in [type(f).__name__ for f in fallbacks]  # Claude は保険のまま
+
+
+def test_reviewer_persists(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    sp = tmp_path / "s.json"
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=sp)
+    win.cmb_reviewer.setCurrentIndex(win.cmb_reviewer.findData("gemini"))
+    win._save_settings()
+    win2 = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=sp)
+    assert win2.cmb_reviewer.currentData() == "gemini"
+
+
 def test_explicit_args_override_saved_settings(
     qapp: QtWidgets.QApplication, tmp_path: Path
 ) -> None:
