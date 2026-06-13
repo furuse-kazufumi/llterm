@@ -32,6 +32,20 @@
 - **注入で自動 OFF(監督モード)** / **確認回答後に自動 ON(ループ復帰)**。注入はキュー積み。
 - **安全弁(常時・autonomy 不問)**: 不可逆/危険操作は ①next_plan.md 更新 → ②`⟦LLTERM_CHOICE⟧` で承認 → ③回答後に決定要約を next_plan.md へ追記、を必須化。
 
+### 注入の高優先化 + orchestra レビュー過剰の削減 (2026-06-13 16:25、本セッション・実走ログから発覚)
+- **注入の飢餓を解消**: `loop.py` は注入を **継続ターン (`_continue_prompt`) でしか消費していなかった**。
+  orchestra は ctx 過大計上 (実走で **ctx 2549%**) で毎ターン rotate するため `_continue_prompt` に
+  到達せず、注入 (例: 「進捗を要約できますか？」) が**永久に飲み込まれていた**。→ `_take_injection()` を
+  新セッション **opener でも消費**するようにし、rotate を挟んでも次境界で必ず実行される (高優先・飢餓なし)。
+- **EXIT 整形のレビュー除去**: rotate のたびの handoff/exit準備が **orchestra フルレビュー (実装+3レビュー+
+  集約+修正+sign-off ≈ 7 AI 呼び出し) をまるごと再実行**していた。→ `OrchestraRunner.run_turn_unreviewed()`
+  (指揮者のみ) を追加し、`loop._handoff_run_turn()` が handoff/exit準備でそれを使う (記録ターンに 3-AI レビューは過剰)。
+- **冗長な最終 sign-off を既定 OFF**: `app.py` の OrchestraRunner を `final_signoff=False` に
+  (lead 総合判断=集約が既に審判。修正後の再レビューは「レビューにレビューを重ねる」冗長)。
+- 検証: **全 411 テスト pass / 変更箇所は ruff・mypy クリーン**(既存の lint 2 件は本変更外)。
+- ★ 残課題: **ctx 2549% の過大計上**(orchestra 指揮者のツール多用×cache 再読込の重複加算)で毎ターン rotate
+  し 1 セッション=1 ターンになる。上記で実害 (注入飢餓/レビュー二重) は潰したが、計上自体の是正は別途。
+
 ### GUI 進捗サマリの QTabWidget 化 + 記録時刻の正規化 (2026-06-13 16:02、本セッション)
 - **タブ化**: 進捗サマリを **「実行中」(選択/実行中 project の SESSION_SUMMARY)** と
   **「共通」(全 project の next_plan.md 集約・記録時刻の新しい順)** の 2 タブに分割
