@@ -518,6 +518,19 @@ class MainWindow(QtWidgets.QMainWindow):
         self.summary_view.setFont(mono)
         sp_box.addWidget(self.summary_view, 1)
 
+        # 進捗サマリは 2 タブに分割 (ユーザー指摘 2026-06-13「タブで分ける」):
+        #   「実行中」= 上で組んだ _summary_panel。選択/実行中 project の SESSION_SUMMARY。
+        #   「共通」  = 全 project の docs/next_plan.md を集約し、記録された最終更新時刻の
+        #              新しい順に並べた横断ビュー。どれが直近かを時刻つきで判断できる。
+        self.common_view = QtWidgets.QPlainTextEdit()
+        self.common_view.setReadOnly(True)  # 読取専用 + 選択コピー可 (next_plan の文言を流用)
+        self.common_view.setPlaceholderText(t("gui.placeholder.common"))
+        self.common_view.setToolTip(t("gui.tip.common"))
+        self.common_view.setFont(mono)
+        self.summary_tabs = QtWidgets.QTabWidget()
+        self.summary_tabs.addTab(self._summary_panel, t("gui.tab.live"))
+        self.summary_tabs.addTab(self.common_view, t("gui.tab.common"))
+
     def _build_settings_dialog(self) -> None:
         """設定系ウィジェットを別画面 (非モーダル QDialog + QScrollArea) に配置する。
 
