@@ -921,8 +921,8 @@ def test_next_prompt_injection_overrides_continue(tmp_path: Path) -> None:
     loop.run()
     work = [c for c in runner.calls if c[0] != DEFAULT_EXIT_PREP_PROMPT]
     assert DEFAULT_RESUME_PROMPT in work[0][0]        # 1 回目=新セッションの再開 prompt(継続preamble付)
-    assert work[1][0] == "割り込みタスク X"           # 2 回目=注入タスクが優先される
-    assert work[2][0] != "割り込みタスク X"           # 注入は一度だけ (以降は continue)
+    assert work[1][0].startswith("割り込みタスク X")  # 2 回目=注入タスクが優先 (末尾に指令が付く)
+    assert not work[2][0].startswith("割り込みタスク X")  # 注入は一度だけ (以降は continue)
 
 
 # ─── サブスク認証 (API キー env を外す) ───────────────────────────
