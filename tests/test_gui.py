@@ -721,31 +721,47 @@ def _provider_names(win) -> tuple[str, list[str]]:
     return type(primary).__name__, [type(f).__name__ for f in fallbacks]
 
 
-def test_default_chain_is_claude_primary(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
-    """既定 (general テンプレ・Codex優先 OFF) は指揮者=Claude 主・fallback なし。"""
+def _which_factory(*available: str):
+    """指定した実行ファイルだけ PATH 上にある shutil.which 代替を返す (可用性を決定論的に固定)。"""
+    return lambda name: f"C:/{name}.cmd" if name in available else None
+
+
+def _patch_which(monkeypatch, *available: str) -> None:
+    """app の shutil.which を _which_factory で差し替える (codex/gemini 可用性を厳密制御)。"""
+    monkeypatch.setattr("llterm.gui.app.shutil.which", _which_factory(*available))
+
+
+def test_default_chain_is_claude_primary(
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
+) -> None:
+    """既定 (general テンプレ・Codex優先 OFF・codex/gemini 未導入) は指揮者=Claude 主・fallback なし。"""
+    _patch_which(monkeypatch)  # codex も gemini も未導入 → 保険なし (chain は Claude のみ)
     win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
-    win.chk_codex_first.setChecked(False)  # codex 可用環境でも決定的に
+    win.chk_codex_first.setChecked(False)
     win.chk_real.setChecked(True)
     primary, fallbacks = _provider_names(win)
     assert primary == "ClaudeRunner"
     assert fallbacks == []
 
 
-def test_codex_fallback_toggle_appends_codex(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
-    """Codex フォールバック ON: Claude 主 + Codex を保険に。"""
+def test_codex_available_auto_included_as_fallback(
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
+) -> None:
+    """Claude 主 + codex 導入済み: トグルなしで Codex が自動的に保険 chain に入る (可用性判定)。"""
+    _patch_which(monkeypatch, "codex")  # codex のみ導入
     win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
     win.chk_codex_first.setChecked(False)
     win.chk_real.setChecked(True)
-    win.chk_codex_fallback.setChecked(True)
     primary, fallbacks = _provider_names(win)
     assert primary == "ClaudeRunner"
     assert fallbacks == ["CodexRunner"]
 
 
 def test_codex_first_toggle_makes_codex_primary(
-    qapp: QtWidgets.QApplication, tmp_path: Path
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
 ) -> None:
-    """Codex 優先 ON: Codex 主・Claude を保険に (token をほぼ Codex へ寄せる)。"""
+    """Codex 優先 ON + codex 導入済み: Codex 主・Claude を保険に (token をほぼ Codex へ寄せる)。"""
+    _patch_which(monkeypatch, "codex")  # gemini は未導入 → 保険は Claude のみ
     win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
     win.chk_real.setChecked(True)
     win.chk_codex_first.setChecked(True)
@@ -754,10 +770,24 @@ def test_codex_first_toggle_makes_codex_primary(
     assert fallbacks == ["ClaudeRunner"]
 
 
-def test_mechanical_template_auto_prefers_codex(
-    qapp: QtWidgets.QApplication, tmp_path: Path
+def test_codex_first_with_codex_missing_falls_back_to_claude_primary(
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
 ) -> None:
-    """機械的テンプレ (green_keeper) はトグル OFF でも自動で Codex 主になる。"""
+    """Codex 優先 ON でも codex 未導入なら primary=Claude (可用性ガード=空転防止)。"""
+    _patch_which(monkeypatch)  # codex 未導入
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    win.chk_real.setChecked(True)
+    win.chk_codex_first.setChecked(True)
+    primary, fallbacks = _provider_names(win)
+    assert primary == "ClaudeRunner"   # Codex 主にできない → Claude 主に倒す
+    assert fallbacks == []             # codex/gemini いずれも不可用 → 保険なし
+
+
+def test_mechanical_template_auto_prefers_codex(
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
+) -> None:
+    """機械的テンプレ (green_keeper) はトグル OFF でも codex 導入済みなら自動で Codex 主になる。"""
+    _patch_which(monkeypatch, "codex")
     win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
     win.chk_real.setChecked(True)
     win.cmb_template.setCurrentIndex(win.cmb_template.findData("green_keeper"))
@@ -766,8 +796,11 @@ def test_mechanical_template_auto_prefers_codex(
     assert fallbacks == ["ClaudeRunner"]
 
 
-def test_general_template_stays_claude(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+def test_general_template_stays_claude(
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
+) -> None:
     """general テンプレは prefer なし → Claude 主のまま。"""
+    _patch_which(monkeypatch, "codex")
     win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
     win.chk_codex_first.setChecked(False)
     win.chk_real.setChecked(True)
@@ -783,6 +816,25 @@ def test_virtual_mode_never_uses_codex(qapp: QtWidgets.QApplication, tmp_path: P
     primary, fallbacks = _provider_names(win)
     assert primary == "VirtualClaudeRunner"
     assert fallbacks == []
+
+
+def test_chain_never_empty_claude_backbone(
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
+) -> None:
+    """free provider 撤去後も provider chain (primary+fallbacks) は空でない (Claude backbone)。
+
+    codex/gemini が全て不可用でも Claude が primary に居て chain は成立する。
+    """
+    _patch_which(monkeypatch)  # codex も gemini も未導入
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    win.chk_real.setChecked(True)
+    win.chk_codex_first.setChecked(True)  # Codex 主を望んでも不可用 → Claude 主に倒れる
+    primary, fallbacks = win._resolve_providers()
+    chain = [primary, *fallbacks]
+    assert chain, "chain は決して空にならない"
+    names = [type(p).__name__ if type(p).__name__ != "OrchestraRunner" else type(p.conductor).__name__
+             for p in chain]
+    assert "ClaudeRunner" in names  # Claude が backbone として常駐
 
 
 def test_codex_first_persists(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
