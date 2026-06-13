@@ -291,6 +291,17 @@ class MainWindow(QtWidgets.QMainWindow):
         self.cmb_free_provider.setCurrentIndex(_fpidx if _fpidx >= 0 else 0)
         self.cmb_free_provider.setToolTip(t("gui.tip.free_player"))
         set_row.addWidget(self.cmb_free_provider)
+        set_row.addWidget(QtWidgets.QLabel(t("gui.label.reviewer")))
+        self.cmb_reviewer = QtWidgets.QComboBox()
+        self.cmb_reviewer.addItem(t("gui.reviewer.none"), "")
+        for _key, _label in (("codex", "Codex"), ("gemini", "Gemini"), ("groq", "Groq"),
+                             ("cerebras", "Cerebras"), ("openrouter", "OpenRouter"),
+                             ("ollama", "Ollama")):
+            self.cmb_reviewer.addItem(_label, _key)
+        _rvidx = self.cmb_reviewer.findData(reviewer_default)
+        self.cmb_reviewer.setCurrentIndex(_rvidx if _rvidx >= 0 else 0)
+        self.cmb_reviewer.setToolTip(t("gui.tip.reviewer"))
+        set_row.addWidget(self.cmb_reviewer)
         set_row.addStretch(1)
         vbox.addLayout(set_row)
 
