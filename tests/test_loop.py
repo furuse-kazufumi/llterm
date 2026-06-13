@@ -460,6 +460,9 @@ def _scripted_claude_runner(tmp_path: Path, on_stream, *, script_body: str = _FA
         def _build_args(self, *, prompt: str, session_id: str, resume: bool) -> list[str]:
             return [_sys.executable, str(script)]
 
+        def _exe_error(self) -> str:
+            return ""  # 偽の子を直接起動するため実 claude の exe 解決チェックは無効化
+
     return ScriptedRunner(on_stream=on_stream, **runner_kw)  # type: ignore[arg-type]
 
 
