@@ -955,6 +955,56 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             self._append(t("gui.msg.inject_pending"), PALETTE["dim"])
 
+    # ---- 選択ダイアログ ↔ ループ協調 (choice → inject) ----
+    def _maybe_prompt_choice(self, text: str) -> bool:
+        """agent 応答テキストに ⟦LLTERM_CHOICE⟧ があれば選択ダイアログを出す。
+
+        検知 (行頭限定・コードフェンス/diff 内は無視) は llterm.host.choice の純関数に委譲する。
+        1 ターンに複数あれば最後の (= 最新の未応答) ブロックを採用する。戻り値 = 検知して
+        ダイアログを出したか。検知ゼロ / 既に表示中なら False (誤検知ゼロ・多重表示防止)。
+        """
+        from llterm.host.choice import parse_choice_blocks
+
+        choice = parse_choice_blocks(text)
+        if choice is None:
+            return False
+        return self._prompt_choice(choice)
+
+    def _prompt_choice(self, choice: object) -> bool:
+        """与えられた Choice を選択ダイアログで提示し、OK なら回答を次ターンへ注入する。
+
+        - **OK**: 番号+ラベルの注入文 (例「選択: 2) public」) を既存 inject 機構
+          (worker.inject → SessionLoop.next_prompt) に積む。これは継続プロンプトより優先される
+          (next_prompt が非 None を返すと auto-continue を上書きする設計)。
+        - **Cancel**: 注入しない (ユーザーは注入欄に自由入力できる)。
+        - ループ未走行 / 多重検知中は出さない (fail-safe)。
+        """
+        if self._choice_active:
+            return False  # 既に 1 件提示中 — 多重ダイアログを避ける
+        if self.worker is None or not self.worker.isRunning():
+            return False  # 走行中でなければ注入先が無い (idle では出さない)
+        self._choice_active = True
+        try:
+            self._append(t("gui.msg.choice_detected"), PALETTE["inject"], bold=True, ts=True)
+            factory = self._choice_dialog_factory or self._default_choice_dialog
+            dialog = factory(choice)
+            dialog.exec()  # モーダル (テストはスタブが即値を返す)
+            reply = dialog.reply()
+            if reply:
+                self.worker.inject(reply)  # 次ターンの prompt に (auto-continue を上書き)
+                self._append(t("gui.msg.choice_replied", reply=reply), PALETTE["inject"], ts=True)
+            else:
+                self._append(t("gui.msg.choice_cancelled"), PALETTE["dim"], ts=True)
+            return True
+        finally:
+            self._choice_active = False
+
+    def _default_choice_dialog(self, choice: object) -> object:
+        """実 ChoiceDialog を生成する (テスト以外の既定ファクトリ)。"""
+        from llterm.gui.choice_dialog import ChoiceDialog
+
+        return ChoiceDialog(choice, self)  # type: ignore[arg-type]
+
     @QtCore.Slot()
     def _on_template_changed(self) -> None:
         key = self.cmb_template.currentData()
