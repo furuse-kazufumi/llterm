@@ -187,6 +187,7 @@ class GeminiRunner:
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
     _proc: subprocess.Popen | None = field(default=None, repr=False, compare=False)
     _cancelled: bool = field(default=False, repr=False, compare=False)
+    _interrupted: bool = field(default=False, repr=False, compare=False)  # 緊急注入の一発中断
 
     def _resolved_exe(self) -> str:
         """gemini の実体を解決する。npm 配布で Windows は gemini.CMD shim が正規なので
