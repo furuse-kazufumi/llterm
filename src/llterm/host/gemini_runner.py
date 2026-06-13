@@ -36,7 +36,7 @@ from llterm.i18n import t
 # 認証切れを示す既知シグナル (制御系チャネル=stderr/error 本文のみに適用)。
 _AUTH_SIGNALS: tuple[str, ...] = (
     "unauthenticated", "unauthorized", "permission denied", "api key", "401", "403",
-    "invalid credentials", "could not load the default credentials",
+    "authentication", "credential", "could not load the default credentials",
 )
 # gemini 終了コード → エラー種別の補助 (42=入力 / 53=ターン上限 は other 扱い)。
 
