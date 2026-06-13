@@ -273,6 +273,13 @@ class MainWindow(QtWidgets.QMainWindow):
         op_row.addWidget(self.spin_sessions)
         vbox.addLayout(op_row)
 
+        # 承認確認不要 (完全自律) — 走行中も自由に ON/OFF できる生きたトグル (メイン窓に常設)。
+        # タスク注入で自動 OFF (監督モード = AI が確認事項を出せる)、確認回答後に自動 ON (ループ復帰)。
+        auto_row = QtWidgets.QHBoxLayout()
+        auto_row.addWidget(self.chk_autonomy)
+        auto_row.addStretch(1)
+        vbox.addLayout(auto_row)
+
         # ステータス行 — 常時見える状態 (状態 / model / session 進捗 / context 使用率 / cost)
         status_row = QtWidgets.QHBoxLayout()
         status_row.addWidget(self.lbl_state)
