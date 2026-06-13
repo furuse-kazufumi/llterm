@@ -325,6 +325,11 @@ class MainWindow(QtWidgets.QMainWindow):
         # 注入欄フォーカス時に見える化 (狭幅 + 仮想キーボードで隠れる対策)。
         self.input.installEventFilter(self)
 
+        # テンプレ既定を復元 (signal を遮断 → 構築中の副作用なし)。値を流してから
+        # _on_template_changed() を明示呼びして tooltip / param 有効化を初期化する。
+        _tidx = self.cmb_template.findData(template_default)
+        with QtCore.QSignalBlocker(self.cmb_template):
+            self.cmb_template.setCurrentIndex(_tidx if _tidx >= 0 else 0)
         self._on_template_changed()  # 初期 tooltip / param 有効化
         if param_default:
             with QtCore.QSignalBlocker(self.edit_param):
