@@ -270,6 +270,7 @@ class MainWindow(QtWidgets.QMainWindow):
         op_row.addWidget(self.btn_start)
         op_row.addWidget(self.btn_stop)
         op_row.addWidget(self.btn_send)
+        op_row.addWidget(self.btn_emergency)
         op_row.addWidget(self.btn_settings)
         op_row.addWidget(QtWidgets.QLabel(t("gui.label.project")))
         op_row.addWidget(self.cmb_project, 1)
