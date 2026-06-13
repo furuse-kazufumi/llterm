@@ -58,6 +58,11 @@ PROVIDERS: dict[str, OpenAICompatProvider] = {
     "gemini-api": OpenAICompatProvider(
         "gemini-api", "https://generativelanguage.googleapis.com/v1beta/openai",
         "GEMINI_API_KEY", "gemini-2.5-flash"),
+    # Perplexity (sonar) の OpenAI 互換 chat/completions。web-grounded で高信頼の **調査・真偽確認
+    # 奏者**向き (実装はさせない: プログラミングは苦手 — オーケストラの factcheck 役)。テキスト専用。
+    # PERPLEXITY_API_KEY が要る (perplexity.ai/settings/api)。default = sonar-pro (上位の grounded)。
+    "perplexity": OpenAICompatProvider(
+        "perplexity", "https://api.perplexity.ai", "PERPLEXITY_API_KEY", "sonar-pro"),
 }
 
 
