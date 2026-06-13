@@ -276,6 +276,158 @@ def test_handoff_event_sets_busy_cursor_and_status(
     win._set_busy_cursor(False)  # 後始末
 
 
+# ─── 選択ダイアログ ↔ ループ協調 (choice → inject) ────────────────
+
+
+class _StubDialog:
+    """ChoiceDialog の差し替え用スタブ (offscreen で modal exec を避ける)。
+
+    accept=True → OK 相当 (reply を返す) / False → Cancel 相当 (reply=None)。
+    """
+
+    def __init__(self, choice, *, accept: bool, indices: list[int] | None = None) -> None:
+        from llterm.host.choice import format_choice_reply
+        self.choice = choice
+        self._accept = accept
+        idx = indices if indices is not None else ([0] if choice.options else [])
+        self._reply = format_choice_reply(choice, idx) if accept else None
+
+    def exec(self) -> int:  # QDialog.exec() 互換 (Accepted=1 / Rejected=0)
+        return 1 if self._accept else 0
+
+    def reply(self):
+        return self._reply
+
+
+def _install_choice_stub(win, *, accept: bool, indices=None) -> dict:
+    """win に ChoiceDialog ファクトリを差し込み、生成された Choice を記録する。"""
+    seen: dict = {}
+
+    def factory(choice):
+        seen["choice"] = choice
+        return _StubDialog(choice, accept=accept, indices=indices)
+
+    win._choice_dialog_factory = factory
+    return seen
+
+
+def test_turn_with_choice_marker_shows_dialog_and_injects(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    """ターン text に ⟦LLTERM_CHOICE⟧ があればダイアログを出し、OK の回答を inject する。"""
+    win = _make_window(tmp_path, max_sessions=1)
+    win.start_loop()  # worker を起動 (inject の宛先)
+    assert win.worker is not None
+    seen = _install_choice_stub(win, accept=True, indices=[1])
+    text = (
+        "公開範囲を決めたいです。\n"
+        "⟦LLTERM_CHOICE multi=false question=\"公開範囲\"⟧\n"
+        "1) public\n2) private\n⟦/LLTERM_CHOICE⟧\n"
+    )
+    win._on_event("turn", {"session_index": 1, "turn": 1, "used_pct": 0.1,
+                           "total_cost": 0.0, "text": text, "error_kind": ""})
+    # ダイアログに渡った Choice が正しい
+    assert seen["choice"].options == ["public", "private"]
+    assert seen["choice"].multi is False
+    # OK の回答 (番号+ラベル) が worker のキューに積まれた = 次ターンへ注入される
+    assert win.worker._next_prompt() == "選択: 2) private"
+    _run_until_finished(qapp, win)
+
+
+def test_choice_ok_overrides_auto_continue(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    """choice 応答が auto-continue より優先される (next_prompt が回答を返す)。"""
+    win = _make_window(tmp_path, max_sessions=1)
+    win.start_loop()
+    assert win.worker is not None
+    _install_choice_stub(win, accept=True, indices=[0])
+    win._maybe_prompt_choice("⟦LLTERM_CHOICE multi=false⟧\n1) yes\n2) no\n⟦/LLTERM_CHOICE⟧\n")
+    # SessionLoop の next_prompt は GUI inject を一度だけ優先する設計 — 回答が先頭に来る
+    nxt = win.worker._next_prompt()
+    assert nxt == "選択: 1) yes"
+    _run_until_finished(qapp, win)
+
+
+def test_choice_cancel_injects_nothing(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    """Cancel は注入しない (キューは空のまま = 通常の auto-continue に委ねる)。"""
+    win = _make_window(tmp_path, max_sessions=1)
+    win.start_loop()
+    assert win.worker is not None
+    _install_choice_stub(win, accept=False)
+    win._maybe_prompt_choice("⟦LLTERM_CHOICE multi=false⟧\n1) a\n2) b\n⟦/LLTERM_CHOICE⟧\n")
+    assert win.worker._next_prompt() is None  # 未注入
+    assert "キャンセル" in win.output.toPlainText()
+    _run_until_finished(qapp, win)
+
+
+def test_turn_without_choice_marker_no_dialog(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    """マーカーが無い通常応答ではダイアログを出さない (誤検知ゼロ)。"""
+    win = _make_window(tmp_path, max_sessions=1)
+    win.start_loop()
+    assert win.worker is not None
+    seen = _install_choice_stub(win, accept=True)
+    win._on_event("turn", {"session_index": 1, "turn": 1, "used_pct": 0.1,
+                           "total_cost": 0.0, "text": "ただの応答テキスト", "error_kind": ""})
+    assert "choice" not in seen  # ダイアログ未生成
+    assert win.worker._next_prompt() is None
+    _run_until_finished(qapp, win)
+
+
+def test_choice_marker_in_code_fence_not_triggered(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    """コードフェンス内の例示マーカーはダイアログを出さない (誤検知防止)。"""
+    win = _make_window(tmp_path, max_sessions=1)
+    win.start_loop()
+    assert win.worker is not None
+    seen = _install_choice_stub(win, accept=True)
+    text = "例:\n```\n⟦LLTERM_CHOICE multi=false⟧\n1) x\n⟦/LLTERM_CHOICE⟧\n```\n"
+    win._on_event("turn", {"session_index": 1, "turn": 1, "used_pct": 0.1,
+                           "total_cost": 0.0, "text": text, "error_kind": ""})
+    assert "choice" not in seen
+    _run_until_finished(qapp, win)
+
+
+def test_ask_user_question_stream_event_triggers_dialog(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    """AskUserQuestion の stream choice イベントでも同じダイアログ経路に乗る (bonus)。"""
+    win = _make_window(tmp_path, max_sessions=1)
+    win.start_loop()
+    assert win.worker is not None
+    seen = _install_choice_stub(win, accept=True, indices=[1])
+    win._on_stream({"kind": "choice", "question": "どれ?", "multi": False,
+                    "options": ["A", "B"]})
+    assert seen["choice"].options == ["A", "B"]
+    assert win.worker._next_prompt() == "選択: 2) B"
+    _run_until_finished(qapp, win)
+
+
+def test_resume_prompt_mentions_choice_marker() -> None:
+    """DEFAULT_RESUME_PROMPT が agent に ⟦LLTERM_CHOICE⟧ の使用を指示している。"""
+    from llterm.host.loop import CHOICE_MARKER_HINT, DEFAULT_RESUME_PROMPT
+
+    assert "⟦LLTERM_CHOICE" in CHOICE_MARKER_HINT
+    assert "⟦LLTERM_CHOICE" in DEFAULT_RESUME_PROMPT
+
+
+def test_summarize_ask_user_question_emits_choice() -> None:
+    """summarize_stream_event は AskUserQuestion tool_use を choice 要約に変換する。"""
+    from llterm.host.loop import summarize_stream_event
+
+    items = summarize_stream_event({
+        "type": "assistant",
+        "message": {"content": [{
+            "type": "tool_use", "name": "AskUserQuestion",
+            "input": {"questions": [{
+                "question": "選んで", "multiSelect": True,
+                "options": [{"label": "x"}, {"label": "y"}]}]},
+        }]},
+    })
+    choice_items = [it for it in items if it.get("kind") == "choice"]
+    assert choice_items == [{"kind": "choice", "question": "選んで", "multi": True,
+                             "options": ["x", "y"]}]
+
+
 def test_provider_switch_event_updates_model_label(
     qapp: QtWidgets.QApplication, tmp_path: Path
 ) -> None:
