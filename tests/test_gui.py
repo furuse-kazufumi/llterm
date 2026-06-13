@@ -27,11 +27,11 @@ def qapp() -> QtWidgets.QApplication:
     return app  # offscreen なので teardown 不要 (プロセス終了で破棄)
 
 
-def _make_window(tmp_path: Path, **loop_kw: object) -> MainWindow:
+def _make_window(tmp_path: Path, *, delay: float = 0.0, **loop_kw: object) -> MainWindow:
     return MainWindow(
         projects_root=tmp_path,
         workdir=tmp_path,
-        runner_factory=lambda: VirtualClaudeRunner(delay=0.0),
+        runner_factory=lambda: VirtualClaudeRunner(delay=delay),
         **loop_kw,
     )
 
