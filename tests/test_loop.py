@@ -541,11 +541,77 @@ def test_exe_npm_shim_is_rejected_with_clear_error(
     from llterm.host import loop as loop_mod
 
     monkeypatch.setattr(loop_mod.shutil, "which", lambda exe: r"C:\npm\claude.CMD")
+    monkeypatch.setattr(loop_mod, "_native_claude_dirs", lambda: (tmp_path / "nope",))
     runner = loop_mod.ClaudeRunner()
     res = runner.run_turn(prompt="p", session_id="s", resume=False, cwd=tmp_path)
     assert res.is_error is True
     assert res.raw_exit == 127
     assert "npm shim" in res.text
+
+
+def _make_fake_exe(native_dir: Path) -> Path:
+    """native install 先に空の claude 実行ファイルを作って返す (プラットフォーム別の名前)。"""
+    import sys as _sys
+
+    native_dir.mkdir(parents=True, exist_ok=True)
+    exe = native_dir / ("claude.exe" if _sys.platform == "win32" else "claude")
+    exe.write_text("", encoding="utf-8")
+    return exe
+
+
+def test_exe_resolves_native_install_when_missing_from_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """PATH に claude が無くても native install 先 (~/.local/bin) を直接見つけて起動する。
+
+    回帰: 長時間稼働中の GUI が古い PATH を抱えたまま native claude へ移行すると
+    shutil.which が None → FileNotFoundError → 空テキストの err=other を 3 連続で
+    circuit_open していた (claude レビュー奏者 / claude ターンだけ即死)。
+    """
+    from llterm.host import loop as loop_mod
+
+    native_dir = tmp_path / ".local" / "bin"
+    exe = _make_fake_exe(native_dir)
+    monkeypatch.setattr(loop_mod.shutil, "which", lambda _exe: None)  # PATH 上に無い
+    monkeypatch.setattr(loop_mod, "_native_claude_dirs", lambda: (native_dir,))
+
+    runner = loop_mod.ClaudeRunner()
+    assert runner._exe_error() == ""  # 見つかるのでエラーにしない
+    assert runner._resolved_exe() == str(exe)  # 絶対パスで起動する
+
+
+def test_exe_prefers_native_over_shim_on_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """PATH 上が shim (.cmd) でも native install 先に exe があればそちらを使い、エラーにしない。"""
+    from llterm.host import loop as loop_mod
+
+    native_dir = tmp_path / ".local" / "bin"
+    exe = _make_fake_exe(native_dir)
+    monkeypatch.setattr(loop_mod.shutil, "which", lambda _exe: r"C:\npm\claude.CMD")
+    monkeypatch.setattr(loop_mod, "_native_claude_dirs", lambda: (native_dir,))
+
+    runner = loop_mod.ClaudeRunner()
+    assert runner._exe_error() == ""
+    assert runner._resolved_exe() == str(exe)
+
+
+def test_exe_not_found_anywhere_gives_clear_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """PATH にも native install 先にも claude が無ければ、空テキストの err=other でなく
+    原因を明示したエラーを返す (silent circuit_open の回帰防止)。"""
+    from llterm.host import loop as loop_mod
+
+    monkeypatch.setattr(loop_mod.shutil, "which", lambda _exe: None)
+    monkeypatch.setattr(loop_mod, "_native_claude_dirs", lambda: (tmp_path / "nope",))
+
+    runner = loop_mod.ClaudeRunner()
+    res = runner.run_turn(prompt="p", session_id="s", resume=False, cwd=tmp_path)
+    assert res.is_error is True
+    assert res.raw_exit == 127
+    assert res.error_kind == "other"
+    assert res.text.strip()  # 空でない = 原因が分かる (謎の err=other を解消)
 
 
 # ─── used_pct ────────────────────────────────────────────────────
