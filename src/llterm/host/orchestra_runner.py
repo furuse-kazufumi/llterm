@@ -230,6 +230,16 @@ class OrchestraRunner:
             if not is_error and text.strip():
                 panel.append((label, text))
 
+        # 緊急注入がレビュー中に来た場合: 残りの集約/修正/sign-off を行わず即 interrupted を返す
+        # (loop はループを止めず注入を次ターンで消費する)。指揮者実装/修正フェーズ中の中断は
+        # 各 run_turn が "interrupted" を返して伝播するため、ここはレビュー中の取りこぼし防止。
+        with self._lock:
+            interrupted = self._interrupted
+        if interrupted:
+            return TurnResult(res.session_id or session_id, res.input_tokens, res.output_tokens,
+                              res.context_tokens, total_cost, "", True, "interrupted",
+                              max(1, total_turns), -1, context_window=res.context_window)
+
         # 4. 真偽確認奏者 (あれば): 実装報告 + diff の事実主張を裏取り (best-effort / stateless)。
         factcheck_text = ""
         if self.factchecker is not None and not self._is_cancelled():
