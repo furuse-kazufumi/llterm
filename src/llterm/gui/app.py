@@ -634,6 +634,10 @@ class MainWindow(QtWidgets.QMainWindow):
         # Gemini fallback を選んだのに gemini 未インストールで除外された場合も明示する
         if real and self.chk_gemini_fallback.isChecked() and shutil.which("gemini") is None:
             self._append(t("gui.msg.gemini_not_installed"), PALETTE["err"])
+        # Gemini CLI 無料枠の期限 (2026-06-18) が間近/超過なら通知 (移行先=Gemini API)
+        deadline_note = self._gemini_cli_deadline_note()
+        if real and deadline_note:
+            self._append(deadline_note, PALETTE["err"], bold=True, ts=True)
         loop_kw = dict(self.loop_kw)
         loop_kw["max_sessions"] = self.spin_sessions.value()  # 常に上限つき (暴走/レート保護)
         loop_kw["threshold"] = self.spin_threshold.value()
