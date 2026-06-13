@@ -104,7 +104,7 @@ def test_codex_runner_streams_and_parses(tmp_path: Path) -> None:
     assert kinds == ["init", "tool_use", "text", "result"]
     assert res.text == "codex done"
     assert res.is_error is False
-    assert res.context_tokens == 150
+    assert res.context_tokens == 0  # 累積 usage は占有率にしない (毎ターン rotate 防止)
     assert runner._thread_id == "fake-thread"  # 次ターンの resume 用に thread_id を保持
 
 
