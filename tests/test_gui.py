@@ -1019,6 +1019,51 @@ def test_reviewer_persists(qapp: QtWidgets.QApplication, tmp_path: Path) -> None
     assert win2.cmb_reviewer.currentData() == "gemini"
 
 
+# ─── Gemini CLI 無料枠 期限通知 (GUI) ─────────────────────────────
+
+
+def test_deadline_note_empty_when_gemini_cli_not_used(
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
+) -> None:
+    """Gemini CLI を使わない設定なら期限通知は出ない (期限超過でも無関係なら黙る)。"""
+    monkeypatch.setattr("llterm.host.gemini_runner.gemini_cli_free_tier_status",
+                        lambda today=None: ("expired", -3))
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    assert win._gemini_cli_deadline_note() == ""  # Gemini切替 OFF / レビュー奏者≠gemini
+
+
+def test_deadline_note_expired_when_gemini_fallback_on(
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr("llterm.host.gemini_runner.gemini_cli_free_tier_status",
+                        lambda today=None: ("expired", -3))
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    win.chk_gemini_fallback.setChecked(True)
+    note = win._gemini_cli_deadline_note()
+    assert note and ("3" in note)  # 3 日超過の通知
+
+
+def test_deadline_note_soon_when_reviewer_is_gemini_cli(
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr("llterm.host.gemini_runner.gemini_cli_free_tier_status",
+                        lambda today=None: ("soon", 5))
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    win.cmb_reviewer.setCurrentIndex(win.cmb_reviewer.findData("gemini"))
+    note = win._gemini_cli_deadline_note()
+    assert note and ("5" in note)
+
+
+def test_deadline_note_silent_when_ok(
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr("llterm.host.gemini_runner.gemini_cli_free_tier_status",
+                        lambda today=None: ("ok", 30))
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    win.chk_gemini_fallback.setChecked(True)
+    assert win._gemini_cli_deadline_note() == ""  # 期限まで余裕 = 黙る
+
+
 def test_explicit_args_override_saved_settings(
     qapp: QtWidgets.QApplication, tmp_path: Path
 ) -> None:
