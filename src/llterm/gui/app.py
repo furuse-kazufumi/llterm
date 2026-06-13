@@ -667,11 +667,17 @@ class MainWindow(QtWidgets.QMainWindow):
             return t("gui.msg.gemini_cli_expiring", days=days)
         return ""
 
-    def _reviewer_runner(self) -> TurnRunner | None:
-        """選択中のレビュー奏者 runner、未選択/未導入/キー無は None (分業を組まない fail-safe)。"""
-        key = str(self.cmb_reviewer.currentData() or "")
+    def _selected_reviewer_keys(self) -> list[str]:
+        """レビュー奏者パネルでチェック済みの key を REVIEWER_CHOICES の表示順で返す。"""
+        return [key for key, _ in REVIEWER_CHOICES if self.chk_reviewers[key].isChecked()]
+
+    def _make_reviewer_runner(self, key: str) -> TurnRunner | None:
+        """1 つのレビュー奏者 key を runner 化する。未導入/キー無は None (fail-safe)。"""
         if not key:
             return None
+        if key == "claude":  # 責任者と同系のダブルチェックも許容 (ブロックしない)
+            from llterm.host.loop import ClaudeRunner
+            return ClaudeRunner(use_subscription=True, model=str(self.cmb_model.currentData() or ""))
         if key == "codex":
             if shutil.which("codex") is None:
                 return None
@@ -687,6 +693,34 @@ class MainWindow(QtWidgets.QMainWindow):
             rev = OpenAICompatRunner(provider=key)
             return rev if rev.key_available() else None
         return None
+
+    def _reviewer_runners(self) -> list[TurnRunner]:
+        """レビュー奏者パネルの選択 key 群を runner 化する (パネル)。
+
+        未導入/キー無の奏者はスキップする (fail-safe = 分業を壊さず可用なものだけ参加)。
+        """
+        runners: list[TurnRunner] = []
+        for key in self._selected_reviewer_keys():
+            runner = self._make_reviewer_runner(key)
+            if runner is not None:
+                runners.append(runner)
+        return runners
+
+    def _factcheck_runner(self) -> TurnRunner | None:
+        """調査・真偽確認奏者 (Perplexity 等) runner、未選択/キー無は None (fail-safe)。"""
+        key = str(self.cmb_factcheck.currentData() or "")
+        if not key:
+            return None
+        from llterm.host.openai_compat_runner import PROVIDERS, OpenAICompatRunner
+        if key in PROVIDERS:
+            fc = OpenAICompatRunner(provider=key)
+            return fc if fc.key_available() else None
+        return None
+
+    def _lead_runner(self) -> TurnRunner:
+        """責任者/総合判断 = Claude Code (固定)。レビュー取りまとめ + 最終 sign-off を担う。"""
+        from llterm.host.loop import ClaudeRunner
+        return ClaudeRunner(use_subscription=True, model=str(self.cmb_model.currentData() or ""))
 
     def _build_runner(self) -> TurnRunner:
         """このランの primary runner (= provider chain の先頭) を返す。"""
