@@ -63,6 +63,10 @@ MESSAGES: dict[str, dict[str, str]] = {
         "ja": "codex が見つかりません",
         "en": "codex was not found",
     },
+    "runner.gemini.not_found": {
+        "ja": "gemini が見つかりません (npm i -g @google/gemini-cli)",
+        "en": "gemini was not found (npm i -g @google/gemini-cli)",
+    },
     "runner.openai.no_key": {
         "ja": "{provider}: 環境変数 {env} に API キーが未設定です (fail-closed)",
         "en": "{provider}: API key env var {env} is not set (fail-closed)",
