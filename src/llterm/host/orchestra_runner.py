@@ -213,9 +213,10 @@ class OrchestraRunner:
             independent = label != conductor_label
             self._emit({"kind": "review", "phase": "start", "reviewer": label,
                         "conductor": conductor_label, "independent": independent, "index": i})
+            # 後方互換: 旧 API の単一 reviewer は `-review` (無印)。パネルは `-review{i}`。
+            review_sid = f"{session_id}-review" if self._legacy_single else f"{session_id}-review{i}"
             cost, turns, text, is_error = self._sub_review(
-                rev_runner, self._review_prompt(res.text, diff),
-                f"{session_id}-review{i}", cwd)
+                rev_runner, self._review_prompt(res.text, diff), review_sid, cwd)
             total_cost += cost
             total_turns += turns
             self._emit({"kind": "review", "phase": "end", "reviewer": label,
