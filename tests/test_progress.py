@@ -91,3 +91,60 @@ def test_collect_progress_uses_mtime(tmp_path: Path) -> None:
     os.utime(p, (1_000_000.0, 1_234_567.0))  # mtime を固定
     items = collect_progress(tmp_path)
     assert items[0].updated == 1_234_567.0
+    assert items[0].updated_source == "mtime"  # 本文に記録時刻が無い → mtime フォールバック
+
+
+# ─── 記録された最終更新時刻の解析 (ユーザー指摘: 日付のみでは直前判定不能) ───
+
+def test_parse_updated_at_with_time() -> None:
+    txt = "# x\n> 最終更新: 2026-06-13 15:42 JST\n本文\n"
+    assert parse_updated_at(txt) == datetime(2026, 6, 13, 15, 42).timestamp()
+
+
+def test_parse_updated_at_fullwidth_colon() -> None:
+    assert parse_updated_at("最終更新：2026-06-13 09:05") == datetime(2026, 6, 13, 9, 5).timestamp()
+
+
+def test_parse_updated_at_date_only_is_none() -> None:
+    # 時刻 (HH:MM) を欠く記録は採用しない → mtime フォールバックに委ねる
+    assert parse_updated_at("> 最終更新: 2026-06-13 (EXIT 準備)") is None
+    assert parse_updated_at("最終更新：2026-06-13") is None
+    assert parse_updated_at("更新は未記録") is None
+    assert parse_updated_at("") is None
+
+
+def test_parse_updated_at_invalid_date_is_none() -> None:
+    assert parse_updated_at("最終更新: 2026-13-99 25:61") is None  # 壊れた日時は fail-safe で None
+
+
+def test_collect_progress_prefers_recorded_timestamp(tmp_path: Path) -> None:
+    body = "# a\n> 最終更新: 2026-06-13 15:42 JST\n## 次の一手\n- do\n"
+    _mk(tmp_path / "a", next_plan=body)
+    p = tmp_path / "a" / "docs" / "next_plan.md"
+    os.utime(p, (1.0, 1.0))  # mtime をわざと大昔に → 記録時刻が優先されるはず
+    it = collect_progress(tmp_path)[0]
+    assert it.updated == datetime(2026, 6, 13, 15, 42).timestamp()
+    assert it.updated_source == "header"
+    assert it.mtime == 1.0  # mtime は透明性のため別途保持
+
+
+def test_collect_progress_date_only_falls_back_to_mtime(tmp_path: Path) -> None:
+    _mk(tmp_path / "a", next_plan="# a\n> 最終更新: 2026-06-13\n本文")  # 日付のみ
+    p = tmp_path / "a" / "docs" / "next_plan.md"
+    os.utime(p, (1_000_000.0, 1_234_567.0))
+    it = collect_progress(tmp_path)[0]
+    assert it.updated == 1_234_567.0 and it.updated_source == "mtime"
+
+
+def test_build_common_summary_marks_mtime_fallback() -> None:
+    items = [
+        ProjectProgress("rec", Path("r"), "b", updated=300.0, source="next_plan",
+                        mtime=300.0, updated_source="header"),
+        ProjectProgress("fb", Path("f"), "b", updated=200.0, source="next_plan",
+                        mtime=200.0, updated_source="mtime"),
+    ]
+    out = build_common_summary(items, fmt=lambda t: f"T{int(t)}")
+    rec_line = out.split("**rec**")[1].split("\n")[0]
+    fb_line = out.split("**fb**")[1].split("\n")[0]
+    assert "(ファイル時刻)" not in rec_line  # 記録時刻つきは信頼でき注記なし
+    assert "(ファイル時刻)" in fb_line       # mtime 代用は明示
