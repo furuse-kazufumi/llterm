@@ -948,6 +948,26 @@ def test_injection_consumed_after_rotate_not_starved(tmp_path: Path) -> None:
         "rotate ばかりでも注入が opener で消費されるはず (飢餓しない)"
 
 
+def test_interrupted_turn_continues_and_consumes_injection(tmp_path: Path) -> None:
+    """error_kind=interrupted はループを止めず、注入タスクを次ターンで消費する (スキップしない)。"""
+    state = {"n": 0}
+
+    def nxt() -> str | None:
+        state["n"] += 1
+        # opener (call 1) は注入なし → 中断後の _continue_prompt (call 2) で緊急タスクを返す
+        return "緊急タスク Z" if state["n"] == 2 else None
+
+    # 1 ターン目に interrupted を返す (緊急注入で現ターンが中断された想定)
+    runner = FakeRunner([{"error_kind": "interrupted", "is_error": True}])
+    loop = _loop(runner, tmp_path, window_tokens=200_000, threshold=0.70,
+                 max_sessions=1, max_turns_per_session=4, next_prompt=nxt)
+    outcome = loop.run()
+    assert outcome.stop_reason != "stopped"          # 中断で停止しない
+    assert outcome.stop_reason != "circuit_open"      # エラーにも数えない
+    work = [c for c in runner.calls if c[0] != DEFAULT_EXIT_PREP_PROMPT]
+    assert any(c[0].startswith("緊急タスク Z") for c in work)  # 注入が実行される (スキップしない)
+
+
 def test_exit_prep_uses_unreviewed_path_when_available(tmp_path: Path) -> None:
     """run_turn_unreviewed を持つ runner (orchestra 等) では exit準備をレビュー無しで回す。"""
 
