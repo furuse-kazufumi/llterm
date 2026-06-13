@@ -971,6 +971,35 @@ def test_build_args_passes_unknown_model_through() -> None:
     assert args[args.index("--model") + 1] == "claude-future-9"
 
 
+def test_build_args_coerces_non_uuid_session_id() -> None:
+    """claude --session-id は厳格な UUID を要求する。OrchestraRunner の派生 id
+    ('<uuid>-review0' / '-aggregate' / '-signoff') は claude が exit 1 で拒否し
+    空テキストの err=other になっていた (レビュー奏者 / 責任者が常に失敗する原因)。
+    非 UUID の session_id は決定論的に有効 UUID へ写像してから渡す。
+    """
+    import uuid as _uuid
+
+    from llterm.host.loop import ClaudeRunner
+
+    runner = ClaudeRunner()
+    base = str(_uuid.uuid4())
+
+    # 有効 UUID はそのまま渡す (主ループは uuid4 を渡すので無改変)
+    args = runner._build_args(prompt="p", session_id=base, resume=False)
+    assert args[args.index("--session-id") + 1] == base
+
+    # 派生 id (非 UUID) は有効 UUID へ写像される
+    derived = f"{base}-review0"
+    args2 = runner._build_args(prompt="p", session_id=derived, resume=False)
+    sid2 = args2[args2.index("--session-id") + 1]
+    assert sid2 != derived
+    _uuid.UUID(sid2)  # 有効 UUID でなければ ValueError で失敗
+
+    # 決定論的: 同じ入力 → 同じ UUID (新規作成 --session-id と継続 --resume が整合する)
+    args3 = runner._build_args(prompt="p", session_id=derived, resume=True)
+    assert args3[args3.index("--resume") + 1] == sid2
+
+
 def test_default_model_is_opus_4_8() -> None:
     from llterm.host.loop import DEFAULT_MODEL
 
