@@ -28,7 +28,10 @@ def test_parse_codex_success() -> None:
     assert r.session_id == "th-123"          # codex thread_id
     assert r.text == "答えは 42"
     assert r.is_error is False
-    assert r.context_tokens == 9926 + 8064   # input + cached = 占有近似
+    assert r.input_tokens == 9926            # usage は情報として保持 (cost/ログ用)
+    # context_tokens は 0 固定: codex の usage は 1 ターンの全 API 往復の累積で瞬間占有にならない。
+    # 占有率にすると毎ターン rotate するため 0 とし turn 数で rotate する (codex は自前で文脈圧縮)。
+    assert r.context_tokens == 0
     assert r.cost_usd == 0.0                 # サブスク = 課金なし
 
 
