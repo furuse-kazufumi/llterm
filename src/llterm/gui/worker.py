@@ -75,6 +75,17 @@ class LoopWorker(QtCore.QThread):
         with self._inject_lock:
             return self._injected.pop(0) if self._injected else None
 
+    def set_autonomy(self, on: bool) -> None:
+        """走行中に承認確認不要 (完全自律) を切り替える (GUI のチェックボックスから)。
+
+        次ターンの prompt 構築時にループが autonomy_fn 経由で読む。タスク注入で OFF、
+        確認回答後に ON へ戻す、といった HITL 制御を GUI 側から行うための入口。
+        """
+        self._autonomy = bool(on)
+
+    def _autonomy_value(self) -> bool:
+        return self._autonomy
+
     def run(self) -> None:  # QThread のエントリ (別スレッド)
         loop = SessionLoop(
             runner=self._runner,
