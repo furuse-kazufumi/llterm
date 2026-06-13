@@ -132,6 +132,24 @@ def test_codex_runner_resume_uses_thread_id(tmp_path: Path) -> None:
     assert "prev-thread" in captured[0]
 
 
+def test_resume_args_omit_exec_only_options(tmp_path: Path) -> None:
+    """`codex exec resume` は -s/--sandbox・-C/--cd・--color を受け付けず、渡すと exit 2 で
+    resume ターンが全失敗する (新規は成功・2 ターン目以降 err=other → circuit_open の主因)。
+    resume ではこれらを付けない。新規セッションは従来どおり付ける。
+    """
+    runner = CodexRunner()
+    runner._thread_id = "prev-thread"
+    args = runner._build_args(resume=True, cwd=tmp_path)
+    assert "resume" in args and "prev-thread" in args
+    assert "-s" not in args and "--sandbox" not in args
+    assert "-C" not in args and "--cd" not in args
+    assert "--color" not in args
+    assert args[-1] == "-"  # プロンプトは stdin センチネル
+
+    new_args = runner._build_args(resume=False, cwd=tmp_path)
+    assert "-s" in new_args and "-C" in new_args and "--color" in new_args
+
+
 # ─── 指示文 truncation 回帰 (codex.CMD への argv 改行切断バグ) ──────
 
 
