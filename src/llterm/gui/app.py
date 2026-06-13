@@ -479,6 +479,7 @@ class MainWindow(QtWidgets.QMainWindow):
             "codex_first": self.chk_codex_first.isChecked(),
             "gemini_fallback": self.chk_gemini_fallback.isChecked(),
             "free_provider": self.cmb_free_provider.currentData(),
+            "reviewer": self.cmb_reviewer.currentData(),
             "summary_raw": self.chk_summary_raw.isChecked(),
             "max_sessions": self.spin_sessions.value(),
             "threshold": round(self.spin_threshold.value(), 2),
