@@ -788,13 +788,17 @@ class SessionLoop:
                 return self.autonomy
         return self.autonomy
 
-    def _with_autonomy(self, prompt: str) -> str:
-        """autonomy が ON なら自律指令を末尾に付ける。OFF = 承認確認モード (停止/handoff が効く)。
+    def _apply_directives(self, prompt: str) -> str:
+        """毎ターン (opener + 継続) に適用する指令を付ける。
 
-        毎ターン (opener + 継続) に適用するので、タスク注入時に GUI が autonomy を OFF にすると
-        その後のターンは『人間確認を待たず停止しない』指令が外れ、安全な Stop/引継ぎが効く。
+        - **安全弁 (常時)**: 不可逆/危険操作は autonomy 不問で人間承認 (進捗更新→⟦LLTERM_CHOICE⟧→要約)。
+        - **autonomy ON**: 通常確認は待たず自律継続。
+        - **autonomy OFF (監督モード)**: 不明点・確認事項を遠慮なく人間に尋ねてよい。
+        タスク注入時に GUI が autonomy を OFF にすると次ターンから監督モードへ切り替わり、
+        確認回答後に GUI が autonomy を ON へ戻すと通常ループへ復帰する。
         """
-        return prompt + AUTONOMY_DIRECTIVE if self._autonomy_on() else prompt
+        prompt = prompt + SAFETY_DIRECTIVE
+        return prompt + (AUTONOMY_DIRECTIVE if self._autonomy_on() else SUPERVISED_DIRECTIVE)
 
     def _continue_prompt(self) -> tuple[str, bool]:
         """継続ターンの prompt と「注入タスクか」フラグ。GUI inject があれば一度だけ優先する。"""
