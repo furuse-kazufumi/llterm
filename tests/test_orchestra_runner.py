@@ -204,6 +204,35 @@ def test_lead_aggregates_panel_findings(tmp_path: Path) -> None:
     assert res.text == "修正した"
 
 
+def test_interrupt_from_conductor_propagates_and_skips_review(tmp_path: Path) -> None:
+    """指揮者が interrupted を返すと orchestra も interrupted を返し、レビューに進まない。"""
+    orch, c, r = _orch(
+        conductor_results=[_tr("", is_error=True, error_kind="interrupted")],
+        reviewer_results=[_tr("- 指摘")],
+    )
+    res = orch.run_turn(prompt="p", session_id="s", resume=False, cwd=tmp_path)
+    assert res.error_kind == "interrupted"
+    assert len(r.calls) == 0  # レビュー奏者は呼ばれない (指揮者中断で即返す)
+
+
+def test_orchestra_interrupt_delegates_to_members(tmp_path: Path) -> None:
+    """orchestra.interrupt() は flag を立て、全メンバの interrupt() を呼ぶ。"""
+
+    @dataclass
+    class IRunner(FakeRunner):
+        interrupts: int = 0
+
+        def interrupt(self) -> None:
+            self.interrupts += 1
+
+    c = IRunner([])
+    r = IRunner([])
+    orch = OrchestraRunner(conductor=c, reviewers=[r], include_diff=False)
+    orch.interrupt()
+    assert orch._interrupted is True
+    assert c.interrupts == 1 and r.interrupts == 1
+
+
 def test_run_turn_unreviewed_runs_only_conductor(tmp_path: Path) -> None:
     """run_turn_unreviewed は指揮者だけを回し、レビュー/集約/sign-off を一切しない。"""
     orch, c, r = _orch(conductor_results=[_tr("記録した", cost=1.0, ctx=42)],
