@@ -668,6 +668,11 @@ class MainWindow(QtWidgets.QMainWindow):
             from llterm.host.loop import DEFAULT_RAD_HINT
 
             loop_kw["rad_hint"] = DEFAULT_RAD_HINT
+        if self.chk_offload.isChecked():
+            # 利用可能な計算オフロード先 (kaggle/gh/oci 等) を検出し、自律利用の指令を注入。
+            from llterm.host.offload_tools import build_offload_hint
+
+            loop_kw["offload_hint"] = build_offload_hint()
         loop_kw["autonomy"] = self.chk_autonomy.isChecked()  # 承認確認不要トグル
         # provider chain は _resolve_providers() が決定済み (Codex 優先/テンプレ別/フォールバック)。
         # 仮想モードや override では fallback_runners は空。
