@@ -144,6 +144,7 @@ class GeminiRunner:
     exe: str = "gemini"
     model: str = ""           # "" = gemini CLI 既定 (現行 gemini-2.5-flash / gemini-3 系)
     yolo: bool = True         # tool 承認を自動化 (自走で確認待ちにしない)
+    skip_trust: bool = True   # trusted-folder ゲートを skip (無いと yolo が降格し承認待ちで止まる)
     output_format: str = "json"
     timeout: float = 7200.0
     extra_args: Sequence[str] = ()
