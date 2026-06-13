@@ -1089,6 +1089,15 @@ class MainWindow(QtWidgets.QMainWindow):
         if kind == "review":
             self._render_review_event(item)
             return
+        if kind == "choice":
+            # AskUserQuestion 由来の選択要求 (bonus 経路)。規約マーカーと同じダイアログへ。
+            from llterm.host.choice import Choice
+
+            self._prompt_choice(Choice(
+                question=str(item.get("question") or ""),
+                options=[str(o) for o in item.get("options") or []],
+                multi=bool(item.get("multi", False))))
+            return
         if kind == "init":
             model = str(item.get("model") or "?")
             sid = str(item.get("session_id", ""))[:8]
