@@ -187,40 +187,9 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "ON: decides and continues autonomously without waiting for human "
               "confirmation (does not stop). OFF (default): safe side",
     },
-    "gui.check.codex": {
-        "ja": "Codex 切替",
-        "en": "Codex fallback",
-    },
-    "gui.tip.codex": {
-        "ja": "ON: Claude がレート制限に達したら Codex に切り替えて作業を継続し、"
-              "Claude のリセット時刻が来たら自動で戻す (ChatGPT Pro サブスク=課金なし)。実 claude のみ有効",
-        "en": "ON: when Claude hits a rate limit, switches to Codex to keep "
-              "working and switches back automatically once Claude's reset time "
-              "arrives (ChatGPT Pro subscription = no extra billing). Real claude only",
-    },
     "gui.check.codex_first": {
         "ja": "Codex 優先",
         "en": "Codex first",
-    },
-    "gui.check.gemini": {
-        "ja": "Gemini 切替",
-        "en": "Gemini fallback",
-    },
-    "gui.tip.gemini": {
-        "ja": "ON: Gemini CLI を agentic フォールバック奏者に追加 (Codex 同様ファイル編集/シェル可)。"
-              "Claude/Codex がレート制限のとき Gemini が作業を継続。Google 個人アカウント無料枠 or "
-              "GEMINI_API_KEY で動く。未インストール (npm i -g @google/gemini-cli) なら自動で外す。"
-              "実 claude のみ有効。",
-        "en": "ON: adds Gemini CLI as an agentic backup player (edits files / runs shell like Codex). "
-              "Continues work when Claude/Codex are rate-limited. Runs on a personal Google free tier "
-              "or GEMINI_API_KEY. Auto-dropped if not installed (npm i -g @google/gemini-cli). "
-              "Real claude only.",
-    },
-    "gui.msg.gemini_not_installed": {
-        "ja": "Gemini fallback は gemini 未インストールのため chain から除外しました "
-              "(npm i -g @google/gemini-cli で導入すると参加します)",
-        "en": "Gemini fallback was excluded because gemini is not installed "
-              "(install with npm i -g @google/gemini-cli to enroll it)",
     },
     "gui.msg.gemini_cli_expiring": {
         "ja": "⚠ Gemini CLI の個人無料枠はあと {days} 日 (2026-06-18) で停止します。"
