@@ -595,6 +595,18 @@ MESSAGES: dict[str, dict[str, str]] = {
         "ja": "  ↳ エラー: {preview}",
         "en": "  ↳ error: {preview}",
     },
+    "gui.stream.review_start": {
+        "ja": "── 📝 レビュー奏者 ({reviewer}) が批評中 ──",
+        "en": "── 📝 reviewer ({reviewer}) is critiquing ──",
+    },
+    "gui.stream.review_end": {
+        "ja": "── 📝 レビュー完了 ({reviewer}) → 指揮者が反映 ──",
+        "en": "── 📝 review done ({reviewer}) → conductor applies ──",
+    },
+    "gui.stream.review_failed": {
+        "ja": "── 📝 レビュー奏者 ({reviewer}) 失敗 — スキップして続行 ──",
+        "en": "── 📝 reviewer ({reviewer}) failed — skipped, continuing ──",
+    },
     "gui.stream.rate_limit": {
         "ja": "⚠ レート制限: {status}{when}",
         "en": "⚠ Rate limit: {status}{when}",
