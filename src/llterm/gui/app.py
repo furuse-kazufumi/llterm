@@ -140,9 +140,18 @@ class MainWindow(QtWidgets.QMainWindow):
         offload_default = bool(saved.get("offload", True))  # 既定 ON = 必要なら自動オフロード
         autonomy_default = bool(saved.get("autonomy", False))
         codex_fallback_default = bool(saved.get("codex_fallback", False))
-        codex_first_default = bool(saved.get("codex_first", False))
+        # codex_first 既定: 保存値があればそれ。無ければ codex が導入済みなら True (可用性ガード:
+        # codex 未導入環境で Codex 主にして空転させない)。ユーザー確定の既定プロファイル
+        # = Codex 実装 + Claude レビュー。
+        if "codex_first" in saved:
+            codex_first_default = bool(saved.get("codex_first"))
+        else:
+            codex_first_default = shutil.which("codex") is not None
         gemini_fallback_default = bool(saved.get("gemini_fallback", False))
-        reviewer_default = str(saved.get("reviewer") or "")
+        # レビュー奏者パネル (multi-select)。旧単一 "reviewer" 文字列があり "reviewers" 無なら
+        # [旧値] (空なら既定 ["claude"]) へ migrate する。既定 = ["claude"] (Codex 実装 + Claude レビュー)。
+        reviewers_default = _coerce_reviewers(saved.get("reviewers"), saved.get("reviewer"))
+        factcheck_default = str(saved.get("factchecker") or "")
         template_default = template_default or str(saved.get("template") or "general")
         # effort 既定: CLI 明示 > 保存値 > "max" (ユーザー方針「とりあえず max」2026-06-12)
         effort_default = self._effort_cli if self._effort_cli is not None else str(
