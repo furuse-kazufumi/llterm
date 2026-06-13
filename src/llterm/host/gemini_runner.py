@@ -46,37 +46,50 @@ _AUTH_SIGNALS: tuple[str, ...] = (
 # gemini 終了コード → エラー種別の補助 (42=入力 / 53=ターン上限 は other 扱い)。
 
 
+# gemini 実 stats (v0.46, 2026-06-13 実機確認):
+# stats.models.<model>.tokens = {input, prompt, candidates, total, cached, thoughts, tool}
+# ★candidates は「候補数」(=1) でトークン数ではない → output は total - input で導く。
+_TOKEN_INPUT_KEYS = ("input", "prompt", "input_tokens", "prompt_tokens", "promptTokenCount")
+_TOKEN_OUTPUT_KEYS = ("output", "output_tokens", "completion_tokens", "candidatesTokenCount")
+_TOKEN_TOTAL_KEYS = ("total", "total_tokens", "totalTokenCount")
+
+
+def _first_int(d: dict, keys: tuple[str, ...]) -> int:
+    for k in keys:
+        if k in d:
+            return _as_int(d.get(k))
+    return 0
+
+
+def _find_token_dict(obj: object) -> dict | None:
+    """input 系 + (total 系 or output 系) を併せ持つ token dict を再帰探索する。"""
+    if not isinstance(obj, dict):
+        return None
+    has_in = any(k in obj for k in _TOKEN_INPUT_KEYS)
+    has_amt = any(k in obj for k in _TOKEN_TOTAL_KEYS) or any(k in obj for k in _TOKEN_OUTPUT_KEYS)
+    if has_in and has_amt:
+        return obj
+    for val in obj.values():
+        found = _find_token_dict(val)
+        if found is not None:
+            return found
+    return None
+
+
 def _extract_tokens(stats: object) -> tuple[int, int]:
     """gemini stats から (input, output) トークンを best-effort で取り出す (不明は 0)。
 
-    stats のキー名はバージョン依存なので、複数の候補を順に探す。取れなくても loop は
-    context_tokens=0 のとき設定窓を使うので安全 (fail-safe)。
+    フラット形 (input_tokens/output_tokens) とネスト形 (models.<m>.tokens) の両対応。
+    total があれば output = total - input で導く (candidates=候補数を誤って使わない)。
+    取れなくても loop は context_tokens=0 のとき設定窓を使うので安全 (fail-safe)。
     """
-    if not isinstance(stats, dict):
+    tok = _find_token_dict(stats)
+    if tok is None:
         return 0, 0
-    # 直下の素直なキー
-    for in_key in ("input_tokens", "prompt_tokens", "promptTokenCount", "prompt"):
-        if in_key in stats:
-            in_tok = _as_int(stats.get(in_key))
-            break
-    else:
-        in_tok = 0
-    for out_key in ("output_tokens", "candidates_tokens", "candidatesTokenCount",
-                    "completion_tokens", "candidates"):
-        if out_key in stats:
-            out_tok = _as_int(stats.get(out_key))
-            break
-    else:
-        out_tok = 0
-    if in_tok or out_tok:
-        return in_tok, out_tok
-    # ネスト形 (例 {"models": {"<model>": {"tokens": {"prompt":.., "candidates":..}}}})
-    for val in stats.values():
-        if isinstance(val, dict):
-            i, o = _extract_tokens(val.get("tokens", val))
-            if i or o:
-                return i, o
-    return 0, 0
+    in_tok = _first_int(tok, _TOKEN_INPUT_KEYS)
+    total = _first_int(tok, _TOKEN_TOTAL_KEYS)
+    out_tok = max(0, total - in_tok) if total else _first_int(tok, _TOKEN_OUTPUT_KEYS)
+    return in_tok, out_tok
 
 
 def parse_gemini_json(stdout: str, *, exit_code: int, stderr: str = "") -> TurnResult:
