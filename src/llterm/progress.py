@@ -15,6 +15,7 @@
 """
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
@@ -26,16 +27,43 @@ _PROGRESS_CANDIDATES: tuple[tuple[str, str], ...] = (
     ("session_summary", "docs/SESSION_SUMMARY.md"),
 )
 
+# 本文に手書きされた「最終更新」行から記録時刻を拾う正規表現。
+# 例: ``> 最終更新: 2026-06-13 15:42 JST`` / ``最終更新：2026-06-13 15:42``。
+# **時刻 (HH:MM) を含むときだけ**採用する。日付のみ (`2026-06-13`) は同日内の前後を
+# 判定できず mtime より粗いため、あえて拾わず mtime フォールバックに委ねる
+# (ユーザー指摘 2026-06-13: 「日付までだと直前のものが判断できない」)。
+_UPDATED_RE = re.compile(
+    r"最終更新[^\n0-9]*?(\d{4})-(\d{1,2})-(\d{1,2})[ T](\d{1,2}):(\d{2})"
+)
+
 
 @dataclass(frozen=True)
 class ProjectProgress:
     """1 プロジェクトの進捗正本のスナップショット。"""
 
-    name: str          # プロジェクト名 (ディレクトリ名)
-    path: Path         # 読んだ正本ファイル
-    text: str          # 進捗全文
-    updated: float     # 正本ファイルの mtime (epoch 秒)
-    source: str        # "next_plan" | "session_summary"
+    name: str               # プロジェクト名 (ディレクトリ名)
+    path: Path              # 読んだ正本ファイル
+    text: str               # 進捗全文
+    updated: float          # 並び順の正 = 本文記録の最終更新時刻 (無ければ mtime)。epoch 秒
+    source: str             # "next_plan" | "session_summary"
+    mtime: float = 0.0      # 正本ファイルの mtime (透明性のため別途保持)。epoch 秒
+    updated_source: str = "mtime"  # updated の出所: "header" (本文に記録) | "mtime" (フォールバック)
+
+
+def parse_updated_at(text: str) -> float | None:
+    """進捗本文の「最終更新: YYYY-MM-DD HH:MM」行を epoch 秒 (ローカル) に解す。
+
+    時刻まで含む記録が見つかればその epoch を、無ければ ``None`` を返す
+    (呼び出し側が mtime にフォールバックする)。壊れた日付も ``None`` (fail-safe)。
+    """
+    m = _UPDATED_RE.search(text or "")
+    if not m:
+        return None
+    try:
+        y, mo, d, hh, mm = (int(g) for g in m.groups())
+        return datetime(y, mo, d, hh, mm).timestamp()
+    except (ValueError, OverflowError, OSError):
+        return None
 
 
 def progress_source(project_dir: Path) -> tuple[Path | None, str]:
