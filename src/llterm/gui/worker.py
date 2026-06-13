@@ -67,9 +67,36 @@ class LoopWorker(QtCore.QThread):
                 except Exception:  # noqa: BLE001
                     pass
 
-    def inject(self, text: str) -> None:
+    def inject(self, text: str, *, emergency: bool = False) -> None:
+        """タスクを注入する。
+
+        通常 (emergency=False): キュー末尾に積み、次のターン境界で消費される。
+        緊急 (emergency=True): キュー**先頭**へ挿入し (最優先)、さらに ``request_interrupt()`` で
+        実行中ターンを即中断する。中断は恒久 cancel ではないので、loop はループを止めず
+        この注入タスクを次ターンで確実に実行する (スキップしない)。
+        """
         with self._inject_lock:
-            self._injected.append(text)
+            if emergency:
+                self._injected.insert(0, text)
+            else:
+                self._injected.append(text)
+        if emergency:
+            self.request_interrupt()
+
+    def request_interrupt(self) -> None:
+        """実行中ターンだけを中断する (恒久 cancel ではない = 次ターンは起動できる)。
+
+        active がどの runner か worker は知らないので全 runner に interrupt を投げる
+        (実行中でない runner への interrupt は proc 無しで no-op)。interrupt 非対応の
+        runner は getattr で素通り (緊急中断できないだけで害はない)。
+        """
+        for r in (self._runner, *self._fallback_runners):
+            fn = getattr(r, "interrupt", None)
+            if callable(fn):
+                try:
+                    fn()
+                except Exception:  # noqa: BLE001
+                    pass
 
     def _next_prompt(self) -> str | None:
         with self._inject_lock:
