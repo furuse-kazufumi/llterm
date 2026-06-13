@@ -82,13 +82,14 @@ def test_summarize_response_event() -> None:
 
 
 def test_build_args_no_prompt_in_argv_uses_stdin() -> None:
-    """プロンプトは argv に載せない (stdin 渡し)。json/yolo フラグが付く。"""
+    """プロンプトは argv に載せない (stdin 渡し)。json/yolo/skip-trust フラグが付く。"""
     args = GeminiRunner(model="gemini-2.5-flash")._build_args()
     assert "--output-format" in args
     assert args[args.index("--output-format") + 1] == "json"
     assert "--yolo" in args
+    assert "--skip-trust" in args  # v0.46 trusted-folder ゲート回避 (無いと承認待ちで止まる)
     assert args[args.index("-m") + 1] == "gemini-2.5-flash"
-    # プロンプト本文や -p は argv に無い
+    # プロンプト本文や -p は argv に無い (stdin + 非TTY で headless 起動する実機検証済)
     assert "-p" not in args
 
 
@@ -100,6 +101,11 @@ def test_build_args_omits_model_when_empty() -> None:
 def test_build_args_yolo_can_be_disabled() -> None:
     args = GeminiRunner(yolo=False)._build_args()
     assert "--yolo" not in args
+
+
+def test_build_args_skip_trust_can_be_disabled() -> None:
+    args = GeminiRunner(skip_trust=False)._build_args()
+    assert "--skip-trust" not in args
 
 
 # ─── GeminiRunner (偽の子プロセスで実走・課金ゼロ) ───────────────
