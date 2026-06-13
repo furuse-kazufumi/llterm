@@ -610,7 +610,8 @@ def test_exe_not_found_anywhere_gives_clear_error(
     res = runner.run_turn(prompt="p", session_id="s", resume=False, cwd=tmp_path)
     assert res.is_error is True
     assert res.raw_exit == 127
-    assert res.error_kind == "other"
+    # 使用不能 = loop が別プロバイダへ即フォールバック (silent circuit_open を防ぐ)
+    assert res.error_kind == "unavailable"
     assert res.text.strip()  # 空でない = 原因が分かる (謎の err=other を解消)
 
 
