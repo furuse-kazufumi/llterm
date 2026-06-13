@@ -357,6 +357,16 @@ def summarize_stream_event(ev: object) -> list[dict]:
                 item = {"kind": "thinking",
                         "preview": _short(str(block.get("thinking") or ""), 80)}
             elif etype == "assistant" and btype == "tool_use":
+                # AskUserQuestion は選択 UI へ橋渡しする (bonus 経路)。出ない環境でも
+                # 規約マーカー (choice.parse_choices_from_text) が主経路なので問題ない。
+                if block.get("name") == "AskUserQuestion" and not subagent:
+                    from llterm.host.choice import choice_from_ask_user_question_event
+                    ch = choice_from_ask_user_question_event(
+                        {"message": {"content": [block]}})
+                    if ch is not None:
+                        items.append({"kind": "choice", "question": ch.question,
+                                      "multi": ch.multi, "options": list(ch.options)})
+                        continue
                 item = {"kind": "tool_use", "name": str(block.get("name") or "?"),
                         "detail": _tool_use_detail(block.get("input"))}
             elif etype == "user" and btype == "tool_result":
