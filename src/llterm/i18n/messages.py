@@ -456,6 +456,24 @@ MESSAGES: dict[str, dict[str, str]] = {
         "ja": "進捗サマリ (SESSION_SUMMARY)",
         "en": "Progress summary (SESSION_SUMMARY)",
     },
+    "gui.tab.live": {
+        "ja": "実行中",
+        "en": "Active",
+    },
+    "gui.tab.common": {
+        "ja": "共通 (全 project)",
+        "en": "Shared (all projects)",
+    },
+    "gui.placeholder.common": {
+        "ja": "集約できる進捗 (各 project の docs/next_plan.md) がまだありません",
+        "en": "No aggregated progress (each project's docs/next_plan.md) yet",
+    },
+    "gui.tip.common": {
+        "ja": "全 project の docs/next_plan.md を集約し、記録された最終更新時刻の新しい順に表示。"
+              "時刻が本文に無い project は mtime で代用し (ファイル時刻) と明示する。",
+        "en": "Aggregates every project's docs/next_plan.md, newest recorded update first. "
+              "Projects without a recorded time fall back to mtime, flagged as (file time).",
+    },
     "gui.check.summary_raw": {
         "ja": "生",
         "en": "Raw",
