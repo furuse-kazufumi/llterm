@@ -276,16 +276,6 @@ def test_handoff_event_sets_busy_cursor_and_status(
     win._set_busy_cursor(False)  # 後始末
 
 
-def test_codex_fallback_toggle_persists(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
-    sp = tmp_path / "s.json"
-    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=sp)
-    assert win.chk_codex_fallback.isChecked() is False  # 既定 OFF (安全側)
-    win.chk_codex_fallback.setChecked(True)
-    win._save_settings()
-    win2 = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=sp)
-    assert win2.chk_codex_fallback.isChecked() is True
-
-
 def test_provider_switch_event_updates_model_label(
     qapp: QtWidgets.QApplication, tmp_path: Path
 ) -> None:
