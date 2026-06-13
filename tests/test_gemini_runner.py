@@ -11,12 +11,47 @@ import sys
 import time
 from pathlib import Path
 
+from datetime import date
+
 from llterm.host.gemini_runner import (
+    GEMINI_CLI_FREE_TIER_END,
     GeminiRunner,
     _extract_tokens,
+    gemini_cli_free_tier_status,
     parse_gemini_json,
     summarize_gemini_event,
 )
+
+
+# ─── Gemini CLI 無料枠 期限通知 ───────────────────────────────────
+
+
+def test_free_tier_end_date() -> None:
+    assert GEMINI_CLI_FREE_TIER_END == date(2026, 6, 18)
+
+
+def test_free_tier_status_ok_when_far() -> None:
+    status, days = gemini_cli_free_tier_status(today=date(2026, 6, 1))
+    assert status == "ok"
+    assert days == 17
+
+
+def test_free_tier_status_soon_within_week() -> None:
+    status, days = gemini_cli_free_tier_status(today=date(2026, 6, 13))
+    assert status == "soon"
+    assert days == 5  # 今日(2026-06-13)時点では「間近」
+
+
+def test_free_tier_status_expired_after() -> None:
+    status, days = gemini_cli_free_tier_status(today=date(2026, 6, 20))
+    assert status == "expired"
+    assert days == -2  # 2 日超過
+
+
+def test_free_tier_status_on_deadline_is_soon() -> None:
+    status, days = gemini_cli_free_tier_status(today=date(2026, 6, 18))
+    assert status == "soon"  # 当日 (days=0) はまだ "soon"
+    assert days == 0
 
 
 # ─── parse_gemini_json (純関数) ──────────────────────────────────
