@@ -487,6 +487,7 @@ class MainWindow(QtWidgets.QMainWindow):
             "workdir": str(wd) if wd else "",
             "real": self.chk_real.isChecked(),
             "rad": self.chk_rad.isChecked(),
+            "offload": self.chk_offload.isChecked(),
             "autonomy": self.chk_autonomy.isChecked(),
             "codex_fallback": self.chk_codex_fallback.isChecked(),
             "codex_first": self.chk_codex_first.isChecked(),
