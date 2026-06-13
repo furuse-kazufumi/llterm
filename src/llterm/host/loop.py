@@ -526,24 +526,30 @@ class ClaudeRunner:
         return ""
 
     @staticmethod
-    def _cli_session_id(session_id: str) -> str:
-        """claude --session-id / --resume は厳格な UUID を要求する。
+    def _cli_session_id(session_id: str, *, resume: bool) -> str:
+        """claude --session-id / --resume が要求する UUID へ正規化する。
 
-        OrchestraRunner が渡す派生 id ('<uuid>-review0' / '-aggregate' / '-signoff' /
-        '-factcheck' 等) は UUID として不正なため、claude が即 exit 1 で拒否し空テキストの
-        ``err=other`` になる (= レビュー奏者 / 責任者 / sign-off が常に失敗する原因)。
-        UUID でない id は決定論的に UUID へ写像して回避する (同じ入力 → 同じ UUID なので
-        新規作成 ``--session-id`` と継続 ``--resume`` が整合する)。
+        claude は (a) 厳格な UUID を要求し、(b) ``--session-id`` で**既存 id の再利用**も
+        ``Session ID ... is already in use`` (exit 1) で拒否する。OrchestraRunner が渡す派生 id
+        ('<uuid>-review0' / '-aggregate' / '-signoff' / '-factcheck' 等) は UUID 不正なうえ、
+        同一 llterm セッション内で毎ターン / exit準備のたびに**同じ派生 id を使い回す**ため、
+        決定論的に写像すると 2 回目以降が衝突して全失敗する (= 同一セッションで 2 回目以降の
+        レビュー奏者 / 責任者 / sign-off が落ちる原因)。レビュー系は resume=False のステートレス
+        一発実行なので、**毎回フレッシュな UUID** を作って衝突を避ける。resume=True の非 UUID は
+        決定論的に写像 (実運用では発生しない安全側)。既に有効 UUID (主ループの sid) はそのまま
+        返す (作成 ``--session-id`` → 継続 ``--resume`` が整合する)。
         """
         try:
             uuid.UUID(str(session_id))
             return str(session_id)
         except (ValueError, TypeError, AttributeError):
-            return str(uuid.uuid5(uuid.NAMESPACE_URL, str(session_id)))
+            if resume:
+                return str(uuid.uuid5(uuid.NAMESPACE_URL, str(session_id)))
+            return str(uuid.uuid4())
 
     def _build_args(self, *, prompt: str, session_id: str, resume: bool) -> list[str]:
         """claude の引数列を組む (テストはここを差し替えて偽の子プロセスを注入する)。"""
-        sid = self._cli_session_id(session_id)
+        sid = self._cli_session_id(session_id, resume=resume)
         session_flag = ["--resume", sid] if resume else ["--session-id", sid]
         args = [self._resolved_exe(), "-p", prompt,
                 "--output-format", "stream-json", "--verbose", *session_flag]
