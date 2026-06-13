@@ -1005,10 +1005,11 @@ def test_build_args_passes_unknown_model_through() -> None:
 
 
 def test_build_args_coerces_non_uuid_session_id() -> None:
-    """claude --session-id は厳格な UUID を要求する。OrchestraRunner の派生 id
-    ('<uuid>-review0' / '-aggregate' / '-signoff') は claude が exit 1 で拒否し
-    空テキストの err=other になっていた (レビュー奏者 / 責任者が常に失敗する原因)。
-    非 UUID の session_id は決定論的に有効 UUID へ写像してから渡す。
+    """claude --session-id は (a) 厳格な UUID を要求し、(b) 既存 id の再利用も
+    'Session ID ... is already in use' で拒否する。OrchestraRunner の派生 id
+    ('<uuid>-review0' 等) は UUID 不正かつ同一セッション内で毎回同じなので、レビュー系
+    (resume=False) は毎回フレッシュな有効 UUID へ写像して衝突を防ぐ。主ループの有効 UUID は
+    そのまま (作成 --session-id → 継続 --resume が整合)。
     """
     import uuid as _uuid
 
@@ -1017,20 +1018,21 @@ def test_build_args_coerces_non_uuid_session_id() -> None:
     runner = ClaudeRunner()
     base = str(_uuid.uuid4())
 
-    # 有効 UUID はそのまま渡す (主ループは uuid4 を渡すので無改変)
+    # 有効 UUID はそのまま渡す (主ループの sid; 作成→継続が整合)
     args = runner._build_args(prompt="p", session_id=base, resume=False)
     assert args[args.index("--session-id") + 1] == base
+    args_r = runner._build_args(prompt="p", session_id=base, resume=True)
+    assert args_r[args_r.index("--resume") + 1] == base
 
-    # 派生 id (非 UUID) は有効 UUID へ写像される
+    # 派生 id (非 UUID, resume=False) は毎回フレッシュな有効 UUID へ写像し、再利用衝突を回避
     derived = f"{base}-review0"
-    args2 = runner._build_args(prompt="p", session_id=derived, resume=False)
-    sid2 = args2[args2.index("--session-id") + 1]
-    assert sid2 != derived
-    _uuid.UUID(sid2)  # 有効 UUID でなければ ValueError で失敗
-
-    # 決定論的: 同じ入力 → 同じ UUID (新規作成 --session-id と継続 --resume が整合する)
-    args3 = runner._build_args(prompt="p", session_id=derived, resume=True)
-    assert args3[args3.index("--resume") + 1] == sid2
+    a1 = runner._build_args(prompt="p", session_id=derived, resume=False)
+    a2 = runner._build_args(prompt="p", session_id=derived, resume=False)
+    sid1 = a1[a1.index("--session-id") + 1]
+    sid2 = a2[a2.index("--session-id") + 1]
+    _uuid.UUID(sid1); _uuid.UUID(sid2)  # いずれも有効 UUID (不正なら ValueError)
+    assert sid1 != derived and sid2 != derived
+    assert sid1 != sid2  # 毎回ユニーク = 同一セッション内の --session-id 再利用衝突を防ぐ
 
 
 def test_default_model_is_opus_4_8() -> None:
