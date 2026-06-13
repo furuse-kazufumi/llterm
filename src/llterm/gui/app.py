@@ -1012,6 +1012,9 @@ class MainWindow(QtWidgets.QMainWindow):
             reply = dialog.reply()
             if reply:
                 self.worker.inject(reply)  # 次ターンの prompt に (auto-continue を上書き)
+                # 確認に回答したら通常ループへ復帰 (autonomy ON)。「回答後すぐループに戻る」。
+                if not self.chk_autonomy.isChecked():
+                    self.chk_autonomy.setChecked(True)
                 self._append(t("gui.msg.choice_replied", reply=reply), PALETTE["inject"], ts=True)
             else:
                 self._append(t("gui.msg.choice_cancelled"), PALETTE["dim"], ts=True)
