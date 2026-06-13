@@ -230,163 +230,48 @@ class MainWindow(QtWidgets.QMainWindow):
         icon = find_app_icon()
         if icon is not None:
             self.setWindowIcon(icon)  # タイトルバー/タスクバーのアイコン
+
+        # 狭幅 (スマホ Remote Desktop) 再構成:
+        #   メイン窓 = 操作バー (Start/Stop + 状態 + ⚙Settings + project + max-sessions) +
+        #              タスク注入欄 (上寄り) + 出力ログ/進捗サマリ の縦 QSplitter。
+        #   Settings ダイアログ = 滅多に変えない設定一式 (実行モード/閾値/モデル/テンプレ/
+        #              レビュー奏者 等) を別画面 (QScrollArea + 縦積み) へ分離。
+        # ★ ウィジェットは全て self.X のまま唯一の状態源。配置だけ Settings ダイアログへ移す
+        #   (Apply/reject の概念は導入しない。Start は常に self.X.* を live に読む)。
+        # ★ 復元値を流す setValue/setChecked/setCurrentIndex は QSignalBlocker で囲み、
+        #   構築中の signal 副作用 (provider 解決 / 再保存) を防ぐ。
+        mono = QtGui.QFont("Consolas")
+        mono.setStyleHint(QtGui.QFont.StyleHint.Monospace)
+
+        # まず全ウィジェットを生成し、復元値は signal を遮断して流し込む。
+        self._create_widgets(initial_workdir=initial_workdir, real_default=real_default,
+                             rad_default=rad_default, offload_default=offload_default,
+                             autonomy_default=autonomy_default, codex_first_default=codex_first_default,
+                             reviewers_default=reviewers_default or ["claude"],
+                             factcheck_default=factcheck_default, effort_default=effort_default,
+                             model_default=model_default, summary_raw_default=summary_raw_default,
+                             mono=mono)
+
+        # ── メイン窓 (狭幅 first・最小) ─────────────────────────────
         central = QtWidgets.QWidget()
         self.setCentralWidget(central)
         vbox = QtWidgets.QVBoxLayout(central)
 
-        # プロジェクト選択行
-        proj_row = QtWidgets.QHBoxLayout()
-        proj_row.addWidget(QtWidgets.QLabel(t("gui.label.project")))
-        self.cmb_project = QtWidgets.QComboBox()
-        self.cmb_project.setMinimumWidth(360)
-        self._populate_projects(initial_workdir)
-        proj_row.addWidget(self.cmb_project, 1)
-        self.chk_real = QtWidgets.QCheckBox(t("gui.check.real"))
-        self.chk_real.setChecked(real_default)
-        self.chk_real.setToolTip(t("gui.tip.real"))
-        proj_row.addWidget(self.chk_real)
-        self.chk_rad = QtWidgets.QCheckBox(t("gui.check.rad"))
-        self.chk_rad.setChecked(rad_default)
-        self.chk_rad.setToolTip(t("gui.tip.rad"))
-        proj_row.addWidget(self.chk_rad)
-        self.chk_offload = QtWidgets.QCheckBox(t("gui.check.offload"))
-        self.chk_offload.setChecked(offload_default)
-        self.chk_offload.setToolTip(t("gui.tip.offload"))
-        proj_row.addWidget(self.chk_offload)
-        self.chk_autonomy = QtWidgets.QCheckBox(t("gui.check.autonomy"))
-        self.chk_autonomy.setToolTip(t("gui.tip.autonomy"))
-        self.chk_autonomy.setChecked(autonomy_default)
-        proj_row.addWidget(self.chk_autonomy)
-        self.chk_codex_first = QtWidgets.QCheckBox(t("gui.check.codex_first"))
-        self.chk_codex_first.setToolTip(t("gui.tip.codex_first"))
-        self.chk_codex_first.setChecked(codex_first_default)
-        proj_row.addWidget(self.chk_codex_first)
-        proj_row.addWidget(QtWidgets.QLabel(t("gui.label.max_sessions")))
-        self.spin_sessions = QtWidgets.QSpinBox()
-        self.spin_sessions.setRange(1, 100000)
-        default_sessions = self.loop_kw.get("max_sessions")
-        self.spin_sessions.setValue(int(default_sessions) if default_sessions else 8)
-        proj_row.addWidget(self.spin_sessions)
-        vbox.addLayout(proj_row)
-
-        # 設定行 (CLI 引数と同等のものを GUI からも設定可能に)
-        set_row = QtWidgets.QHBoxLayout()
-        set_row.addWidget(QtWidgets.QLabel(t("gui.label.threshold")))
-        self.spin_threshold = QtWidgets.QDoubleSpinBox()
-        self.spin_threshold.setRange(0.10, 0.95)
-        self.spin_threshold.setSingleStep(0.05)
-        self.spin_threshold.setDecimals(2)
-        self.spin_threshold.setValue(float(self.loop_kw.get("threshold") or 0.70))
-        self.spin_threshold.setToolTip(t("gui.tip.threshold"))
-        set_row.addWidget(self.spin_threshold)
-        set_row.addWidget(QtWidgets.QLabel(t("gui.label.window_tokens")))
-        self.spin_window = QtWidgets.QSpinBox()
-        self.spin_window.setRange(10_000, 2_000_000)
-        self.spin_window.setSingleStep(10_000)
-        self.spin_window.setGroupSeparatorShown(True)
-        self.spin_window.setValue(int(self.loop_kw.get("window_tokens") or 200_000))
-        self.spin_window.setToolTip(t("gui.tip.window_tokens"))
-        set_row.addWidget(self.spin_window)
-        set_row.addWidget(QtWidgets.QLabel(t("gui.label.max_cost")))
-        self.spin_maxcost = QtWidgets.QDoubleSpinBox()
-        self.spin_maxcost.setRange(0.0, 100000.0)
-        self.spin_maxcost.setDecimals(2)
-        self.spin_maxcost.setSingleStep(1.0)
-        _mc = self.loop_kw.get("max_total_cost_usd")
-        self.spin_maxcost.setValue(float(_mc) if _mc else 0.0)
-        self.spin_maxcost.setToolTip(t("gui.tip.max_cost"))
-        set_row.addWidget(self.spin_maxcost)
-        set_row.addWidget(QtWidgets.QLabel(t("gui.label.effort")))
-        self.cmb_effort = QtWidgets.QComboBox()
-        for level in loop_mod.EFFORT_LEVELS:
-            self.cmb_effort.addItem(level or t("gui.effort.default_item"), level)
-        _eidx = self.cmb_effort.findData(effort_default if effort_default in loop_mod.EFFORT_LEVELS
-                                         else "max")
-        self.cmb_effort.setCurrentIndex(_eidx if _eidx >= 0 else 0)
-        self.cmb_effort.setToolTip(t("gui.tip.effort"))
-        set_row.addWidget(self.cmb_effort)
-        set_row.addWidget(QtWidgets.QLabel(t("gui.label.model")))
-        self.cmb_model = QtWidgets.QComboBox()
-        for m in loop_mod.MODEL_CHOICES:
-            self.cmb_model.addItem(m or t("gui.model.default_item"), m)
-        # 保存値が候補外 (手編集の独自モデル等) なら DEFAULT_MODEL の位置へ落とす (fail-safe)
-        _midx = self.cmb_model.findData(model_default if model_default in loop_mod.MODEL_CHOICES
-                                        else loop_mod.DEFAULT_MODEL)
-        self.cmb_model.setCurrentIndex(_midx if _midx >= 0 else 0)
-        self.cmb_model.setToolTip(t("gui.tip.model_select"))
-        set_row.addWidget(self.cmb_model)
-        set_row.addStretch(1)
-        vbox.addLayout(set_row)
-
-        # オーケストラ役割行 (ユーザー確定の 4 役): レビュー奏者パネル (複数) + 真偽確認奏者 +
-        # 責任者 (固定 Claude)。指揮者は主奏者 (上の Codex 優先/モデル選択) が務める。
-        orch_row = QtWidgets.QHBoxLayout()
-        panel_label = QtWidgets.QLabel(t("gui.label.review_panel"))
-        panel_label.setToolTip(t("gui.tip.review_panel"))
-        orch_row.addWidget(panel_label)
-        reviewers_default = reviewers_default or ["claude"]
-        self.chk_reviewers: dict[str, QtWidgets.QCheckBox] = {}
-        for _key, _label in REVIEWER_CHOICES:
-            cb = QtWidgets.QCheckBox(_label)
-            cb.setChecked(_key in reviewers_default)
-            cb.setToolTip(t("gui.tip.review_panel"))
-            self.chk_reviewers[_key] = cb
-            orch_row.addWidget(cb)
-        # 調査・真偽確認奏者 (任意・単一)。Perplexity ほか web 系。既定 = なし。
-        fc_label = QtWidgets.QLabel(t("gui.label.factcheck"))
-        fc_label.setToolTip(t("gui.tip.factcheck"))
-        orch_row.addWidget(fc_label)
-        self.cmb_factcheck = QtWidgets.QComboBox()
-        self.cmb_factcheck.addItem(t("gui.factcheck.none"), "")
-        for _key, _label in (("perplexity", "Perplexity"),):
-            self.cmb_factcheck.addItem(_label, _key)
-        _fcidx = self.cmb_factcheck.findData(factcheck_default)
-        self.cmb_factcheck.setCurrentIndex(_fcidx if _fcidx >= 0 else 0)
-        self.cmb_factcheck.setToolTip(t("gui.tip.factcheck"))
-        orch_row.addWidget(self.cmb_factcheck)
-        # 責任者/総合判断 (固定 Claude)。レビュー取りまとめ → 総合判断 → 最終 sign-off。
-        lead_label = QtWidgets.QLabel(f"{t('gui.label.lead')} {t('gui.lead.value')}")
-        lead_label.setToolTip(t("gui.tip.lead"))
-        orch_row.addWidget(lead_label)
-        orch_row.addStretch(1)
-        vbox.addLayout(orch_row)
-
-        # テンプレ行 (機能ごとの自走テンプレ + RAD 公開ゲート)
-        tmpl_row = QtWidgets.QHBoxLayout()
-        tmpl_row.addWidget(QtWidgets.QLabel(t("gui.label.template")))
-        self.cmb_template = QtWidgets.QComboBox()
-        for i, tmpl in enumerate(templates.TEMPLATES):
-            self.cmb_template.addItem(tmpl.label, tmpl.key)
-            self.cmb_template.setItemData(i, tmpl.description, QtCore.Qt.ItemDataRole.ToolTipRole)
-        tmpl_row.addWidget(self.cmb_template)
-        self.edit_param = QtWidgets.QLineEdit()
-        self.edit_param.setPlaceholderText(t("gui.placeholder.param"))
-        tmpl_row.addWidget(self.edit_param, 1)
-        self.btn_publish = QtWidgets.QPushButton(t("gui.btn.publish"))
-        self.btn_publish.setToolTip(t("gui.tip.publish"))
-        self.btn_publish.clicked.connect(self._promote_clicked)
-        tmpl_row.addWidget(self.btn_publish)
-        vbox.addLayout(tmpl_row)
-        self.cmb_template.currentIndexChanged.connect(self._on_template_changed)
-        _idx = self.cmb_template.findData(template_default)
-        self.cmb_template.setCurrentIndex(_idx if _idx >= 0 else 0)
-        self._on_template_changed()  # 初期 tooltip / param 有効化
-        if param_default:
-            self.edit_param.setText(param_default)  # 前回のテンプレ引数を復元
+        # 操作バー: Start / Stop / Send + ⚙Settings + project + max-sessions。
+        # (project と max-sessions は頻繁に使うのでメイン窓に残す = ユーザー指定)。
+        op_row = QtWidgets.QHBoxLayout()
+        op_row.addWidget(self.btn_start)
+        op_row.addWidget(self.btn_stop)
+        op_row.addWidget(self.btn_send)
+        op_row.addWidget(self.btn_settings)
+        op_row.addWidget(QtWidgets.QLabel(t("gui.label.project")))
+        op_row.addWidget(self.cmb_project, 1)
+        op_row.addWidget(QtWidgets.QLabel(t("gui.label.max_sessions")))
+        op_row.addWidget(self.spin_sessions)
+        vbox.addLayout(op_row)
 
         # ステータス行 — 常時見える状態 (状態 / model / session 進捗 / context 使用率 / cost)
         status_row = QtWidgets.QHBoxLayout()
-        self.lbl_state = QtWidgets.QLabel(t("gui.state.idle"))
-        self.lbl_state.setToolTip(t("gui.tip.state"))
-        self.lbl_model = QtWidgets.QLabel("model: -")
-        self.lbl_model.setToolTip(t("gui.tip.model"))
-        self.lbl_session = QtWidgets.QLabel("session -/-  turn -")
-        self.lbl_session.setToolTip(t("gui.tip.session"))
-        self.ctx_bar = QtWidgets.QProgressBar()
-        self.ctx_bar.setRange(0, 100)
-        self.ctx_bar.setFormat(f"ctx %p%  (rotate {int(round(float(self.loop_kw.get('threshold') or 0.70) * 100))}%)")
-        self.ctx_bar.setToolTip(t("gui.tip.ctx"))
-        self.lbl_cost = QtWidgets.QLabel("cost: $0.0000")
         status_row.addWidget(self.lbl_state)
         status_row.addWidget(self.lbl_model)
         status_row.addWidget(self.lbl_session)
@@ -394,63 +279,21 @@ class MainWindow(QtWidgets.QMainWindow):
         status_row.addWidget(self.lbl_cost)
         vbox.addLayout(status_row)
 
-        self.output = QtWidgets.QPlainTextEdit()
-        self.output.setReadOnly(True)
-        self.output.setMaximumBlockCount(5000)  # リングバッファ (上限は表示行数でなく append エントリ数)
-        self.output.setStyleSheet(_OUTPUT_STYLE)  # ダーク背景 + セマンティックカラー (PALETTE)
-        mono = QtGui.QFont("Consolas")
-        mono.setStyleHint(QtGui.QFont.StyleHint.Monospace)
-        self.output.setFont(mono)
-
-        # 進捗サマリ パネル (右側・全文スクロール可・選択コピー可)。claude が書く
-        # docs/SESSION_SUMMARY.md の全文を表示する。ここから単語を選んでタスク注入に流用できる。
-        # スプリッタでドラッグ収納できるので普段は邪魔にならない。
-        summary_panel = QtWidgets.QWidget()
-        sp_box = QtWidgets.QVBoxLayout(summary_panel)
-        sp_box.setContentsMargins(0, 0, 0, 0)
-        sp_head = QtWidgets.QHBoxLayout()
-        sp_head.addWidget(QtWidgets.QLabel(t("gui.summary.title")))
-        sp_head.addStretch(1)
-        # 既定 = 構造化ダイジェスト (現在地/直近の成果/次の一手)。OFF で生 SESSION_SUMMARY 全文。
-        self.chk_summary_raw = QtWidgets.QCheckBox(t("gui.check.summary_raw"))
-        self.chk_summary_raw.setToolTip(t("gui.tip.summary_raw"))
-        self.chk_summary_raw.setChecked(summary_raw_default)
-        self.chk_summary_raw.toggled.connect(self._refresh_summary)
-        sp_head.addWidget(self.chk_summary_raw)
-        self.btn_refresh_summary = QtWidgets.QPushButton(t("gui.btn.refresh"))
-        self.btn_refresh_summary.setToolTip(t("gui.tip.refresh"))
-        self.btn_refresh_summary.clicked.connect(self._refresh_summary)
-        sp_head.addWidget(self.btn_refresh_summary)
-        sp_box.addLayout(sp_head)
-        self.summary_view = QtWidgets.QPlainTextEdit()
-        self.summary_view.setReadOnly(True)  # 読取専用でも選択 + Ctrl+C は可 (単語をタスク注入へ)
-        self.summary_view.setPlaceholderText(t("gui.placeholder.summary"))
-        self.summary_view.setFont(mono)
-        sp_box.addWidget(self.summary_view, 1)
-
-        self.split_main = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
-        self.split_main.addWidget(self.output)
-        self.split_main.addWidget(summary_panel)
-        self.split_main.setStretchFactor(0, 3)  # ログを広めに
-        self.split_main.setStretchFactor(1, 2)
-        self.split_main.setSizes([620, 380])
-        vbox.addWidget(self.split_main, 1)
-
-        self.input = QtWidgets.QPlainTextEdit()
-        self.input.setPlaceholderText(t("gui.placeholder.input"))
-        self.input.setMaximumHeight(90)
+        # タスク注入欄 — 操作バー直下 (上寄り)。狭幅 + 仮想キーボードで画面下が隠れても
+        # 注入欄が見えるように最下部固定をやめる。フォーカス時に見える化する。
         vbox.addWidget(self.input)
 
-        btn_row = QtWidgets.QHBoxLayout()
-        self.btn_start = QtWidgets.QPushButton(t("gui.btn.start"))
-        self.btn_stop = QtWidgets.QPushButton(t("gui.btn.stop"))
-        self.btn_stop.setEnabled(False)
-        self.btn_send = QtWidgets.QPushButton(t("gui.btn.send"))
-        btn_row.addWidget(self.btn_start)
-        btn_row.addWidget(self.btn_stop)
-        btn_row.addStretch(1)
-        btn_row.addWidget(self.btn_send)
-        vbox.addLayout(btn_row)
+        # 出力ログ (主) と 進捗サマリ (下部) を縦 QSplitter で積む (狭幅では横並びを避ける)。
+        self.split_main = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
+        self.split_main.addWidget(self.output)
+        self.split_main.addWidget(self._summary_panel)
+        self.split_main.setChildrenCollapsible(False)  # どちらの pane も潰さない
+        self.output.setMinimumHeight(120)
+        self._summary_panel.setMinimumHeight(80)
+        self.split_main.setStretchFactor(0, 3)  # ログを広めに
+        self.split_main.setStretchFactor(1, 2)
+        self.split_main.setSizes([380, 200])
+        vbox.addWidget(self.split_main, 1)
 
         # 進捗バー (画面下部・邪魔にならない定位置)。完全自律時に「今どこまで進んだか」を
         # 直近応答の 1 行要約で常時表示する。ホバーで全文 (応答 / handoff サマリ)。
@@ -458,16 +301,36 @@ class MainWindow(QtWidgets.QMainWindow):
         self.lbl_progress.setToolTip(t("gui.tip.progress"))
         self.statusBar().addWidget(self.lbl_progress, 1)
 
-        self.resize(940, 640)
+        # ── Settings ダイアログ (別画面・非モーダル・強参照で保持) ─────
+        self._build_settings_dialog()
+
+        self.resize(560, 720)  # 狭幅 first (縦長): スマホ Remote Desktop を想定
+        self.setMinimumWidth(320)
+
+        # 結線 (ウィジェットは生成済み)。
         self.btn_start.clicked.connect(self.start_loop)
         self.btn_stop.clicked.connect(self.stop_loop)
         self.btn_send.clicked.connect(self.send_input)
+        self.btn_settings.clicked.connect(self._open_settings)
+        self.btn_publish.clicked.connect(self._promote_clicked)
+        self.chk_summary_raw.toggled.connect(self._refresh_summary)
+        self.btn_refresh_summary.clicked.connect(self._refresh_summary)
+        self.cmb_template.currentIndexChanged.connect(self._on_template_changed)
         # Enter=改行のまま / 送信は Ctrl+Enter (R12: 誤送信の構造的防止)
         QtGui.QShortcut(QtGui.QKeySequence("Ctrl+Return"), self.input, self.send_input)
         QtGui.QShortcut(QtGui.QKeySequence("Ctrl+Enter"), self.input, self.send_input)
         # プロジェクトを選び直したら、その既存 SESSION_SUMMARY をプレビュー (idle 時)
         self.cmb_project.currentIndexChanged.connect(self._refresh_summary)
+
+        # 注入欄フォーカス時に見える化 (狭幅 + 仮想キーボードで隠れる対策)。
+        self.input.installEventFilter(self)
+
+        self._on_template_changed()  # 初期 tooltip / param 有効化
+        if param_default:
+            with QtCore.QSignalBlocker(self.edit_param):
+                self.edit_param.setText(param_default)  # 前回のテンプレ引数を復元
         self._refresh_summary()  # 初期表示 (選択プロジェクトの既存サマリ)
+
         # 走行中に無効化する設定系ウィジェット (途中変更で worker と不整合にしない)
         self._run_widgets: list[QtWidgets.QWidget] = [
             self.cmb_project, self.chk_real, self.chk_rad, self.chk_offload, self.spin_sessions,
@@ -476,6 +339,246 @@ class MainWindow(QtWidgets.QMainWindow):
             self.cmb_effort, self.cmb_model, self.chk_codex_first, self.cmb_factcheck,
             *self.chk_reviewers.values(),
         ]
+
+    def _create_widgets(self, *, initial_workdir: Path | None, real_default: bool,
+                        rad_default: bool, offload_default: bool, autonomy_default: bool,
+                        codex_first_default: bool, reviewers_default: list[str],
+                        factcheck_default: str, effort_default: str, model_default: str,
+                        summary_raw_default: bool, mono: QtGui.QFont) -> None:
+        """全ウィジェットを生成し復元値を流す。配置 (メイン窓 / Settings) は呼び出し側が行う。
+
+        ★ 復元値の流し込み (setValue/setChecked/setCurrentIndex/setText) は QSignalBlocker で
+        囲み、構築中に provider 解決や再保存が走る副作用を防ぐ (Codex レビュー指摘)。
+        """
+        # 操作系 (メイン窓に残る): project / max-sessions / Start・Stop・Send・Settings。
+        self.cmb_project = QtWidgets.QComboBox()
+        self.cmb_project.setMinimumWidth(220)
+        with QtCore.QSignalBlocker(self.cmb_project):
+            self._populate_projects(initial_workdir)
+        self.spin_sessions = QtWidgets.QSpinBox()
+        self.spin_sessions.setRange(1, 100000)
+        default_sessions = self.loop_kw.get("max_sessions")
+        with QtCore.QSignalBlocker(self.spin_sessions):
+            self.spin_sessions.setValue(int(default_sessions) if default_sessions else 8)
+        self.btn_start = QtWidgets.QPushButton(t("gui.btn.start"))
+        self.btn_stop = QtWidgets.QPushButton(t("gui.btn.stop"))
+        self.btn_stop.setEnabled(False)
+        self.btn_send = QtWidgets.QPushButton(t("gui.btn.send"))
+        self.btn_settings = QtWidgets.QPushButton(t("gui.btn.settings"))
+        self.btn_settings.setToolTip(t("gui.tip.settings"))
+
+        # 設定系 (Settings ダイアログへ移す): 実行モード/閾値/モデル/effort/オフロード/自律。
+        self.chk_real = QtWidgets.QCheckBox(t("gui.check.real"))
+        self.chk_real.setToolTip(t("gui.tip.real"))
+        self.chk_rad = QtWidgets.QCheckBox(t("gui.check.rad"))
+        self.chk_rad.setToolTip(t("gui.tip.rad"))
+        self.chk_offload = QtWidgets.QCheckBox(t("gui.check.offload"))
+        self.chk_offload.setToolTip(t("gui.tip.offload"))
+        self.chk_autonomy = QtWidgets.QCheckBox(t("gui.check.autonomy"))
+        self.chk_autonomy.setToolTip(t("gui.tip.autonomy"))
+        self.chk_codex_first = QtWidgets.QCheckBox(t("gui.check.codex_first"))
+        self.chk_codex_first.setToolTip(t("gui.tip.codex_first"))
+        for cb, val in ((self.chk_real, real_default), (self.chk_rad, rad_default),
+                        (self.chk_offload, offload_default), (self.chk_autonomy, autonomy_default),
+                        (self.chk_codex_first, codex_first_default)):
+            with QtCore.QSignalBlocker(cb):
+                cb.setChecked(val)
+
+        self.spin_threshold = QtWidgets.QDoubleSpinBox()
+        self.spin_threshold.setRange(0.10, 0.95)
+        self.spin_threshold.setSingleStep(0.05)
+        self.spin_threshold.setDecimals(2)
+        self.spin_threshold.setToolTip(t("gui.tip.threshold"))
+        with QtCore.QSignalBlocker(self.spin_threshold):
+            self.spin_threshold.setValue(float(self.loop_kw.get("threshold") or 0.70))
+        self.spin_window = QtWidgets.QSpinBox()
+        self.spin_window.setRange(10_000, 2_000_000)
+        self.spin_window.setSingleStep(10_000)
+        self.spin_window.setGroupSeparatorShown(True)
+        self.spin_window.setToolTip(t("gui.tip.window_tokens"))
+        with QtCore.QSignalBlocker(self.spin_window):
+            self.spin_window.setValue(int(self.loop_kw.get("window_tokens") or 200_000))
+        self.spin_maxcost = QtWidgets.QDoubleSpinBox()
+        self.spin_maxcost.setRange(0.0, 100000.0)
+        self.spin_maxcost.setDecimals(2)
+        self.spin_maxcost.setSingleStep(1.0)
+        self.spin_maxcost.setToolTip(t("gui.tip.max_cost"))
+        _mc = self.loop_kw.get("max_total_cost_usd")
+        with QtCore.QSignalBlocker(self.spin_maxcost):
+            self.spin_maxcost.setValue(float(_mc) if _mc else 0.0)
+
+        self.cmb_effort = QtWidgets.QComboBox()
+        for level in loop_mod.EFFORT_LEVELS:
+            self.cmb_effort.addItem(level or t("gui.effort.default_item"), level)
+        self.cmb_effort.setToolTip(t("gui.tip.effort"))
+        _eidx = self.cmb_effort.findData(effort_default if effort_default in loop_mod.EFFORT_LEVELS
+                                         else "max")
+        with QtCore.QSignalBlocker(self.cmb_effort):
+            self.cmb_effort.setCurrentIndex(_eidx if _eidx >= 0 else 0)
+        self.cmb_model = QtWidgets.QComboBox()
+        for m in loop_mod.MODEL_CHOICES:
+            self.cmb_model.addItem(m or t("gui.model.default_item"), m)
+        # 保存値が候補外 (手編集の独自モデル等) なら DEFAULT_MODEL の位置へ落とす (fail-safe)
+        _midx = self.cmb_model.findData(model_default if model_default in loop_mod.MODEL_CHOICES
+                                        else loop_mod.DEFAULT_MODEL)
+        self.cmb_model.setToolTip(t("gui.tip.model_select"))
+        with QtCore.QSignalBlocker(self.cmb_model):
+            self.cmb_model.setCurrentIndex(_midx if _midx >= 0 else 0)
+
+        # レビュー奏者パネル (複数) + 真偽確認奏者 (任意・単一)。
+        self.chk_reviewers: dict[str, QtWidgets.QCheckBox] = {}
+        for _key, _label in REVIEWER_CHOICES:
+            cb = QtWidgets.QCheckBox(_label)
+            cb.setToolTip(t("gui.tip.review_panel"))
+            with QtCore.QSignalBlocker(cb):
+                cb.setChecked(_key in reviewers_default)
+            self.chk_reviewers[_key] = cb
+        self.cmb_factcheck = QtWidgets.QComboBox()
+        self.cmb_factcheck.addItem(t("gui.factcheck.none"), "")
+        for _key, _label in (("perplexity", "Perplexity"),):
+            self.cmb_factcheck.addItem(_label, _key)
+        self.cmb_factcheck.setToolTip(t("gui.tip.factcheck"))
+        _fcidx = self.cmb_factcheck.findData(factcheck_default)
+        with QtCore.QSignalBlocker(self.cmb_factcheck):
+            self.cmb_factcheck.setCurrentIndex(_fcidx if _fcidx >= 0 else 0)
+
+        # テンプレ + RAD 公開ゲート。
+        self.cmb_template = QtWidgets.QComboBox()
+        for i, tmpl in enumerate(templates.TEMPLATES):
+            self.cmb_template.addItem(tmpl.label, tmpl.key)
+            self.cmb_template.setItemData(i, tmpl.description, QtCore.Qt.ItemDataRole.ToolTipRole)
+        self.edit_param = QtWidgets.QLineEdit()
+        self.edit_param.setPlaceholderText(t("gui.placeholder.param"))
+        self.btn_publish = QtWidgets.QPushButton(t("gui.btn.publish"))
+        self.btn_publish.setToolTip(t("gui.tip.publish"))
+
+        # ステータス系ラベル (メイン窓・常時表示)。
+        self.lbl_state = QtWidgets.QLabel(t("gui.state.idle"))
+        self.lbl_state.setToolTip(t("gui.tip.state"))
+        self.lbl_model = QtWidgets.QLabel("model: -")
+        self.lbl_model.setToolTip(t("gui.tip.model"))
+        self.lbl_session = QtWidgets.QLabel("session -/-  turn -")
+        self.lbl_session.setToolTip(t("gui.tip.session"))
+        self.ctx_bar = QtWidgets.QProgressBar()
+        self.ctx_bar.setRange(0, 100)
+        self.ctx_bar.setFormat(
+            f"ctx %p%  (rotate {int(round(float(self.loop_kw.get('threshold') or 0.70) * 100))}%)")
+        self.ctx_bar.setToolTip(t("gui.tip.ctx"))
+        self.lbl_cost = QtWidgets.QLabel("cost: $0.0000")
+
+        # 出力ログ (主・メイン窓)。
+        self.output = QtWidgets.QPlainTextEdit()
+        self.output.setReadOnly(True)
+        self.output.setMaximumBlockCount(5000)  # リングバッファ (上限は表示行数でなく append エントリ数)
+        self.output.setStyleSheet(_OUTPUT_STYLE)  # ダーク背景 + セマンティックカラー (PALETTE)
+        self.output.setFont(mono)
+
+        # タスク注入欄 (メイン窓・上寄り)。
+        self.input = QtWidgets.QPlainTextEdit()
+        self.input.setPlaceholderText(t("gui.placeholder.input"))
+        self.input.setMaximumHeight(90)
+
+        # 進捗サマリ パネル (下部・全文スクロール可・選択コピー可)。claude が書く
+        # docs/SESSION_SUMMARY.md の全文を表示する。ここから単語を選んでタスク注入に流用できる。
+        self._summary_panel = QtWidgets.QWidget()
+        sp_box = QtWidgets.QVBoxLayout(self._summary_panel)
+        sp_box.setContentsMargins(0, 0, 0, 0)
+        sp_head = QtWidgets.QHBoxLayout()
+        sp_head.addWidget(QtWidgets.QLabel(t("gui.summary.title")))
+        sp_head.addStretch(1)
+        # 既定 = 構造化ダイジェスト (現在地/直近の成果/次の一手)。OFF で生 SESSION_SUMMARY 全文。
+        self.chk_summary_raw = QtWidgets.QCheckBox(t("gui.check.summary_raw"))
+        self.chk_summary_raw.setToolTip(t("gui.tip.summary_raw"))
+        with QtCore.QSignalBlocker(self.chk_summary_raw):
+            self.chk_summary_raw.setChecked(summary_raw_default)
+        sp_head.addWidget(self.chk_summary_raw)
+        self.btn_refresh_summary = QtWidgets.QPushButton(t("gui.btn.refresh"))
+        self.btn_refresh_summary.setToolTip(t("gui.tip.refresh"))
+        sp_head.addWidget(self.btn_refresh_summary)
+        sp_box.addLayout(sp_head)
+        self.summary_view = QtWidgets.QPlainTextEdit()
+        self.summary_view.setReadOnly(True)  # 読取専用でも選択 + Ctrl+C は可 (単語をタスク注入へ)
+        self.summary_view.setPlaceholderText(t("gui.placeholder.summary"))
+        self.summary_view.setFont(mono)
+        sp_box.addWidget(self.summary_view, 1)
+
+    def _build_settings_dialog(self) -> None:
+        """設定系ウィジェットを別画面 (非モーダル QDialog + QScrollArea) に配置する。
+
+        ★ ダイアログは ``self.settings_dialog`` に強参照で保持し、WA_DeleteOnClose は付けない
+        (閉じても破棄せず再利用 → 設定ウィジェットがダングリングしない: Codex レビュー指摘)。
+        ★ 中身は 1 個の container を QScrollArea (setWidgetResizable=True) に載せ、各設定は
+        1 列縦積み (QFormLayout、narrow-first = 横一列の再発を避ける)。
+        ★ Apply/reject の概念は導入しない (ウィジェットが唯一の状態源・Start が live に読む)。
+        ★ ダイアログ Close では保存しない (closeEvent との二重保存を避ける)。
+        """
+        self.settings_dialog = QtWidgets.QDialog(self)
+        self.settings_dialog.setWindowTitle(t("gui.dialog.settings.title"))
+        self.settings_dialog.setModal(False)  # 非モーダル: ループ操作 (Start/Stop/Send) を妨げない
+        dlg_box = QtWidgets.QVBoxLayout(self.settings_dialog)
+
+        scroll = QtWidgets.QScrollArea()
+        scroll.setWidgetResizable(True)  # container を横幅に追従させる (narrow-first)
+        container = QtWidgets.QWidget()
+        form = QtWidgets.QFormLayout(container)
+        form.setRowWrapPolicy(QtWidgets.QFormLayout.RowWrapPolicy.WrapAllRows)  # 狭幅: ラベルを上に
+
+        # 実行モード / フラグ (1 列縦積み)。
+        form.addRow(self.chk_real)
+        form.addRow(self.chk_rad)
+        form.addRow(self.chk_offload)
+        form.addRow(self.chk_autonomy)
+        form.addRow(self.chk_codex_first)
+        # 数値設定。
+        form.addRow(t("gui.label.threshold"), self.spin_threshold)
+        form.addRow(t("gui.label.window_tokens"), self.spin_window)
+        form.addRow(t("gui.label.max_cost"), self.spin_maxcost)
+        # モデル / effort。
+        form.addRow(t("gui.label.effort"), self.cmb_effort)
+        form.addRow(t("gui.label.model"), self.cmb_model)
+        # レビュー奏者パネル (複数 checkbox を縦に束ねる)。
+        panel = QtWidgets.QWidget()
+        panel_box = QtWidgets.QVBoxLayout(panel)
+        panel_box.setContentsMargins(0, 0, 0, 0)
+        for _key, _ in REVIEWER_CHOICES:
+            panel_box.addWidget(self.chk_reviewers[_key])
+        form.addRow(t("gui.label.review_panel"), panel)
+        # 真偽確認奏者 + 責任者 (固定 Claude の明示ラベル)。
+        form.addRow(t("gui.label.factcheck"), self.cmb_factcheck)
+        lead_label = QtWidgets.QLabel(t("gui.lead.value"))
+        lead_label.setToolTip(t("gui.tip.lead"))
+        form.addRow(t("gui.label.lead"), lead_label)
+        # テンプレ + 引数 + 公開ボタン。
+        form.addRow(t("gui.label.template"), self.cmb_template)
+        form.addRow(t("gui.placeholder.param"), self.edit_param)
+        form.addRow(self.btn_publish)
+
+        scroll.setWidget(container)
+        dlg_box.addWidget(scroll, 1)
+        btn_close = QtWidgets.QPushButton(t("gui.dialog.settings.close"))
+        btn_close.clicked.connect(self.settings_dialog.hide)  # 純粋に閉じるだけ (保存しない)
+        dlg_box.addWidget(btn_close)
+        self.settings_dialog.resize(420, 640)  # 狭幅 first
+
+    def eventFilter(self, obj: QtCore.QObject, event: QtCore.QEvent) -> bool:  # noqa: N802
+        """注入欄フォーカス時に見える化する (狭幅 + 仮想キーボードで隠れる対策)。
+
+        スクロール文脈 (QSplitter) では ensureWidgetVisible が無い窓もあるため、ここでは
+        入力欄を最前面寄りに保つよう活性化のみ行い、失敗しても握り潰す (fail-safe)。
+        """
+        if obj is self.input and event.type() == QtCore.QEvent.Type.FocusIn:
+            try:
+                self.input.raise_()
+            except Exception:  # noqa: BLE001
+                pass
+        return super().eventFilter(obj, event)
+
+    @QtCore.Slot()
+    def _open_settings(self) -> None:
+        """⚙Settings — 既に生成済みのダイアログを表示 (再利用・再生成しない)。"""
+        self.settings_dialog.show()
+        self.settings_dialog.raise_()
+        self.settings_dialog.activateWindow()
 
     def _populate_projects(self, initial_workdir: Path | None) -> None:
         self.cmb_project.clear()
