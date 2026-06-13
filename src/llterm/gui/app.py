@@ -805,7 +805,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self._append(f"⏵ model={model} session={sid}", PALETTE["dim"])
         elif kind == "text":
             text = str(item.get("text") or "")
-            if sub:
+            if sub or rev:  # サブエージェント/レビュー奏者は区別表示し本応答カウントに数えない
                 self._append(prefix + text, PALETTE["dim"])
             else:
                 self._streamed_text += 1
