@@ -136,7 +136,10 @@ def build_common_summary(
     for i, p in enumerate(ordered):
         suffix = "  ← 最新" if i == 0 else ""
         note = "" if p.source == "next_plan" else f"  ({p.source})"
-        out.append(f"- **{p.name}**: {fmt(p.updated)}{suffix}{note}")
+        # 時刻が本文に記録されておらず mtime で代用したものは明示する
+        # (記録時刻つきのものは信頼でき、これは「直近判定が粗い」サインになる)。
+        time_note = "" if p.updated_source == "header" else "  (ファイル時刻)"
+        out.append(f"- **{p.name}**: {fmt(p.updated)}{suffix}{note}{time_note}")
     out += ["", "---", ""]
 
     for p in ordered:
