@@ -350,7 +350,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._run_widgets: list[QtWidgets.QWidget] = [
             self.cmb_project, self.chk_real, self.chk_rad, self.chk_offload, self.spin_sessions,
             self.spin_threshold, self.spin_window, self.spin_maxcost,
-            self.cmb_template, self.edit_param, self.btn_publish, self.chk_autonomy,
+            self.cmb_template, self.edit_param, self.btn_publish,
             self.cmb_effort, self.cmb_model, self.chk_codex_first, self.cmb_factcheck,
             *self.chk_reviewers.values(),
         ]
