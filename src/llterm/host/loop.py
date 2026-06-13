@@ -677,8 +677,12 @@ class ClaudeRunner:
 
         with self._lock:
             cancelled = self._cancelled
+            interrupted = self._interrupted
+            self._interrupted = False  # 一発: 次の run_turn は通常起動できる
         if cancelled:
             return TurnResult(session_id, 0, 0, 0, 0.0, "", True, "cancelled", 0, proc.returncode or -1)
+        if interrupted:  # 緊急注入による中断 = 停止ではない。loop が注入を次ターンで消費する
+            return TurnResult(session_id, 0, 0, 0, 0.0, "", True, "interrupted", 0, proc.returncode or -1)
         if timed_out.is_set():
             return TurnResult(session_id, 0, 0, 0, 0.0, "", True, "other", 0, -1)
         exit_code = proc.returncode if proc.returncode is not None else -1
@@ -692,6 +696,18 @@ class ClaudeRunner:
         """
         with self._lock:
             self._cancelled = True
+            proc = self._proc
+        if proc is not None and proc.poll() is None:
+            self._kill(proc)
+
+    def interrupt(self) -> None:
+        """現ターンだけを kill する (恒久 cancel と違い、次の run_turn は新規に起動できる)。
+
+        緊急注入「今やっていることを止めて注入タスクを即実行」用の一発中断。run_turn は
+        error_kind="interrupted" を返し、loop はループを止めず注入を次ターンで消費する。
+        """
+        with self._lock:
+            self._interrupted = True
             proc = self._proc
         if proc is not None and proc.poll() is None:
             self._kill(proc)
