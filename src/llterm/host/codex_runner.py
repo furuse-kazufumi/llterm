@@ -221,8 +221,9 @@ class CodexRunner:
                 creationflags=_NO_WINDOW,
             )
         except FileNotFoundError:
+            # codex 未導入 = 使用不能 → loop が別プロバイダへ即フォールバック (silent circuit 回避)
             return TurnResult(session_id, 0, 0, 0, 0.0, t("runner.codex.not_found"),
-                              True, "other", 0, 127)
+                              True, "unavailable", 0, 127)
         with self._lock:
             self._proc = proc
             kill_now = self._cancelled
