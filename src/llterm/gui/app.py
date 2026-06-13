@@ -13,6 +13,7 @@ Start・Stop / タスク注入欄(Ctrl+Enter 送信)/ セッション上限。
 from __future__ import annotations
 
 import html
+import shutil
 import sys
 from collections.abc import Callable
 from datetime import datetime
