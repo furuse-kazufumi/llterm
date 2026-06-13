@@ -35,6 +35,20 @@ def test_parse_codex_success() -> None:
     assert r.cost_usd == 0.0                 # サブスク = 課金なし
 
 
+def test_parse_codex_huge_cumulative_usage_does_not_overcount() -> None:
+    """累積 usage が窓を遥かに超えても context_tokens は 0 = 毎ターン rotate を防ぐ (実測 2549% の是正)。"""
+    stdout = "\n".join([
+        '{"type":"thread.started","thread_id":"t"}',
+        '{"type":"item.completed","item":{"type":"agent_message","text":"done"}}',
+        # 1 ターン内の多数ツール往復で累積 5.1M (= 窓 200k の 2549% 相当)
+        '{"type":"turn.completed","usage":{"input_tokens":5000000,'
+        '"cached_input_tokens":98000,"output_tokens":1000}}',
+    ])
+    r = parse_codex_jsonl(stdout, exit_code=0)
+    assert r.context_tokens == 0        # 占有率には使わない (rotate を駆動させない)
+    assert r.input_tokens == 5_000_000  # 情報としては保持
+
+
 def test_parse_codex_uses_last_agent_message() -> None:
     stdout = "\n".join([
         '{"type":"thread.started","thread_id":"t"}',
