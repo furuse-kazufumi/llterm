@@ -125,3 +125,49 @@ def write_common_summary(projects_root: Path, out_path: Path) -> str:
     except OSError:
         pass
     return text
+
+
+# 既定の集約ルートと出力先 (app.py の DEFAULT_PROJECTS_ROOT と一致させる)。
+DEFAULT_PROJECTS_ROOT = Path("D:/projects")
+DEFAULT_OUT = DEFAULT_PROJECTS_ROOT / "_shared" / "PROGRESS.md"
+
+
+def main(argv: list[str] | None = None) -> int:
+    """共通進捗サマリーを生成する CLI (スクリプトで自動更新するための入口)。
+
+    例: ``llterm-progress`` → ``D:/projects/_shared/PROGRESS.md`` を再生成。
+    ``llterm-progress --stdout`` → 書かずに標準出力へ (プレビュー用)。
+    """
+    import argparse
+
+    from llterm.host.loop import _ensure_utf8_stdout  # cp932 でも日本語/記号を化けさせない
+
+    _ensure_utf8_stdout()
+    parser = argparse.ArgumentParser(
+        prog="llterm-progress",
+        description="全プロジェクトの docs/next_plan.md を集約した共通進捗サマリーを生成する",
+    )
+    parser.add_argument("--projects-root", default=str(DEFAULT_PROJECTS_ROOT),
+                        help="集約するプロジェクトの親ディレクトリ (既定 %(default)s)")
+    parser.add_argument("--out", default=None,
+                        help="出力先 (既定 <projects-root>/_shared/PROGRESS.md)")
+    parser.add_argument("--stdout", action="store_true",
+                        help="ファイルに書かず標準出力へ出す (プレビュー)")
+    args = parser.parse_args(argv)
+
+    root = Path(args.projects_root)
+    if not root.is_dir():
+        print(f"error: projects-root が存在しません: {root}", flush=True)
+        return 2
+    if args.stdout:
+        print(build_common_summary(collect_progress(root)), flush=True)
+        return 0
+    out = Path(args.out) if args.out else root / "_shared" / "PROGRESS.md"
+    write_common_summary(root, out)
+    n = len(collect_progress(root))
+    print(f"共通進捗サマリー更新: {out} ({n} プロジェクト)", flush=True)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
