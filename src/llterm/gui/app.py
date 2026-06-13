@@ -613,6 +613,44 @@ class MainWindow(QtWidgets.QMainWindow):
             return None  # 無料枠失効後は agentic Gemini CLI を無料では使えない → 自動除外
         return GeminiRunner()
 
+    def _runner_label(self, runner: TurnRunner) -> str:
+        """1 つの runner を奏者ラベル (i18n) にする。OrchestraRunner は指揮者で代表する。"""
+        if type(runner).__name__ == "OrchestraRunner":
+            runner = runner.conductor  # type: ignore[attr-defined]
+        cls = type(runner).__name__
+        labels = {
+            "CodexRunner": t("gui.player.codex"),
+            "ClaudeRunner": t("gui.player.claude"),
+            "GeminiRunner": t("gui.player.gemini"),
+        }
+        return labels.get(cls, cls)
+
+    def _excluded_players(self) -> list[str]:
+        """可用性判定で chain から外れた奏者の除外理由リスト (i18n) を組む。"""
+        reasons: list[str] = []
+        if shutil.which("codex") is None:
+            reasons.append(t("gui.exclude.codex_missing"))
+        if shutil.which("gemini") is None:
+            reasons.append(t("gui.exclude.gemini_missing"))
+        else:
+            from llterm.host.gemini_runner import gemini_cli_free_tier_status
+            if gemini_cli_free_tier_status()[0] == "expired":
+                reasons.append(t("gui.exclude.gemini_expired"))
+        return reasons
+
+    def _provider_status_line(self, primary: TurnRunner, fallbacks: list[TurnRunner]) -> str:
+        """奏者 chain 構成 (主→保険) と除外理由を 1 行にまとめた dim 表示文を返す。
+
+        例: 「奏者: Codex(実装) → Claude(保険) / 除外: Gemini=無料枠失効」。可用性判定で
+        自動 include/exclude された結果を honest disclosure する (なぜその奏者かを見せる)。
+        """
+        chain = " → ".join([self._runner_label(primary), *(self._runner_label(f) for f in fallbacks)])
+        excluded = self._excluded_players()
+        line = t("gui.status.players", chain=chain)
+        if excluded:
+            line += t("gui.status.excluded", reasons=" / ".join(excluded))
+        return line
+
     def _gemini_cli_deadline_note(self) -> str:
         """Gemini CLI 奏者 (agentic) を使う設定のとき、無料枠期限の通知文を返す ("" = 通知なし)。
 
