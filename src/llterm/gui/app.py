@@ -651,7 +651,8 @@ class MainWindow(QtWidgets.QMainWindow):
         間近/超過していて、かつ Gemini CLI を使う設定 (Gemini切替 ON / レビュー奏者=Gemini CLI)
         のときだけ通知する。移行先 = Gemini API (provider 'gemini-api')。
         """
-        uses_cli = self.chk_gemini_fallback.isChecked() or self.cmb_reviewer.currentData() == "gemini"
+        reviewer_is_gemini_cli = self.chk_reviewers["gemini"].isChecked()
+        uses_cli = self.chk_gemini_fallback.isChecked() or reviewer_is_gemini_cli
         if not uses_cli:
             return ""
         from llterm.host.gemini_runner import gemini_cli_free_tier_status
