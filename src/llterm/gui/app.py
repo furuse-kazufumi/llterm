@@ -463,6 +463,7 @@ class MainWindow(QtWidgets.QMainWindow):
             "autonomy": self.chk_autonomy.isChecked(),
             "codex_fallback": self.chk_codex_fallback.isChecked(),
             "codex_first": self.chk_codex_first.isChecked(),
+            "gemini_fallback": self.chk_gemini_fallback.isChecked(),
             "free_provider": self.cmb_free_provider.currentData(),
             "summary_raw": self.chk_summary_raw.isChecked(),
             "max_sessions": self.spin_sessions.value(),
