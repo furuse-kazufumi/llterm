@@ -518,6 +518,16 @@ MESSAGES: dict[str, dict[str, str]] = {
         "ja": "Send (Ctrl+Enter)",
         "en": "Send (Ctrl+Enter)",
     },
+    "gui.btn.emergency": {
+        "ja": "⚡緊急注入",
+        "en": "⚡Emergency",
+    },
+    "gui.tip.emergency": {
+        "ja": "現在実行中のターンを即中断し、入力中のタスクを最優先で実行する "
+              "(中断はループ停止ではなく、注入タスクはスキップされず必ず次に実行)。",
+        "en": "Interrupt the running turn immediately and run the typed task first "
+              "(interrupt is not a loop stop; the injected task is never skipped).",
+    },
     "gui.progress.idle": {
         "ja": "進捗: -",
         "en": "Progress: -",
