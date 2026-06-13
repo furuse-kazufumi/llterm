@@ -179,6 +179,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.restoreGeometry(QtCore.QByteArray.fromHex(geo.encode("ascii")))
             except (ValueError, TypeError):
                 pass
+        # 起動時にも Gemini CLI 無料枠期限を通知 (Gemini CLI を選択中のときだけ)
+        startup_note = self._gemini_cli_deadline_note()
+        if startup_note:
+            self._append(startup_note, PALETTE["err"], bold=True)
 
     # ---- UI 構築 ----
     def _build_ui(self, *, initial_workdir: Path | None, real_default: bool, rad_default: bool,
