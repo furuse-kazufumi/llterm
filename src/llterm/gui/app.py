@@ -1316,6 +1316,10 @@ class MainWindow(QtWidgets.QMainWindow):
             if text:
                 self._set_progress(text)  # ターン最終応答を進捗バーに (確定値)
             self._streamed_text = 0
+            # ターン最終テキストに規約マーカーがあれば選択ダイアログを出す (主経路)。
+            # マルチライン block はターン完了テキストで確実に拾える (stream 途中では分割され得る)。
+            if text and not err:
+                self._maybe_prompt_choice(text)
         elif kind == "rotate":
             pct = int(round(float(data.get("used_pct", 0.0)) * 100))
             self._append(t("gui.msg.rotate", pct=pct), PALETTE["rotate"], ts=True)
