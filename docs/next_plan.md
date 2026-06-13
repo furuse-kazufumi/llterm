@@ -11,7 +11,8 @@
 
 - llterm v0.2.0a0(公式 headless protocol `claude -p --session-id/--resume` で Claude Code を自走ループ駆動 + PySide6 GUI)。
 - 2026-06-13 セッションで「ループが err=other→circuit_open で死ぬ」問題を根治し、進捗引継ぎ & HITL モデルを実装。
-  続けて進捗サマリの 2 タブ化(実行中 / 共通)+ 記録時刻の正規化を実装。**全 408 テスト pass**。
+  続けて 進捗サマリ 2 タブ化 / 記録時刻正規化 / 注入の飢餓解消 / レビュー過剰削減 / **緊急注入** /
+  全行タイムスタンプ / ローテログ を実装。**全 421 テスト pass**。
 - GUI 変更はプロセス再起動で反映(起動中の llterm には出ない)。auto-commit 監視が編集を逐次拾う。
 
 ## 直近の成果
