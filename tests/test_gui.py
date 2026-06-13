@@ -663,6 +663,27 @@ def test_summary_panel_empty_when_no_file(qapp: QtWidgets.QApplication, tmp_path
     assert win.summary_view.toPlainText() == ""  # ファイル無し → 空 (placeholder 表示)
 
 
+def test_summary_has_live_and_common_tabs(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    """進捗サマリは『実行中 (SESSION_SUMMARY)』と『共通 (全 project 集約)』の 2 タブを持つ。
+
+    共通タブは各 project の docs/next_plan.md を記録時刻つきで横断表示する
+    (ユーザー指摘 2026-06-13: タブで分ける + 日付だけでは直前判定不能)。
+    """
+    # 別 project に時刻つき next_plan を置く → 共通タブに 15:42 つきで現れる
+    alpha_docs = tmp_path / "alpha" / "docs"
+    alpha_docs.mkdir(parents=True)
+    (alpha_docs / "next_plan.md").write_text(
+        "# alpha\n> 最終更新: 2026-06-13 15:42 JST\n## 次の一手\n- do A\n", encoding="utf-8")
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path / "alpha",
+                     settings_path=tmp_path / "s.json")
+    assert win.summary_tabs.count() == 2
+    win._refresh_summary()  # 共通タブも再生成される
+    common = win.common_view.toPlainText()
+    assert "alpha" in common
+    assert "15:42" in common              # 記録された最終更新が時刻つきで出る (日付だけでない)
+    assert "(ファイル時刻)" not in common  # 記録時刻つきなので mtime フォールバック注記は無い
+
+
 def test_progress_bar_reads_session_summary_on_rotate(
     qapp: QtWidgets.QApplication, tmp_path: Path
 ) -> None:
