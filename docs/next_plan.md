@@ -58,11 +58,14 @@
 
 ## 次の一手 (優先順)
 
-1. **【人間】`llterm` を再起動**して新機能を実機確認(進捗サマリが「実行中 / 共通」2 タブになる /
-   承認確認不要トグル / 注入→監督→回答→復帰 / 安全弁)。
-2. **【Claude・調査中】タスク注入の受付→回答までの遅延**(ユーザー指摘 2026-06-13)。注入が
-   現ターン完了後にしか反映されない設計か、別要因(claude resume の起動コスト/レート待ち)か切り分ける。
-3. **【人間・任意】`pip install -e .` 再実行**で `llterm-progress` を `.exe` コマンド登録(`py -3.11 -m llterm.progress` なら即利用可)。
+1. **【人間】`llterm` を再起動**して新機能を実機確認(進捗サマリ 2 タブ「実行中 / 共通」/
+   注入が次境界で即実行され飢餓しない / EXIT 整形と最終 sign-off のレビューが減って 1 周が速い)。
+2. **【Claude・任意】ctx 過大計上の是正**(残課題)。orchestra 指揮者の context_tokens が cache 再読込で
+   2549% 等に膨れ、毎ターン rotate して 1 セッション=1 ターンになる。`used_pct` の分子(context_tokens)を
+   ツール往復で重複加算しない算定に直すか、orchestra は指揮者の最終 assistant usage のみ採るなどを検討。
+3. **【Claude・任意】注入を orchestra フルレビュー対象から外す**検討(「要約して」等の問い合わせ系注入に
+   実装+3レビュー+修正は過剰。注入ターンは run_turn_unreviewed 寄せ or 簡易判定の余地)。
+4. **【人間・任意】`pip install -e .` 再実行**で `llterm-progress` を `.exe` コマンド登録(`py -3.11 -m llterm.progress` なら即利用可)。
 4. **【Claude】共通サマリの自動更新トリガ配線**(loop rotate 後に `write_common_summary` / または Windows スケジュールタスクで `llterm-progress`)。
 5. **【Claude・任意】共通タブを project 別サブタブ化**(現状は共通タブ 1 枚に全 project を時刻順で収録。1 project=1 タブが必要なら拡張)。
 6. **【Claude】exit-prep プロンプトの標準フォーマット化**(next_plan.md を `## 現在地/直近の成果/次の一手/環境メモ` で更新)+ 他 project の next_plan.md 整備。
