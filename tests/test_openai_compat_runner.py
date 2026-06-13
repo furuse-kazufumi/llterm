@@ -47,9 +47,17 @@ class _Scripted(OpenAICompatRunner):
 def test_provider_registry_excludes_chinese_hosts() -> None:
     """中国系ホスト API (deepseek/qwen/glm/kimi/zhipu/moonshot) は同梱しない。"""
     keys = set(PROVIDERS)
-    assert {"groq", "cerebras", "openrouter", "ollama"} <= keys
+    assert {"groq", "cerebras", "openrouter", "ollama", "gemini-api"} <= keys
     for banned in ("deepseek", "qwen", "glm", "kimi", "zhipu", "moonshot", "dashscope"):
         assert banned not in keys
+
+
+def test_gemini_api_provider_defaults() -> None:
+    """Gemini API (OpenAI 互換) provider = AI Studio エンドポイント + GEMINI_API_KEY。"""
+    r = OpenAICompatRunner(provider="gemini-api")
+    assert r._resolved_base_url() == "https://generativelanguage.googleapis.com/v1beta/openai"
+    assert r._resolved_model() == "gemini-2.5-flash"
+    assert r._resolved_key_env() == "GEMINI_API_KEY"
 
 
 def test_resolves_provider_defaults() -> None:
