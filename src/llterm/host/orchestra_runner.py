@@ -189,8 +189,12 @@ class OrchestraRunner:
     def run_turn(self, *, prompt: str, session_id: str, resume: bool, cwd: Path) -> TurnResult:
         if self._is_cancelled():
             return TurnResult(session_id, 0, 0, 0, 0.0, "", True, "cancelled", 0, -1)
+        with self._lock:
+            self._interrupted = False  # ターン開始時にリセット (走行中の interrupt() だけを拾う)
 
         # 1. 指揮者が実装。stream は指揮者のものをそのまま流す。
+        # 緊急注入で指揮者が interrupt されると res.error_kind="interrupted" が返り、
+        # 下の `if res.is_error: return res` でそのまま loop に伝播する (停止ではなく注入消費へ)。
         self.conductor.on_stream = self._emit  # type: ignore[attr-defined]
         res = self.conductor.run_turn(prompt=prompt, session_id=session_id, resume=resume, cwd=cwd)
         total_cost = res.cost_usd
