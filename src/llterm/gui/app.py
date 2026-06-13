@@ -716,17 +716,19 @@ class MainWindow(QtWidgets.QMainWindow):
             # Claude 主。可用な無料 agent (Codex → Gemini) を保険に並べる。
             primary = claude
             fallbacks = ([CodexRunner()] if codex_available else []) + ([gemini] if gemini else [])
-        # オーケストラ (4 役) を組む: レビュー奏者パネル (複数・独立) or 真偽確認奏者が居れば、
+        # オーケストラを組む: レビュー奏者パネル (複数・独立) or 真偽確認奏者が居れば、
         # 主奏者を指揮者として OrchestraRunner で包む。責任者 (lead=Claude) がレビュー + 真偽確認を
-        # 取りまとめ → 統合指示 → 指揮者が修正 → 最終 sign-off でループを閉じる。指揮者==lead==Claude
-        # でもブロックしない (ダブルチェック許容)。1 ターンに束ねるので fallbacks はそのまま。
+        # 取りまとめ → 統合指示 → 指揮者が修正。指揮者==lead==Claude でもブロックしない。
+        # ★ final_signoff=False (2026-06-13 ユーザー指摘「レビューにレビューを重ねている」):
+        #   lead の総合判断 (集約) が既に審判なので、修正後の再レビュー (sign-off) は冗長。
+        #   1 ターンの AI 呼び出しを減らし、orchestra のレビュー所要時間を短縮する。
         reviewers = self._reviewer_runners()
         factchecker = self._factcheck_runner()
         if reviewers or factchecker is not None:
             from llterm.host.orchestra_runner import OrchestraRunner
             primary = OrchestraRunner(
                 conductor=primary, reviewers=reviewers, factchecker=factchecker,
-                lead=self._lead_runner(), apply_review=True, final_signoff=True)
+                lead=self._lead_runner(), apply_review=True, final_signoff=False)
         return primary, fallbacks
 
     def _gemini_runner(self) -> GeminiRunner | None:
