@@ -315,7 +315,8 @@ def test_turn_with_choice_marker_shows_dialog_and_injects(
     qapp: QtWidgets.QApplication, tmp_path: Path
 ) -> None:
     """ターン text に ⟦LLTERM_CHOICE⟧ があればダイアログを出し、OK の回答を inject する。"""
-    win = _make_window(tmp_path, max_sessions=1)
+    # delay>0 で worker を turn 1 にブロック → 注入キューを race 消費されず決定論的に検証できる
+    win = _make_window(tmp_path, max_sessions=1, delay=0.5)
     win.start_loop()  # worker を起動 (inject の宛先)
     assert win.worker is not None
     seen = _install_choice_stub(win, accept=True, indices=[1])
@@ -331,6 +332,7 @@ def test_turn_with_choice_marker_shows_dialog_and_injects(
     assert seen["choice"].multi is False
     # OK の回答 (番号+ラベル) が worker のキューに積まれた = 次ターンへ注入される
     assert win.worker._next_prompt() == "選択: 2) private"
+    win.worker.request_stop(force=True)  # ブロック中の擬似ターンを即終了させて後始末を速く
     _run_until_finished(qapp, win)
 
 
