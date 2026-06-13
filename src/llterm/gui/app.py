@@ -569,6 +569,27 @@ class MainWindow(QtWidgets.QMainWindow):
         from llterm.host.gemini_runner import GeminiRunner
         return GeminiRunner()
 
+    def _reviewer_runner(self) -> TurnRunner | None:
+        """選択中のレビュー奏者 runner、未選択/未導入/キー無は None (分業を組まない fail-safe)。"""
+        key = str(self.cmb_reviewer.currentData() or "")
+        if not key:
+            return None
+        if key == "codex":
+            if shutil.which("codex") is None:
+                return None
+            from llterm.host.codex_runner import CodexRunner
+            return CodexRunner()
+        if key == "gemini":
+            if shutil.which("gemini") is None:
+                return None
+            from llterm.host.gemini_runner import GeminiRunner
+            return GeminiRunner()
+        from llterm.host.openai_compat_runner import PROVIDERS, OpenAICompatRunner
+        if key in PROVIDERS:
+            rev = OpenAICompatRunner(provider=key)
+            return rev if rev.key_available() else None
+        return None
+
     def _build_runner(self) -> TurnRunner:
         """このランの primary runner (= provider chain の先頭) を返す。"""
         return self._resolve_providers()[0]
