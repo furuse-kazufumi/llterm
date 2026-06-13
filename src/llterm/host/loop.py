@@ -801,19 +801,24 @@ class SessionLoop:
         prompt = prompt + SAFETY_DIRECTIVE
         return prompt + (AUTONOMY_DIRECTIVE if self._autonomy_on() else SUPERVISED_DIRECTIVE)
 
+    def _take_injection(self) -> str | None:
+        """注入キューから 1 件取り出す (無ければ None)。next_prompt の例外は握り潰す。
+
+        opener と継続の両方から呼ぶ共通入口。これにより注入は「次のターン境界」で必ず
+        消費され、rotate を挟んでも飢餓しない (ユーザー指摘 2026-06-13: 注入は高優先)。
+        """
+        if self.next_prompt is None:
+            return None
+        try:
+            return self.next_prompt() or None
+        except Exception:  # noqa: BLE001
+            return None
+
     def _continue_prompt(self) -> tuple[str, bool]:
         """継続ターンの prompt と「注入タスクか」フラグ。GUI inject があれば一度だけ優先する。"""
-        base = self.continue_prompt
-        injected = False
-        if self.next_prompt is not None:
-            try:
-                got = self.next_prompt()
-            except Exception:  # noqa: BLE001
-                got = None
-            if got:
-                base = got
-                injected = True
-        return self._apply_directives(self._augment(base)), injected
+        got = self._take_injection()
+        base = got if got else self.continue_prompt
+        return self._apply_directives(self._augment(base)), got is not None
 
     def used_pct(self, res: TurnResult) -> float:
         # result イベントの実窓サイズ (modelUsage.contextWindow) があればそちらを分母にする。
