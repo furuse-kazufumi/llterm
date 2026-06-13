@@ -83,12 +83,19 @@ def test_combobox_lists_projects_and_selects_workdir(
 # ─── 実行モード切替 (実 claude=サブスク / 仮想) ────────────────────
 
 
+def _conductor(win) -> object:
+    """主奏者を返す。OrchestraRunner に包まれていれば指揮者 (実装者) を返す。"""
+    runner = win._build_runner()
+    return runner.conductor if type(runner).__name__ == "OrchestraRunner" else runner
+
+
 def test_build_runner_real_uses_subscription_claude(
     qapp: QtWidgets.QApplication, tmp_path: Path
 ) -> None:
     win = MainWindow(projects_root=tmp_path, workdir=tmp_path)  # override なし
+    win.chk_codex_first.setChecked(False)  # 指揮者=Claude に固定 (codex 可用環境でも決定的に)
     win.chk_real.setChecked(True)
-    runner = win._build_runner()
+    runner = _conductor(win)
     assert isinstance(runner, ClaudeRunner)
     assert runner.use_subscription is True  # サブスク認証 (API キーを外す)
     win.chk_real.setChecked(False)
