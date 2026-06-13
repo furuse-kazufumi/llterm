@@ -119,8 +119,14 @@ def parse_codex_jsonl(stdout: str, *, exit_code: int, stderr: str = "") -> TurnR
     text = texts[-1] if texts else ""
     input_tokens = _as_int(usage.get("input_tokens"))
     output_tokens = _as_int(usage.get("output_tokens"))
-    # Codex の窓占有近似 = 非キャッシュ入力 + キャッシュ入力 (= プロンプト総量)
-    context_tokens = input_tokens + _as_int(usage.get("cached_input_tokens"))
+    # context_tokens (= rotate を駆動する「瞬間の窓占有」) は **0 固定**にする。
+    # 理由: codex の turn.completed.usage は 1 ターン内の全内部 API 往復の **累積**で、
+    # 各往復が文脈を丸ごと再送するため N×文脈に膨れる (実測 ctx 2549% = 物理的に窓を超える
+    # = 累積の動かぬ証拠)。これを占有率にすると毎ターン閾値超で rotate し、1 セッション=1 ターンに
+    # 縮退する (注入飢餓・レビュー二重の遠因だった)。codex exec resume は自前で文脈を圧縮管理する
+    # ため、llterm 側は占有ベースで rotate せず turn 数 (max_turns_per_session=50) で区切れば足りる。
+    # input_tokens/output_tokens は情報として保持する (cost/ログ・将来の per-call 取得用)。
+    context_tokens = 0
 
     is_error = exit_code != 0 or failed or not turn_completed
     error_kind = ""
