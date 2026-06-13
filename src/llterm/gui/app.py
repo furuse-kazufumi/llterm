@@ -440,7 +440,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._refresh_summary()  # 初期表示 (選択プロジェクトの既存サマリ)
         # 走行中に無効化する設定系ウィジェット (途中変更で worker と不整合にしない)
         self._run_widgets: list[QtWidgets.QWidget] = [
-            self.cmb_project, self.chk_real, self.chk_rad, self.spin_sessions,
+            self.cmb_project, self.chk_real, self.chk_rad, self.chk_offload, self.spin_sessions,
             self.spin_threshold, self.spin_window, self.spin_maxcost,
             self.cmb_template, self.edit_param, self.btn_publish, self.chk_autonomy,
             self.cmb_effort, self.cmb_model, self.chk_codex_fallback, self.chk_codex_first,
