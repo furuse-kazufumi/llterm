@@ -894,94 +894,45 @@ def test_summary_raw_pref_persists(qapp: QtWidgets.QApplication, tmp_path: Path)
     assert win2.chk_summary_raw.isChecked() is True
 
 
-# ─── 無料奏者 (OpenAI 互換) の chain 配線 ───────────────────────────
+# ─── Gemini agentic 奏者の自動可用性判定 (トグル撤去・include/exclude) ──
 
 
-def test_free_player_appended_to_chain_when_key_set(
+def test_gemini_auto_included_when_installed_and_not_expired(
     qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
 ) -> None:
-    """Groq を選び GROQ_API_KEY 設定済みなら chain 末尾に無料奏者が入る。"""
-    monkeypatch.setenv("GROQ_API_KEY", "sk-test")
+    """gemini が PATH にあり無料枠未失効なら agentic fallback に自動で入る (トグルなし)。"""
+    _patch_which(monkeypatch, "gemini")  # gemini のみ導入 (codex は未導入扱い)
+    monkeypatch.setattr("llterm.host.gemini_runner.gemini_cli_free_tier_status",
+                        lambda today=None: ("ok", 30))
     win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
     win.chk_codex_first.setChecked(False)
     win.chk_real.setChecked(True)
-    win.cmb_free_provider.setCurrentIndex(win.cmb_free_provider.findData("groq"))
-    primary, fallbacks = _provider_names(win)
-    assert primary == "ClaudeRunner"
-    assert fallbacks[-1] == "OpenAICompatRunner"
-
-
-def test_free_player_dropped_when_key_missing(
-    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
-) -> None:
-    """APIキー未設定の無料奏者は chain に入れない (loop を auth 停止させない fail-safe)。"""
-    monkeypatch.delenv("GROQ_API_KEY", raising=False)
-    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
-    win.chk_real.setChecked(True)
-    win.cmb_free_provider.setCurrentIndex(win.cmb_free_provider.findData("groq"))
-    _, fallbacks = _provider_names(win)
-    assert "OpenAICompatRunner" not in fallbacks
-
-
-def test_free_player_ollama_needs_no_key(
-    qapp: QtWidgets.QApplication, tmp_path: Path
-) -> None:
-    """ローカル Ollama はキー不要で常に chain に入る。"""
-    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
-    win.chk_real.setChecked(True)
-    win.cmb_free_provider.setCurrentIndex(win.cmb_free_provider.findData("ollama"))
-    _, fallbacks = _provider_names(win)
-    assert fallbacks[-1] == "OpenAICompatRunner"
-
-
-def test_free_player_with_codex_first(
-    qapp: QtWidgets.QApplication, tmp_path: Path
-) -> None:
-    """Codex 優先 + 無料奏者(Ollama): chain = Codex 主 / [Claude, 無料奏者]。"""
-    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
-    win.chk_real.setChecked(True)
-    win.chk_codex_first.setChecked(True)
-    win.cmb_free_provider.setCurrentIndex(win.cmb_free_provider.findData("ollama"))
-    primary, fallbacks = _provider_names(win)
-    assert primary == "CodexRunner"
-    assert fallbacks == ["ClaudeRunner", "OpenAICompatRunner"]
-
-
-def test_free_player_persists(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
-    sp = tmp_path / "s.json"
-    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=sp)
-    win.cmb_free_provider.setCurrentIndex(win.cmb_free_provider.findData("cerebras"))
-    win._save_settings()
-    win2 = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=sp)
-    assert win2.cmb_free_provider.currentData() == "cerebras"
-
-
-# ─── Gemini agentic フォールバック奏者の chain 配線 ───────────────
-
-
-def test_gemini_fallback_added_when_installed(
-    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
-) -> None:
-    """Gemini 切替 ON + gemini が PATH にあれば agentic fallback に入る。"""
-    monkeypatch.setattr("llterm.gui.app.shutil.which",
-                        lambda name: "C:/gemini.cmd" if name == "gemini" else None)
-    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
-    win.chk_codex_first.setChecked(False)  # which() を gemini のみに固定したので codex は未導入扱い
-    win.chk_real.setChecked(True)
-    win.chk_gemini_fallback.setChecked(True)
     primary, fallbacks = _provider_names(win)
     assert primary == "ClaudeRunner"
     assert "GeminiRunner" in fallbacks
 
 
-def test_gemini_fallback_dropped_when_not_installed(
+def test_gemini_auto_excluded_when_not_installed(
     qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
 ) -> None:
     """gemini 未インストールなら chain に入れない (空転防止の fail-safe)。"""
-    monkeypatch.setattr("llterm.gui.app.shutil.which", lambda name: None)
+    _patch_which(monkeypatch)  # 何も導入されていない
     win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
     win.chk_real.setChecked(True)
-    win.chk_gemini_fallback.setChecked(True)
+    _, fallbacks = _provider_names(win)
+    assert "GeminiRunner" not in fallbacks
+
+
+def test_gemini_runner_none_when_free_tier_expired(
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
+) -> None:
+    """gemini 導入済みでも無料枠 expired なら _gemini_runner=None (自動除外。2026-06-18 後)。"""
+    _patch_which(monkeypatch, "gemini")
+    monkeypatch.setattr("llterm.host.gemini_runner.gemini_cli_free_tier_status",
+                        lambda today=None: ("expired", -3))
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    win.chk_real.setChecked(True)
+    assert win._gemini_runner() is None  # 無料枠失効 → agentic Gemini は無料では使えない
     _, fallbacks = _provider_names(win)
     assert "GeminiRunner" not in fallbacks
 
@@ -989,25 +940,73 @@ def test_gemini_fallback_dropped_when_not_installed(
 def test_gemini_precedes_claude_under_codex_first(
     qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
 ) -> None:
-    """Codex 優先 + Gemini: 無料 agent (Gemini) を Claude より先の保険に置く (token 節約)。"""
-    monkeypatch.setattr("llterm.gui.app.shutil.which",
-                        lambda name: "C:/gemini.cmd" if name == "gemini" else None)
+    """Codex 優先 + Codex/Gemini 両導入: 無料 agent (Gemini) を Claude より先の保険に置く。"""
+    _patch_which(monkeypatch, "codex", "gemini")
+    monkeypatch.setattr("llterm.host.gemini_runner.gemini_cli_free_tier_status",
+                        lambda today=None: ("ok", 30))
     win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
     win.chk_real.setChecked(True)
     win.chk_codex_first.setChecked(True)
-    win.chk_gemini_fallback.setChecked(True)
     primary, fallbacks = _provider_names(win)
     assert primary == "CodexRunner"
     assert fallbacks == ["GeminiRunner", "ClaudeRunner"]
 
 
-def test_gemini_fallback_persists(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
-    sp = tmp_path / "s.json"
-    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=sp)
-    win.chk_gemini_fallback.setChecked(True)
-    win._save_settings()
-    win2 = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=sp)
-    assert win2.chk_gemini_fallback.isChecked() is True
+# ─── 起動ステータス行 (奏者構成 + 除外理由) ──────────────────────
+
+
+def test_provider_status_line_shows_chain(
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
+) -> None:
+    """実 claude で Start すると奏者 chain 構成を 1 行表示する。"""
+    _patch_which(monkeypatch, "codex", "gemini")
+    monkeypatch.setattr("llterm.host.gemini_runner.gemini_cli_free_tier_status",
+                        lambda today=None: ("ok", 30))
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    win.chk_real.setChecked(True)
+    win.chk_codex_first.setChecked(True)
+    primary, fallbacks = win._resolve_providers()
+    line = win._provider_status_line(primary, fallbacks)
+    assert "奏者:" in line
+    assert "Codex" in line and "Claude" in line and "Gemini" in line
+
+
+def test_provider_status_line_includes_exclusion_reason(
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
+) -> None:
+    """除外された奏者の理由 (Gemini=無料枠失効 / Codex=未導入) をステータス行に含める。"""
+    _patch_which(monkeypatch, "gemini")  # codex 未導入 / gemini 導入だが失効
+    monkeypatch.setattr("llterm.host.gemini_runner.gemini_cli_free_tier_status",
+                        lambda today=None: ("expired", -3))
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    win.chk_real.setChecked(True)
+    primary, fallbacks = win._resolve_providers()
+    line = win._provider_status_line(primary, fallbacks)
+    assert "除外:" in line
+    assert "Codex=未導入" in line
+    assert "無料枠失効" in line
+
+
+def test_start_loop_emits_provider_status_line(
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
+) -> None:
+    """実 claude (override 無) で start_loop すると奏者ステータス行が出力ビューに出る。"""
+    _patch_which(monkeypatch)  # codex/gemini 未導入 → Claude 単独 + 除外理由
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json",
+                     max_sessions=1)
+    win.chk_real.setChecked(True)
+    # 実 runner を起動させず status 行だけ検証するため worker を黙らせる (start 直前で差し替え)
+    monkeypatch.setattr(win, "_resolve_providers",
+                        lambda: (VirtualClaudeRunner(delay=0.0), []))
+    # _provider_status_line は real 判定 (chk_real) で呼ばれる
+    win.start_loop()
+    text = win.output.toPlainText()
+    assert "奏者:" in text
+    assert "除外:" in text  # codex/gemini 未導入の理由
+    win.stop_loop()
+    win.stop_loop()
+    if win.worker is not None:
+        win.worker.wait(3000)
 
 
 # ─── 分業オーケストラ v2 (パネル / 真偽確認 / 責任者) の chain 配線 ──
