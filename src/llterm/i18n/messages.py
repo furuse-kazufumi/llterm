@@ -191,9 +191,11 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "No approval prompts (fully autonomous)",
     },
     "gui.tip.autonomy": {
-        "ja": "ON: 人間確認を待たず自律で判断・継続(停止しない)。OFF(既定): 安全側",
-        "en": "ON: decides and continues autonomously without waiting for human "
-              "confirmation (does not stop). OFF (default): safe side",
+        "ja": "ON: 人間確認を待たず自律継続(走行中も自由に切替可)。OFF: 監督モード(AI が確認事項を出せる)。"
+              "タスク注入で自動 OFF、確認回答後に自動 ON。不可逆/危険操作は ON でも必ず承認を求める。",
+        "en": "ON: continues autonomously without waiting for confirmation (toggle freely even while "
+              "running). OFF: supervised mode (the AI may raise questions). Auto-OFF on task injection, "
+              "auto-ON after answering. Irreversible/dangerous operations always require approval even when ON.",
     },
     "gui.check.codex_first": {
         "ja": "Codex 優先",
