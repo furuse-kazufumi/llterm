@@ -959,8 +959,21 @@ class MainWindow(QtWidgets.QMainWindow):
         self._append(t("gui.msg.inject_accepted", text=text), PALETTE["inject"], ts=True)
         if self.worker is not None and self.worker.isRunning():
             self.worker.inject(text)
+            # タスク注入 = 人間の介入 → 監督モードへ (承認確認不要を OFF)。AI が確認事項を出せ、
+            # 安全な Stop/引継ぎの意味を保つ。確認回答後に自動で ON へ戻る (ループ復帰)。
+            if self.chk_autonomy.isChecked():
+                self.chk_autonomy.setChecked(False)  # toggled → worker.set_autonomy(False)
         else:
             self._append(t("gui.msg.inject_pending"), PALETTE["dim"])
+
+    @QtCore.Slot(bool)
+    def _on_autonomy_toggled(self, on: bool) -> None:
+        """承認確認不要トグルを走行中の worker に即反映する (次ターンから効く)。
+
+        走行中でなければ何もしない (start_loop が開始時に現在値を loop_kw へ渡す)。
+        """
+        if self.worker is not None and self.worker.isRunning():
+            self.worker.set_autonomy(on)
 
     # ---- 選択ダイアログ ↔ ループ協調 (choice → inject) ----
     def _maybe_prompt_choice(self, text: str) -> bool:
