@@ -1164,7 +1164,7 @@ def test_deadline_note_soon_when_reviewer_is_gemini_cli(
     monkeypatch.setattr("llterm.host.gemini_runner.gemini_cli_free_tier_status",
                         lambda today=None: ("soon", 5))
     win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
-    win.cmb_reviewer.setCurrentIndex(win.cmb_reviewer.findData("gemini"))
+    win.chk_reviewers["gemini"].setChecked(True)  # レビュー奏者パネルで Gemini CLI を選ぶ
     note = win._gemini_cli_deadline_note()
     assert note and ("5" in note)
 
