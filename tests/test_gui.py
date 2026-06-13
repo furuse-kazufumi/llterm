@@ -895,6 +895,59 @@ def test_free_player_persists(qapp: QtWidgets.QApplication, tmp_path: Path) -> N
     assert win2.cmb_free_provider.currentData() == "cerebras"
 
 
+# ─── Gemini agentic フォールバック奏者の chain 配線 ───────────────
+
+
+def test_gemini_fallback_added_when_installed(
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
+) -> None:
+    """Gemini 切替 ON + gemini が PATH にあれば agentic fallback に入る。"""
+    monkeypatch.setattr("llterm.gui.app.shutil.which",
+                        lambda name: "C:/gemini.cmd" if name == "gemini" else None)
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    win.chk_real.setChecked(True)
+    win.chk_gemini_fallback.setChecked(True)
+    primary, fallbacks = _provider_names(win)
+    assert primary == "ClaudeRunner"
+    assert "GeminiRunner" in fallbacks
+
+
+def test_gemini_fallback_dropped_when_not_installed(
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
+) -> None:
+    """gemini 未インストールなら chain に入れない (空転防止の fail-safe)。"""
+    monkeypatch.setattr("llterm.gui.app.shutil.which", lambda name: None)
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    win.chk_real.setChecked(True)
+    win.chk_gemini_fallback.setChecked(True)
+    _, fallbacks = _provider_names(win)
+    assert "GeminiRunner" not in fallbacks
+
+
+def test_gemini_precedes_claude_under_codex_first(
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
+) -> None:
+    """Codex 優先 + Gemini: 無料 agent (Gemini) を Claude より先の保険に置く (token 節約)。"""
+    monkeypatch.setattr("llterm.gui.app.shutil.which",
+                        lambda name: "C:/gemini.cmd" if name == "gemini" else None)
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    win.chk_real.setChecked(True)
+    win.chk_codex_first.setChecked(True)
+    win.chk_gemini_fallback.setChecked(True)
+    primary, fallbacks = _provider_names(win)
+    assert primary == "CodexRunner"
+    assert fallbacks == ["GeminiRunner", "ClaudeRunner"]
+
+
+def test_gemini_fallback_persists(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    sp = tmp_path / "s.json"
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=sp)
+    win.chk_gemini_fallback.setChecked(True)
+    win._save_settings()
+    win2 = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=sp)
+    assert win2.chk_gemini_fallback.isChecked() is True
+
+
 def test_explicit_args_override_saved_settings(
     qapp: QtWidgets.QApplication, tmp_path: Path
 ) -> None:
