@@ -63,9 +63,17 @@ def test_parse_malformed_json_is_error() -> None:
     assert r.text == ""
 
 
-def test_extract_tokens_nested_shape() -> None:
-    stats = {"models": {"gemini-2.5-flash": {"tokens": {"prompt": 11, "candidates": 7}}}}
-    assert _extract_tokens(stats) == (11, 7)
+def test_extract_tokens_real_gemini3_shape() -> None:
+    """実 gemini v0.46 形 (2026-06-13 実機): models.<m>.tokens, output = total - input。
+    candidates(=候補数 1) を output と誤認しないこと。"""
+    stats = {"models": {"gemini-3-flash-preview": {"tokens": {
+        "input": 11302, "prompt": 11302, "candidates": 1, "total": 11340,
+        "cached": 0, "thoughts": 37, "tool": 0}}}}
+    assert _extract_tokens(stats) == (11302, 38)  # 38 = 11340 - 11302
+
+
+def test_extract_tokens_flat_openai_shape() -> None:
+    assert _extract_tokens({"input_tokens": 30, "output_tokens": 5}) == (30, 5)
 
 
 def test_extract_tokens_missing_is_zero() -> None:
