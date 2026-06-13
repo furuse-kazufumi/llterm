@@ -240,10 +240,9 @@ class OrchestraRunner:
                 factcheck_text = text
 
         # 5. 責任者が集約 (取りまとめ + 総合判断)。actionable な統合指示を得る。
-        instructions = self._aggregate(res.text, diff, panel, factcheck_text, session_id, cwd,
-                                       total_cost_turns=None)
         # _aggregate は (指示文, 追加コスト, 追加ターン) を返す
-        instr_text, agg_cost, agg_turns = instructions
+        instr_text, agg_cost, agg_turns = self._aggregate(
+            res.text, diff, panel, factcheck_text, session_id, cwd)
         total_cost += agg_cost
         total_turns += agg_turns
 
