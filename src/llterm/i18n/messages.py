@@ -59,6 +59,14 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "claude was only found as an npm shim ({path}). "
               "A native claude.exe installation is required",
     },
+    "runner.claude.not_found": {
+        "ja": "claude 実行ファイルが見つかりません (PATH と native インストール先 "
+              "~/.local/bin の両方を確認しました)。`claude` を導入するか PATH を通してください。"
+              "GUI を起動したシェルが古い PATH を抱えている場合は GUI 再起動で解決します。",
+        "en": "The claude executable was not found (checked PATH and the native "
+              "install location ~/.local/bin). Install `claude` or add it to PATH. "
+              "If the GUI's launching shell has a stale PATH, restarting the GUI fixes it.",
+    },
     "runner.codex.not_found": {
         "ja": "codex が見つかりません",
         "en": "codex was not found",
