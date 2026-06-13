@@ -163,6 +163,8 @@ class GeminiRunner:
         args = [self._resolved_exe(), "--output-format", self.output_format]
         if self.yolo:
             args.append("--yolo")
+        if self.skip_trust:
+            args.append("--skip-trust")  # 無いと headless で yolo が降格し承認待ちで止まる
         if self.model:
             args += ["-m", self.model]
         args += [*self.extra_args]
