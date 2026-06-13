@@ -712,7 +712,12 @@ def test_model_empty_selects_claude_default(
 
 
 def _provider_names(win) -> tuple[str, list[str]]:
+    """(primary, fallbacks) のクラス名。primary が OrchestraRunner なら指揮者で代表する
+    (既定プロファイル = 指揮者 + Claude レビューパネルなので主奏者は常に包まれるため、
+    chain ルーティング検証は指揮者=実装者で見る)。"""
     primary, fallbacks = win._resolve_providers()
+    if type(primary).__name__ == "OrchestraRunner":
+        primary = primary.conductor
     return type(primary).__name__, [type(f).__name__ for f in fallbacks]
 
 
