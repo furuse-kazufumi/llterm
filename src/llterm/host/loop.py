@@ -479,22 +479,50 @@ class ClaudeRunner:
     _proc: subprocess.Popen | None = field(default=None, repr=False, compare=False)
     _cancelled: bool = field(default=False, repr=False, compare=False)
 
+    def _native_claude_path(self) -> str | None:
+        """PATH に native exe が無いとき、既知の install 先 (``~/.local/bin``) を直接探す。
+
+        無ければ None。``self.exe`` がパス区切りを含む (= ユーザーが明示パスを指定) 場合は
+        尊重して探索しない。GUI が古い PATH を抱えたまま native claude へ移行した直後でも
+        この経路で claude を見つけられる (PATH 陳腐化に耐える)。
+        """
+        if any(sep and sep in self.exe for sep in (os.sep, os.altsep)):
+            return None  # 明示パス指定は尊重し探索しない
+        names = (self.exe + ".exe", self.exe) if sys.platform == "win32" else (self.exe,)
+        for d in _native_claude_dirs():
+            for name in names:
+                cand = d / name
+                if cand.is_file():
+                    return str(cand)
+        return None
+
     def _resolved_exe(self) -> str:
-        """Windows の CreateProcess は拡張子なし名に .exe しか自動付加しないため明示解決する。"""
+        """claude の絶対パスを解決する。Windows の CreateProcess は拡張子なし名に .exe しか
+        自動付加しないため明示解決し、PATH に無くても native install 先を直接探す
+        (GUI が古い PATH を抱えたまま native claude へ移行した直後でも起動できる)。"""
         found = shutil.which(self.exe)
         if found and found.lower().endswith(".exe"):
             return found
+        native = self._native_claude_path()
+        if native is not None:  # PATH 陳腐化時の保険
+            return native
         return self.exe
 
     def _exe_error(self) -> str:
-        """npm shim (.cmd/.bat/.ps1) しか無い環境を fail-closed で検出する。
+        """claude を安全に起動できない環境を fail-closed で検出し、原因を明示する。
 
-        shim を cmd.exe 経由で実行すると prompt (任意文字列) が shell 解釈される注入リスクが
-        あるため非対応とし、native claude.exe の導入を明示的に求める。
+        - npm shim (.cmd/.bat/.ps1) しか無い: shim を cmd.exe 経由で実行すると prompt
+          (任意文字列) が shell 解釈される注入リスクがあるため非対応 (native exe を求める)。
+        - claude が PATH にも native install 先にも無い: 原因不明の exit 127 (空テキストの
+          ``err=other``) でなく『見つからない』ことを明示し、GUI 再起動 / 導入を促す。
+        native exe を別所に見つけられる場合はエラーにしない (_resolved_exe がそれを使う)。
         """
         found = shutil.which(self.exe)
         if found is not None and found.lower().endswith((".cmd", ".bat", ".ps1")):
-            return t("runner.claude.npm_shim", path=found)
+            if self._native_claude_path() is None:  # shim のみ (native 不在) → 非対応
+                return t("runner.claude.npm_shim", path=found)
+        elif found is None and self._native_claude_path() is None:
+            return t("runner.claude.not_found")
         return ""
 
     def _build_args(self, *, prompt: str, session_id: str, resume: bool) -> list[str]:
