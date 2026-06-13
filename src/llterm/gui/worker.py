@@ -95,6 +95,7 @@ class LoopWorker(QtCore.QThread):
             on_event=lambda kind, data: self.event.emit(kind, data),
             should_stop=self._stop.is_set,
             next_prompt=self._next_prompt,
+            autonomy_fn=self._autonomy_value,  # 走行中の autonomy トグルを毎ターン反映
             **self._loop_kw,
         )
         outcome = loop.run()
