@@ -159,3 +159,141 @@ def test_runner_label() -> None:
     class CodexRunner:
         pass
     assert runner_label(CodexRunner()) == "codex"
+
+
+# ─── v2: パネル (複数レビュー奏者) / 真偽確認 / 責任者集約 / sign-off ──
+
+
+@dataclass
+class LabeledFakeRunner(FakeRunner):
+    """provider_label を返す偽 TurnRunner (independent 判定の検証用)。"""
+
+    label: str = "fake"
+
+    def provider_label(self) -> str:
+        return self.label
+
+
+def test_multiple_reviewers_run_independently(tmp_path: Path) -> None:
+    """(a) パネル各 reviewer が独立に走り session_id が -review0/-review1 になる。"""
+    c = FakeRunner([_tr("実装")])
+    r0 = FakeRunner([_tr("LGTM")])
+    r1 = FakeRunner([_tr("LGTM")])
+    orch = OrchestraRunner(conductor=c, reviewers=[r0, r1], lead=None, include_diff=False)
+    orch.run_turn(prompt="p", session_id="sid", resume=False, cwd=tmp_path)
+    assert r0.calls[0]["session_id"] == "sid-review0"
+    assert r1.calls[0]["session_id"] == "sid-review1"
+    assert r0.calls[0]["resume"] is False and r1.calls[0]["resume"] is False
+
+
+def test_lead_aggregates_panel_findings(tmp_path: Path) -> None:
+    """(b) 所見 2 件以上で lead 集約が呼ばれ、全パネル text を受け取る。(c) 集約指示で修正。"""
+    c = FakeRunner([_tr("実装"), _tr("修正した")])
+    r0 = FakeRunner([_tr("- bug A を直せ")])
+    r1 = FakeRunner([_tr("- bug B を直せ")])
+    lead = FakeRunner([_tr("1. bug A を直す\n2. bug B を直す")])
+    orch = OrchestraRunner(conductor=c, reviewers=[r0, r1], lead=lead, include_diff=False)
+    res = orch.run_turn(prompt="p", session_id="s", resume=False, cwd=tmp_path)
+    assert len(lead.calls) == 1                       # 集約 (+ sign-off は修正後に別途) → 後段で増える
+    agg_prompt = lead.calls[0]["prompt"]
+    assert "bug A" in agg_prompt and "bug B" in agg_prompt  # 全パネル所見が集約に渡る
+    # (c) 修正ターンは lead の集約指示を受け取り resume=True
+    assert c.calls[1]["resume"] is True
+    assert "bug A を直す" in c.calls[1]["prompt"] and "bug B を直す" in c.calls[1]["prompt"]
+    assert res.text == "修正した"
+
+
+def test_final_signoff_called_after_fix(tmp_path: Path) -> None:
+    """(d) 修正後に責任者が新 diff を 1 回だけ再レビューする (sign-off)。"""
+    c = FakeRunner([_tr("実装"), _tr("修正した")])
+    r0 = FakeRunner([_tr("- A")])
+    r1 = FakeRunner([_tr("- B")])
+    lead = FakeRunner([_tr("統合指示"), _tr("APPROVED")])  # 1=集約 / 2=sign-off
+    seen: list[dict] = []
+    orch = OrchestraRunner(conductor=c, reviewers=[r0, r1], lead=lead,
+                           include_diff=False, on_stream=seen.append)
+    orch.run_turn(prompt="p", session_id="s", resume=False, cwd=tmp_path)
+    assert len(lead.calls) == 2                       # 集約 + sign-off の 2 回 (再修正ループなし)
+    assert lead.calls[1]["session_id"] == "s-signoff"
+    assert lead.calls[1]["resume"] is False
+    signoff = next(e for e in seen if e.get("phase") == "signoff")
+    assert signoff["approved"] is True
+    assert signoff["lead"] == "fake" or isinstance(signoff["lead"], str)
+
+
+def test_signoff_skipped_without_fix(tmp_path: Path) -> None:
+    """sign-off は修正が行われたときだけ (LGTM で修正なし → sign-off も呼ばない)。"""
+    c = FakeRunner([_tr("実装")])
+    r0 = FakeRunner([_tr("LGTM")])
+    r1 = FakeRunner([_tr("LGTM")])
+    lead = FakeRunner([_tr("LGTM")])  # 集約 → LGTM → 修正なし → sign-off なし
+    orch = OrchestraRunner(conductor=c, reviewers=[r0, r1], lead=lead, include_diff=False)
+    orch.run_turn(prompt="p", session_id="s", resume=False, cwd=tmp_path)
+    assert len(c.calls) == 1            # 修正ターンなし
+    assert len(lead.calls) == 1         # 集約のみ (sign-off は呼ばれない)
+
+
+def test_factchecker_called_and_emitted(tmp_path: Path) -> None:
+    """(e) 真偽確認奏者が呼ばれ text が emit される。"""
+    c = FakeRunner([_tr("実装"), _tr("修正")])
+    r0 = FakeRunner([_tr("- 直せ")])
+    fc = FakeRunner([_tr("事実Xは誤り")])
+    lead = FakeRunner([_tr("統合指示"), _tr("APPROVED")])
+    seen: list[dict] = []
+    orch = OrchestraRunner(conductor=c, reviewers=[r0], factchecker=fc, lead=lead,
+                           include_diff=False, on_stream=seen.append)
+    orch.run_turn(prompt="p", session_id="s", resume=False, cwd=tmp_path)
+    assert len(fc.calls) == 1
+    assert fc.calls[0]["session_id"] == "s-factcheck"
+    fc_event = next(e for e in seen if e.get("phase") == "factcheck")
+    assert fc_event["text"] == "事実Xは誤り"
+    # factcheck 所見があるので所見 1 件でも lead 集約が走り、その所見を受け取る
+    assert "事実Xは誤り" in lead.calls[0]["prompt"]
+
+
+def test_independent_flag_same_provider_is_double_check(tmp_path: Path) -> None:
+    """(f) independent フラグ: 指揮者とレビュアーが同一プロバイダ → False (ダブルチェック)。"""
+    c = LabeledFakeRunner([_tr("実装")], label="claude")
+    r_same = LabeledFakeRunner([_tr("LGTM")], label="claude")    # 同系
+    r_diff = LabeledFakeRunner([_tr("LGTM")], label="codex")     # 別系統
+    seen: list[dict] = []
+    orch = OrchestraRunner(conductor=c, reviewers=[r_same, r_diff], lead=None,
+                           include_diff=False, on_stream=seen.append)
+    orch.run_turn(prompt="p", session_id="s", resume=False, cwd=tmp_path)
+    starts = [e for e in seen if e.get("phase") == "start"]
+    by_reviewer = {e["index"]: e["independent"] for e in starts}
+    assert by_reviewer[0] is False   # claude conductor × claude reviewer = ダブルチェック
+    assert by_reviewer[1] is True    # claude conductor × codex reviewer = 独立
+
+
+def test_cancel_propagates_to_all_roles(tmp_path: Path) -> None:
+    """(g) cancel が指揮者・全レビュー奏者・真偽確認・責任者へ伝播する。"""
+    c = FakeRunner([_tr("実装")])
+    r0 = FakeRunner([_tr("LGTM")])
+    r1 = FakeRunner([_tr("LGTM")])
+    fc = FakeRunner([_tr("ok")])
+    lead = FakeRunner([_tr("LGTM")])
+    orch = OrchestraRunner(conductor=c, reviewers=[r0, r1], factchecker=fc, lead=lead,
+                           include_diff=False)
+    orch.cancel()
+    res = orch.run_turn(prompt="p", session_id="s", resume=False, cwd=tmp_path)
+    assert res.error_kind == "cancelled"
+    assert all(x.cancelled for x in (c, r0, r1, fc, lead))
+
+
+def test_single_reviewer_no_lead_skips_aggregate(tmp_path: Path) -> None:
+    """効率: 単一所見 + lead 無し は集約呼び出しを省略し、その所見を指示にする。"""
+    c = FakeRunner([_tr("実装"), _tr("修正")])
+    r0 = FakeRunner([_tr("- 直せ")])
+    orch = OrchestraRunner(conductor=c, reviewers=[r0], lead=None, include_diff=False)
+    orch.run_turn(prompt="p", session_id="s", resume=False, cwd=tmp_path)
+    assert "直せ" in c.calls[1]["prompt"]   # 単一レビューが総合判断 = そのまま修正指示
+
+
+def test_reviewers_list_uses_indexed_session_ids(tmp_path: Path) -> None:
+    """reviewers リスト経由 (新 API) は単一でも -review0 (旧 reviewer= は -review 無印)。"""
+    c = FakeRunner([_tr("実装")])
+    r0 = FakeRunner([_tr("LGTM")])
+    orch = OrchestraRunner(conductor=c, reviewers=[r0], lead=None, include_diff=False)
+    orch.run_turn(prompt="p", session_id="abc", resume=False, cwd=tmp_path)
+    assert r0.calls[0]["session_id"] == "abc-review0"
