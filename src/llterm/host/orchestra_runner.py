@@ -366,17 +366,43 @@ class OrchestraRunner:
             return panel[0][1]
         return "\n\n".join(f"[{label}]\n{text.strip()}" for label, text in panel)
 
-    def cancel(self) -> None:
-        """指揮者 + 全レビュー奏者 + 真偽確認 + 責任者を止める (sticky)。"""
-        with self._lock:
-            self._cancelled = True
+    def _members(self) -> list[object]:
+        """指揮者 + 全レビュー奏者 + 真偽確認 + 責任者 (重複は除く)。"""
         targets: list[object] = [self.conductor, *self.reviewers]
         if self.factchecker is not None:
             targets.append(self.factchecker)
         if self.lead is not None:
             targets.append(self.lead)
+        seen: set[int] = set()
+        uniq: list[object] = []
         for r in targets:
+            if id(r) not in seen:
+                seen.add(id(r))
+                uniq.append(r)
+        return uniq
+
+    def cancel(self) -> None:
+        """指揮者 + 全レビュー奏者 + 真偽確認 + 責任者を止める (sticky)。"""
+        with self._lock:
+            self._cancelled = True
+        for r in self._members():
             try:
                 r.cancel()  # type: ignore[attr-defined]
             except Exception:  # noqa: BLE001
                 pass
+
+    def interrupt(self) -> None:
+        """現在実行中のサブターン (指揮者/レビュー/真偽確認/責任者) を一発中断する (恒久 cancel ではない)。
+
+        緊急注入用。実行中でないメンバへの interrupt は no-op (proc 無し)。run_turn は
+        指揮者フェーズなら "interrupted" を伝播し、レビュー中なら集約前に "interrupted" を返す。
+        """
+        with self._lock:
+            self._interrupted = True
+        for r in self._members():
+            fn = getattr(r, "interrupt", None)
+            if callable(fn):
+                try:
+                    fn()
+                except Exception:  # noqa: BLE001
+                    pass
