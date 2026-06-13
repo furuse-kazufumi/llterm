@@ -628,6 +628,14 @@ MESSAGES: dict[str, dict[str, str]] = {
         "ja": "  (loop 未起動: Start 後に反映されます)",
         "en": "  (loop not running: applied after Start)",
     },
+    "gui.msg.emergency_accepted": {
+        "ja": ">> [緊急注入] 現ターンを中断して最優先実行: {text}",
+        "en": ">> [emergency inject] interrupting current turn, top priority: {text}",
+    },
+    "gui.msg.emergency_pending": {
+        "ja": "  (loop 未起動: 緊急注入は走行中のみ。Start 後に通常注入として反映されます)",
+        "en": "  (loop not running: emergency inject needs a running loop; queued as normal inject)",
+    },
     "gui.msg.promote_need_domain": {
         "ja": "error: 公開する分野名を引数欄に入れてください",
         "en": "error: enter the domain name to publish in the argument field",
