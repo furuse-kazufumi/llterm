@@ -41,19 +41,36 @@ def _gh_available() -> bool:
     return shutil.which("gh") is not None
 
 
-# 既知のオフロード先 (検出順 = ヒント記載順)。research で追加が出たら拡張する。
+def _oci_available() -> bool:
+    """OCI CLI が入っていて設定済み (~/.oci/config or OCI_CLI_* env)。Oracle Cloud Always Free。"""
+    if shutil.which("oci") is None:
+        return False
+    if os.environ.get("OCI_CLI_USER") or os.environ.get("OCI_CLI_KEY_FILE"):
+        return True
+    return (Path.home() / ".oci" / "config").is_file()
+
+
+# 既知のオフロード先 (検出順 = ヒント記載順)。research(2026-06-13) の Tier1 を反映。
 OFFLOAD_TOOLS: tuple[OffloadTool, ...] = (
     OffloadTool(
         "kaggle", _kaggle_available,
-        "kaggle: 無料GPU(T4/P100)/TPU ノートブック。`kaggle kernels push` でジョブ投入 → "
-        "`kaggle kernels status <owner/slug>` でポーリング → `kaggle kernels output <owner/slug> "
-        "-p <dir>` で結果取得。GPU 学習・ベンチ・重い数値計算向き。",
+        "kaggle: 無料GPU(P100/T4×2, 約30h/週)/TPU ノートブック。`kaggle kernels push -p <dir>` で "
+        "ジョブ投入 → `kaggle kernels status <owner/slug>` でポーリング → "
+        "`kaggle kernels output <owner/slug> -p <dir>` で結果取得。kernel-metadata.json に "
+        "enable_gpu/enable_internet=true を忘れない。GPU 学習・ベンチ・重い数値計算向き。",
     ),
     OffloadTool(
         "gh", _gh_available,
-        "gh: GitHub Actions の無料CI を計算資源に。`gh workflow run <wf>` で投入 → "
-        "`gh run watch` で監視 → `gh run download` で成果物取得。長時間バッチ・テスト・"
-        "スクレイピング向き (self-hosted 不要の範囲)。",
+        "gh: GitHub Actions(public repo は分数無制限・無料) を計算資源に。`gh workflow run <wf> "
+        "-f k=v` で投入 → `gh run watch <id>` で監視 → `gh run download <id>` で成果物取得。"
+        "長時間バッチ/テスト/スクレイピング/cron 向き(private は 2,000 分/月で課金注意)。"
+        "中時間の対話環境が要れば `gh codespace create`(120 core-h/月) も可。",
+    ),
+    OffloadTool(
+        "oci", _oci_available,
+        "oci: Oracle Cloud Always Free の常時無料 VM(ARM 4 OCPU/24GB)。"
+        "`oci compute instance launch ...` で起動 → SSH で常駐ジョブ/自前ランナー/CPU 重処理。"
+        "GPU は無いので GPU は kaggle へ。常駐サーバ・長時間 CPU バッチ向き。",
     ),
 )
 
