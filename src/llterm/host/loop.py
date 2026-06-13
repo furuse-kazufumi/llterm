@@ -525,9 +525,26 @@ class ClaudeRunner:
             return t("runner.claude.not_found")
         return ""
 
+    @staticmethod
+    def _cli_session_id(session_id: str) -> str:
+        """claude --session-id / --resume は厳格な UUID を要求する。
+
+        OrchestraRunner が渡す派生 id ('<uuid>-review0' / '-aggregate' / '-signoff' /
+        '-factcheck' 等) は UUID として不正なため、claude が即 exit 1 で拒否し空テキストの
+        ``err=other`` になる (= レビュー奏者 / 責任者 / sign-off が常に失敗する原因)。
+        UUID でない id は決定論的に UUID へ写像して回避する (同じ入力 → 同じ UUID なので
+        新規作成 ``--session-id`` と継続 ``--resume`` が整合する)。
+        """
+        try:
+            uuid.UUID(str(session_id))
+            return str(session_id)
+        except (ValueError, TypeError, AttributeError):
+            return str(uuid.uuid5(uuid.NAMESPACE_URL, str(session_id)))
+
     def _build_args(self, *, prompt: str, session_id: str, resume: bool) -> list[str]:
         """claude の引数列を組む (テストはここを差し替えて偽の子プロセスを注入する)。"""
-        session_flag = ["--resume", session_id] if resume else ["--session-id", session_id]
+        sid = self._cli_session_id(session_id)
+        session_flag = ["--resume", sid] if resume else ["--session-id", sid]
         args = [self._resolved_exe(), "-p", prompt,
                 "--output-format", "stream-json", "--verbose", *session_flag]
         if self.skip_permissions:
