@@ -929,13 +929,7 @@ class MainWindow(QtWidgets.QMainWindow):
         rev = bool(item.get("review"))  # レビュー奏者由来 (分業オーケストラ)
         prefix = "  ⤷ " if sub else ("  📝 " if rev else "")
         if kind == "review":
-            who = str(item.get("reviewer") or "reviewer")
-            if item.get("phase") == "start":
-                self._append(t("gui.stream.review_start", reviewer=who), PALETTE["rotate"], bold=True)
-            elif item.get("is_error"):
-                self._append(t("gui.stream.review_failed", reviewer=who), PALETTE["err"])
-            else:
-                self._append(t("gui.stream.review_end", reviewer=who), PALETTE["rotate"])
+            self._render_review_event(item)
             return
         if kind == "init":
             model = str(item.get("model") or "?")
