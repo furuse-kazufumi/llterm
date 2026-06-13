@@ -72,12 +72,17 @@ class OrchestraRunner:
     on_stream: Callable[[dict], None] | None = None
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
     _cancelled: bool = field(default=False, repr=False, compare=False)
+    # 旧 API (`reviewer=` 単一・`reviewers` 未指定) で構築されたか。True のとき派生 session_id を
+    # `-review` (無印) にして既存テスト/呼び出しと後方互換を保つ (複数パネルは `-review{i}`)。
+    _legacy_single: bool = field(default=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
-        # 後方互換: 旧 `reviewer=` (単一) を受けたら reviewers パネルへ畳む。両方指定された場合は
-        # 単一 reviewer を先頭に積む (旧呼び出し優先の自然な順序)。
-        if self.reviewer is not None and self.reviewer not in self.reviewers:
-            self.reviewers = [self.reviewer, *self.reviewers]
+        # 後方互換: 旧 `reviewer=` (単一) を受けたら reviewers パネルへ畳む。`reviewers` を明示
+        # 指定していない単一 reviewer 構築は legacy single 扱いにし、session_id を無印にする。
+        if self.reviewer is not None:
+            self._legacy_single = not self.reviewers  # reviewers 未指定 = 旧 API 経路
+            if self.reviewer not in self.reviewers:
+                self.reviewers = [self.reviewer, *self.reviewers]
 
     # ─── prompts (各役への内部指示文) ───────────────────────────────
     def _review_prompt(self, work: str, diff: str) -> str:
