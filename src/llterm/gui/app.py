@@ -79,6 +79,32 @@ def _coerce_number(value: object, cast: type) -> int | float | None:
         return None
 
 
+# レビュー奏者パネルの候補 (key, 表示ラベル)。"claude" = 責任者と同系のダブルチェックも許容。
+REVIEWER_CHOICES: tuple[tuple[str, str], ...] = (
+    ("claude", "Claude"), ("codex", "Codex"), ("gemini", "Gemini CLI"),
+    ("gemini-api", "Gemini API"), ("groq", "Groq"), ("cerebras", "Cerebras"),
+    ("openrouter", "OpenRouter"), ("ollama", "Ollama"),
+)
+_REVIEWER_KEYS = {key for key, _ in REVIEWER_CHOICES}
+
+
+def _coerce_reviewers(reviewers: object, legacy_reviewer: object) -> list[str]:
+    """保存値からレビュー奏者パネルの選択 key リストを復元する (fail-safe + migrate)。
+
+    優先: 新形式 "reviewers" (list) → 旧単一 "reviewer" (str) を [値] へ migrate → 既定 ["claude"]。
+    未知の key は黙って捨てる (手編集/将来削除に耐える)。空に畳まれたら既定 ["claude"]。
+    """
+    keys: list[str] = []
+    if isinstance(reviewers, (list, tuple)):
+        for k in reviewers:
+            if isinstance(k, str) and k in _REVIEWER_KEYS and k not in keys:
+                keys.append(k)
+        return keys or ["claude"]
+    if isinstance(legacy_reviewer, str) and legacy_reviewer:
+        return [legacy_reviewer] if legacy_reviewer in _REVIEWER_KEYS else ["claude"]
+    return ["claude"]
+
+
 def discover_projects(root: Path) -> list[tuple[str, Path]]:
     """projects root 直下の「プロジェクトらしい」ディレクトリを (名前, パス) で列挙する。"""
     found: list[tuple[str, Path]] = []
