@@ -31,13 +31,26 @@
 - **注入で自動 OFF(監督モード)** / **確認回答後に自動 ON(ループ復帰)**。注入はキュー積み。
 - **安全弁(常時・autonomy 不問)**: 不可逆/危険操作は ①next_plan.md 更新 → ②`⟦LLTERM_CHOICE⟧` で承認 → ③回答後に決定要約を next_plan.md へ追記、を必須化。
 
+### GUI 進捗サマリの QTabWidget 化 + 記録時刻の正規化 (2026-06-13 16:02、本セッション)
+- **タブ化**: 進捗サマリを **「実行中」(選択/実行中 project の SESSION_SUMMARY)** と
+  **「共通」(全 project の next_plan.md 集約・記録時刻の新しい順)** の 2 タブに分割
+  (`gui/app.py` `summary_tabs` / `common_view` / `_refresh_common_summary`)。
+  ※前回は「次セッション送り」で UI 未着手だったため表示が変わって見えなかった分を実装。
+- **記録時刻を並び順の正に**: `progress.py` `parse_updated_at()` が本文の
+  `最終更新: YYYY-MM-DD HH:MM` を解析し、`collect_progress` がそれを並び順の正に採用
+  (内容ベース = git/auto-commit で mtime が動いても正しい)。時刻が無ければ mtime
+  フォールバックし共通インデックスに `(ファイル時刻)` と明示。**全 408 テスト pass / ruff・mypy クリーン**。
+
 ## 次の一手 (優先順)
 
-1. **【人間】`llterm` を再起動**して新機能を実機確認(承認確認不要トグルがメイン画面に出る / 注入→監督→回答→復帰の流れ / 安全弁)。
-2. **【人間・任意】`pip install -e .` 再実行**で `llterm-progress` を `.exe` コマンド登録(`py -3.11 -m llterm.progress` なら即利用可)。
-3. **【Claude・次セッション】GUI 進捗サマリの QTabWidget 化**(「共通(_shared/PROGRESS.md)」+ project 別タブ、各タブ next_plan.md を digest 表示)。
+1. **【人間】`llterm` を再起動**して新機能を実機確認(進捗サマリが「実行中 / 共通」2 タブになる /
+   承認確認不要トグル / 注入→監督→回答→復帰 / 安全弁)。
+2. **【Claude・調査中】タスク注入の受付→回答までの遅延**(ユーザー指摘 2026-06-13)。注入が
+   現ターン完了後にしか反映されない設計か、別要因(claude resume の起動コスト/レート待ち)か切り分ける。
+3. **【人間・任意】`pip install -e .` 再実行**で `llterm-progress` を `.exe` コマンド登録(`py -3.11 -m llterm.progress` なら即利用可)。
 4. **【Claude】共通サマリの自動更新トリガ配線**(loop rotate 後に `write_common_summary` / または Windows スケジュールタスクで `llterm-progress`)。
-5. **【Claude】exit-prep プロンプトの標準フォーマット化**(next_plan.md を `## 現在地/直近の成果/次の一手/環境メモ` で更新)+ 他 project の next_plan.md 整備。
+5. **【Claude・任意】共通タブを project 別サブタブ化**(現状は共通タブ 1 枚に全 project を時刻順で収録。1 project=1 タブが必要なら拡張)。
+6. **【Claude】exit-prep プロンプトの標準フォーマット化**(next_plan.md を `## 現在地/直近の成果/次の一手/環境メモ` で更新)+ 他 project の next_plan.md 整備。
 
 ## 環境メモ
 
