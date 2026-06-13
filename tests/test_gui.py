@@ -924,6 +924,7 @@ def test_gemini_fallback_added_when_installed(
     monkeypatch.setattr("llterm.gui.app.shutil.which",
                         lambda name: "C:/gemini.cmd" if name == "gemini" else None)
     win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    win.chk_codex_first.setChecked(False)  # which() を gemini のみに固定したので codex は未導入扱い
     win.chk_real.setChecked(True)
     win.chk_gemini_fallback.setChecked(True)
     primary, fallbacks = _provider_names(win)
