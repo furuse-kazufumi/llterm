@@ -16,6 +16,7 @@ dev = ["pytest>=8"]
 llterm-loop = "llterm.host.loop:main"
 llterm-rad = "llterm.rad:main"
 llterm-debug = "llterm.gui.app:main"
+llterm-progress = "llterm.progress:main"  # 全プロジェクト集約の共通進捗サマリーを生成 (自動更新スクリプト)
 
 # GUI 本流: gui-scripts はコンソール無し (pythonw) の exe を生成する
 [project.gui-scripts]
