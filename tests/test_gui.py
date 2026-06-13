@@ -732,8 +732,9 @@ def _provider_names(win) -> tuple[str, list[str]]:
 
 
 def test_default_chain_is_claude_primary(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
-    """既定 (general テンプレ・トグル OFF) は従来どおり Claude 主・fallback なし。"""
+    """既定 (general テンプレ・Codex優先 OFF) は指揮者=Claude 主・fallback なし。"""
     win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    win.chk_codex_first.setChecked(False)  # codex 可用環境でも決定的に
     win.chk_real.setChecked(True)
     primary, fallbacks = _provider_names(win)
     assert primary == "ClaudeRunner"
