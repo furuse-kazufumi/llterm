@@ -326,9 +326,15 @@ class OrchestraRunner:
 
     @staticmethod
     def _fallback_instructions(panel: list[tuple[str, str]]) -> str:
-        """集約しない/集約失敗時の指示 = パネル所見をラベル付きで連結 (空なら空文字)。"""
+        """集約しない/集約失敗時の指示 (空なら空文字)。
+
+        単一所見はその本文をそのまま指示にする (= その単一レビューが総合判断。'LGTM'/空の
+        スキップ判定を従来どおり効かせるためラベルで包まない)。複数はラベル付きで連結する。
+        """
         if not panel:
             return ""
+        if len(panel) == 1:
+            return panel[0][1]
         return "\n\n".join(f"[{label}]\n{text.strip()}" for label, text in panel)
 
     def cancel(self) -> None:
