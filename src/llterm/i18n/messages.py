@@ -672,16 +672,48 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "  ↳ error: {preview}",
     },
     "gui.stream.review_start": {
-        "ja": "── 📝 レビュー奏者 ({reviewer}) が批評中 ──",
-        "en": "── 📝 reviewer ({reviewer}) is critiquing ──",
+        "ja": "── 📝 レビュー奏者 ({reviewer}{kind}) が批評中 ──",
+        "en": "── 📝 reviewer ({reviewer}{kind}) is critiquing ──",
     },
     "gui.stream.review_end": {
-        "ja": "── 📝 レビュー完了 ({reviewer}) → 指揮者が反映 ──",
-        "en": "── 📝 review done ({reviewer}) → conductor applies ──",
+        "ja": "── 📝 レビュー完了 ({reviewer}) ──",
+        "en": "── 📝 review done ({reviewer}) ──",
     },
     "gui.stream.review_failed": {
         "ja": "── 📝 レビュー奏者 ({reviewer}) 失敗 — スキップして続行 ──",
         "en": "── 📝 reviewer ({reviewer}) failed — skipped, continuing ──",
+    },
+    "gui.stream.review_independent": {
+        "ja": "・独立",
+        "en": ", independent",
+    },
+    "gui.stream.review_doublecheck": {
+        "ja": "・ダブルチェック(同系)",
+        "en": ", double-check (same family)",
+    },
+    "gui.stream.review_factcheck": {
+        "ja": "── 🔎 真偽確認奏者 ({checker}) が裏取り ──",
+        "en": "── 🔎 fact-check player ({checker}) verifying ──",
+    },
+    "gui.stream.review_factcheck_failed": {
+        "ja": "── 🔎 真偽確認奏者 ({checker}) 失敗 — スキップして続行 ──",
+        "en": "── 🔎 fact-check player ({checker}) failed — skipped, continuing ──",
+    },
+    "gui.stream.review_aggregate": {
+        "ja": "── 🧑‍⚖️ Claude(責任者)がレビューを取りまとめ・総合判断 ──",
+        "en": "── 🧑‍⚖️ Claude (lead) aggregating reviews and judging ──",
+    },
+    "gui.stream.review_signoff": {
+        "ja": "── ✅ Claude(責任者)が最終確認 ──",
+        "en": "── ✅ Claude (lead) final sign-off ──",
+    },
+    "gui.stream.review_signoff_approved": {
+        "ja": "── ✅ 最終確認: 承認 (ループを閉じる) ──",
+        "en": "── ✅ Sign-off: approved (loop closed) ──",
+    },
+    "gui.stream.review_signoff_changes": {
+        "ja": "── ⚠️ 最終確認: 残課題あり (記録のみ・再修正はしない) ──",
+        "en": "── ⚠️ Sign-off: changes remain (recorded only; no re-fix) ──",
     },
     "gui.stream.rate_limit": {
         "ja": "⚠ レート制限: {status}{when}",
