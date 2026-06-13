@@ -189,6 +189,26 @@ MESSAGES: dict[str, dict[str, str]] = {
         "ja": "Codex 優先",
         "en": "Codex first",
     },
+    "gui.check.gemini": {
+        "ja": "Gemini 切替",
+        "en": "Gemini fallback",
+    },
+    "gui.tip.gemini": {
+        "ja": "ON: Gemini CLI を agentic フォールバック奏者に追加 (Codex 同様ファイル編集/シェル可)。"
+              "Claude/Codex がレート制限のとき Gemini が作業を継続。Google 個人アカウント無料枠 or "
+              "GEMINI_API_KEY で動く。未インストール (npm i -g @google/gemini-cli) なら自動で外す。"
+              "実 claude のみ有効。",
+        "en": "ON: adds Gemini CLI as an agentic backup player (edits files / runs shell like Codex). "
+              "Continues work when Claude/Codex are rate-limited. Runs on a personal Google free tier "
+              "or GEMINI_API_KEY. Auto-dropped if not installed (npm i -g @google/gemini-cli). "
+              "Real claude only.",
+    },
+    "gui.msg.gemini_not_installed": {
+        "ja": "Gemini fallback は gemini 未インストールのため chain から除外しました "
+              "(npm i -g @google/gemini-cli で導入すると参加します)",
+        "en": "Gemini fallback was excluded because gemini is not installed "
+              "(install with npm i -g @google/gemini-cli to enroll it)",
+    },
     "gui.tip.codex_first": {
         "ja": "ON: 作業の主役を Codex (ChatGPT Pro サブスク=Claude トークン非消費) にし、"
               "Claude は保険 (Codex がレート制限のとき継続) に回す = token 節約。"
