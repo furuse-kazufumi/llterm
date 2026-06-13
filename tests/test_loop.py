@@ -876,7 +876,8 @@ def test_injected_task_marked_in_event(tmp_path: Path) -> None:
     tasks = [d for k, d in seen if k == "task"]
     injected_tasks = [d for d in tasks if d["injected"]]
     assert len(injected_tasks) == 1
-    assert injected_tasks[0]["prompt"] == "割り込みタスク X"
+    # 注入タスクが本体 (末尾に安全弁/監督などの指令が付く)
+    assert injected_tasks[0]["prompt"].startswith("割り込みタスク X")
 
 
 def test_on_event_failure_does_not_kill_loop(tmp_path: Path) -> None:
