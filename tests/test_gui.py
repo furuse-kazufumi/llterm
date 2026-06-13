@@ -712,8 +712,9 @@ def test_model_empty_selects_claude_default(
     sp = tmp_path / "s.json"
     win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=sp, model_default="")
     assert win.cmb_model.currentData() == ""
+    win.chk_codex_first.setChecked(False)
     win.chk_real.setChecked(True)
-    runner = win._build_runner()
+    runner = _conductor(win)
     assert runner.model == ""
 
 
