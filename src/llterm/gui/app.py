@@ -542,7 +542,6 @@ class MainWindow(QtWidgets.QMainWindow):
         form.addRow(self.chk_real)
         form.addRow(self.chk_rad)
         form.addRow(self.chk_offload)
-        form.addRow(self.chk_autonomy)
         form.addRow(self.chk_codex_first)
         # 数値設定。
         form.addRow(t("gui.label.threshold"), self.spin_threshold)
