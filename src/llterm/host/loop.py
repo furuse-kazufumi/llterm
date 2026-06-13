@@ -81,10 +81,26 @@ _AUTH_SIGNALS: tuple[str, ...] = (
     "oauth token has expired",
 )
 
+# ユーザーに選択させたいときの規約マーカー指示 (agent=claude への hint)。
+# llterm は claude を headless でターン駆動するため、ターン中の対話的選択ができない。
+# 自由な番号列挙を手打ちさせるのは曖昧なので、選択を求めるときはこの専用マーカーで出させ、
+# llterm が決定論的に検知して GUI の選択ダイアログへ橋渡しする (回答は次ターンへ注入)。
+# 検知側は llterm.host.choice (行頭限定・コードフェンス/diff 内は無視)。
+CHOICE_MARKER_HINT = (
+    "【選択 UI】ユーザーに選択肢から選ばせたいときは、自由な番号列挙ではなく次の専用マーカーで"
+    "出力せよ (llterm が GUI ダイアログを出し、ユーザーの選択を次ターンに注入する):\n"
+    "⟦LLTERM_CHOICE multi=false question=\"質問文\"⟧\n"
+    "1) 選択肢A\n2) 選択肢B\n3) 選択肢C\n"
+    "⟦/LLTERM_CHOICE⟧\n"
+    "複数選択可なら multi=true。マーカーは必ず行頭に置く (コードフェンス内は無効)。"
+    "選択を待つときはこのマーカーを出して応答を終え、ユーザーの選択 (次ターンで注入される) を待て。"
+)
+
 DEFAULT_RESUME_PROMPT = (
     "セッション再開。CLAUDE.md の SESSION START 手順に従い、docs/SESSION_SUMMARY.md と "
     "next_plan を読んで最優先タスクを自律継続せよ。確認は求めない。"
-    "制約: push / 削除 / 不可逆操作は人間承認なしに行わない (fail-closed)。"
+    "制約: push / 削除 / 不可逆操作は人間承認なしに行わない (fail-closed)。\n"
+    + CHOICE_MARKER_HINT
 )
 DEFAULT_EXIT_PREP_PROMPT = (
     "コンテキスト上限が近い。今は新規作業を始めず EXIT準備のみ行え: "
