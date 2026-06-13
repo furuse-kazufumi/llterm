@@ -972,6 +972,41 @@ class MainWindow(QtWidgets.QMainWindow):
                              PALETTE["err"], bold=True, ts=True)
         # kind == "result" はターン完了メトリクス (turn イベント側が正) — ここでは描画しない
 
+    def _render_review_event(self, item: dict) -> None:
+        """分業オーケストラの review イベント (パネル/真偽確認/集約/sign-off) を描画する。
+
+        独立 (別系統) / ダブルチェック (同系) を見出しに付記し、責任者の取りまとめ・最終確認も
+        専用見出しで可視化する (『レビューやりっぱなし』を画面でも追えるように)。
+        """
+        phase = item.get("phase")
+        if phase == "factcheck":
+            checker = str(item.get("checker") or "factcheck")
+            if item.get("is_error"):
+                self._append(t("gui.stream.review_factcheck_failed", checker=checker), PALETTE["err"])
+            else:
+                self._append(t("gui.stream.review_factcheck", checker=checker), PALETTE["rotate"])
+            return
+        if phase == "aggregate":
+            self._append(t("gui.stream.review_aggregate"), PALETTE["rotate"], bold=True)
+            return
+        if phase == "signoff":
+            self._append(t("gui.stream.review_signoff"), PALETTE["rotate"], bold=True)
+            outcome = (t("gui.stream.review_signoff_approved") if item.get("approved")
+                       else t("gui.stream.review_signoff_changes"))
+            self._append(outcome, PALETTE["inject"] if item.get("approved") else PALETTE["err"])
+            return
+        # 既定: パネルのレビュー奏者 (start / end / failed)
+        who = str(item.get("reviewer") or "reviewer")
+        if phase == "start":
+            tag = (t("gui.stream.review_independent") if item.get("independent")
+                   else t("gui.stream.review_doublecheck")) if "independent" in item else ""
+            self._append(t("gui.stream.review_start", reviewer=who, kind=tag),
+                         PALETTE["rotate"], bold=True)
+        elif item.get("is_error"):
+            self._append(t("gui.stream.review_failed", reviewer=who), PALETTE["err"])
+        else:
+            self._append(t("gui.stream.review_end", reviewer=who), PALETTE["rotate"])
+
     def _session_label(self, index: object, turn: object = None) -> str:
         """session N/max  turn T 形式のステータス文字列を組む。max 未確定時は '-'。"""
         total = f"/{self._max_sessions}" if self._max_sessions else ""
