@@ -165,6 +165,19 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "Greps the RAD corpus (D:/docs/*_corpus_v2) before new work to "
               "ground it in prior research",
     },
+    "gui.check.offload": {
+        "ja": "オフロード",
+        "en": "Offload",
+    },
+    "gui.tip.offload": {
+        "ja": "ON (既定): 利用可能な無料計算サービス (kaggle=GPU / gh=GitHub Actions / oci 等) を"
+              "自動検出し、『重い計算は自律的にそこへ投げてよい』という指令をエージェントに注入する。"
+              "細かく指示しなくても、必要ならエージェントが自分でオフロード先を使う。実 claude のみ有効。",
+        "en": "ON (default): auto-detects available free compute services (kaggle=GPU / gh=GitHub "
+              "Actions / oci, etc.) and injects a directive telling the agent it may autonomously "
+              "offload heavy compute to them — so it offloads when needed without detailed "
+              "instructions. Real claude only.",
+    },
     "gui.check.autonomy": {
         "ja": "承認確認不要(完全自律)",
         "en": "No approval prompts (fully autonomous)",
