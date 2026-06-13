@@ -154,6 +154,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self._stopping = False  # graceful 停止要求中 (2 回目 Stop で force kill)
         self._busy_cursor = False  # 砂時計カーソル表示中か (set/restore のバランス管理)
         self._closing_after_stop = False  # × 終了確認で graceful 停止 → 完了後に閉じる予約
+        # 選択ダイアログのファクトリ (テストはスタブを差し込む。既定 = 実 ChoiceDialog)。
+        self._choice_dialog_factory: Callable[[object], object] | None = None
+        self._choice_active = False  # ダイアログ表示中の再入防止 (連続検知で多重に出さない)
 
         # 前回設定の復元: CLI 明示指定 > 保存値 > 組込み既定
         saved = gui_settings.load_settings(self.settings_path)
