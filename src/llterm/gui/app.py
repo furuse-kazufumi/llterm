@@ -141,6 +141,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.rad_docs_root = Path(rad_docs_root)
         self.runner_factory_override = runner_factory  # tests/仮想を強制注入する穴
         self.settings_path = Path(settings_path) if settings_path else DEFAULT_SETTINGS_PATH
+        # ターミナル表示のローテーションログ (1 時間単位・1 週間保持・行単位 append・fail-safe)。
+        # 全 _append より前に生成する (settings と同じ ~/.llterm/ 配下 logs/)。
+        self._termlog = TerminalLog(self.settings_path.parent / "logs")
         self._effort_cli = effort_default  # CLI 明示指定 (None = 未指定 → 保存値/既定に委ねる)
         self._model_cli = model_default  # CLI 明示指定 (None = 未指定 → 保存値/既定に委ねる)
         self.loop_kw = dict(loop_kw)
