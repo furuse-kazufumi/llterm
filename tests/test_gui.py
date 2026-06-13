@@ -1493,8 +1493,9 @@ def test_settings_widgets_live_in_dialog(
 ) -> None:
     """設定系ウィジェットは Settings ダイアログ配下に置かれる (メイン窓の最小化)。"""
     win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    # chk_summary_raw は進捗サマリ パネル (メイン窓) 側なので除外。
     for w in (win.chk_real, win.chk_rad, win.cmb_effort, win.cmb_model,
-              win.cmb_template, win.edit_param, win.cmb_factcheck, win.chk_summary_raw):
+              win.cmb_template, win.edit_param, win.cmb_factcheck):
         assert w.window() is win.settings_dialog
 
 
