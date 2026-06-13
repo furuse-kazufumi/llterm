@@ -298,7 +298,8 @@ class MainWindow(QtWidgets.QMainWindow):
         set_row.addWidget(QtWidgets.QLabel(t("gui.label.reviewer")))
         self.cmb_reviewer = QtWidgets.QComboBox()
         self.cmb_reviewer.addItem(t("gui.reviewer.none"), "")
-        for _key, _label in (("codex", "Codex"), ("gemini", "Gemini"), ("groq", "Groq"),
+        for _key, _label in (("codex", "Codex"), ("gemini", "Gemini CLI"),
+                             ("gemini-api", "Gemini API"), ("groq", "Groq"),
                              ("cerebras", "Cerebras"), ("openrouter", "OpenRouter"),
                              ("ollama", "Ollama")):
             self.cmb_reviewer.addItem(_label, _key)
