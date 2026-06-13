@@ -539,8 +539,12 @@ class MainWindow(QtWidgets.QMainWindow):
         """このランで Codex を主役にするか (token 節約ルーティング)。
 
         「Codex 優先」トグル ON、または選択テンプレが ``prefer=="codex"`` (機械的タスク) の
-        とき True。実 claude モードでのみ意味を持つ。
+        とき True。ただし **codex が未導入なら常に False** (可用性ガード): Codex 主にしても
+        毎ターン not_found で空転するため、未導入時は Claude 主に倒す (chain backbone 維持)。
+        実 claude モードでのみ意味を持つ。
         """
+        if shutil.which("codex") is None:
+            return False  # codex 不可用 → Codex 主を選べない (codex_first ON でも Claude 主)
         if self.chk_codex_first.isChecked():
             return True
         return templates.get(self.cmb_template.currentData()).prefer == "codex"
