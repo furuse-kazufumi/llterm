@@ -191,10 +191,11 @@ def test_lead_aggregates_panel_findings(tmp_path: Path) -> None:
     c = FakeRunner([_tr("実装"), _tr("修正した")])
     r0 = FakeRunner([_tr("- bug A を直せ")])
     r1 = FakeRunner([_tr("- bug B を直せ")])
-    lead = FakeRunner([_tr("1. bug A を直す\n2. bug B を直す")])
+    lead = FakeRunner([_tr("1. bug A を直す\n2. bug B を直す"), _tr("APPROVED")])
     orch = OrchestraRunner(conductor=c, reviewers=[r0, r1], lead=lead, include_diff=False)
     res = orch.run_turn(prompt="p", session_id="s", resume=False, cwd=tmp_path)
-    assert len(lead.calls) == 1                       # 集約 (+ sign-off は修正後に別途) → 後段で増える
+    # lead は集約 (calls[0]) + 修正後 sign-off (calls[1]) の 2 回
+    assert lead.calls[0]["session_id"] == "s-aggregate"
     agg_prompt = lead.calls[0]["prompt"]
     assert "bug A" in agg_prompt and "bug B" in agg_prompt  # 全パネル所見が集約に渡る
     # (c) 修正ターンは lead の集約指示を受け取り resume=True
