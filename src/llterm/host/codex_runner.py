@@ -173,12 +173,20 @@ class CodexRunner:
         argv に渡した複数行プロンプトは cmd.exe が**最初の改行で途中切断**する (指示文が途切れる)。
         ``codex exec [-]`` / ``codex exec resume <id> [-]`` は "-" 指定で stdin からプロンプトを
         読むので、改行・特殊文字をそのまま安全に渡せ、shell 注入面も同時に消える。
+
+        重要 (実機バグ・circuit_open の主因): ``codex exec resume`` サブコマンドは ``codex exec`` と
+        オプション集合が異なり、``-s/--sandbox`` ・ ``-C/--cd`` ・ ``--color`` を**受け付けない**。
+        これらを resume に渡すと codex は exit 2 (usage エラー) で即失敗し、**resume ターンが全滅**
+        する (新規ターンは成功するのに 2 ターン目以降が err=other → consec_err 累積 → circuit_open)。
+        resume では cwd は ``Popen(cwd=...)`` で担保し、sandbox は記録済みセッションのものが使われる。
         """
-        base = [self._resolved_exe(), "exec"]
+        exe = self._resolved_exe()
         if resume and self._thread_id:
-            base += ["resume", self._thread_id]
-        base += ["--json", "--skip-git-repo-check", "-s", self.sandbox,
-                 "-C", str(cwd), "--color", "never"]
+            # resume サブコマンドが受け付けるオプションのみ (sandbox/cd/color は付けない)
+            base = [exe, "exec", "resume", self._thread_id, "--json", "--skip-git-repo-check"]
+        else:
+            base = [exe, "exec", "--json", "--skip-git-repo-check",
+                    "-s", self.sandbox, "-C", str(cwd), "--color", "never"]
         if self.model:
             base += ["-m", self.model]
         base += [*self.extra_args, "-"]  # "-" = プロンプトを stdin から読む (argv truncation 回避)
