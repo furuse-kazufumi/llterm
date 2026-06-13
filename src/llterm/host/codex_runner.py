@@ -37,7 +37,11 @@ from llterm.host.loop import (
 )
 from llterm.i18n import t
 
-DEFAULT_CODEX_SANDBOX = "workspace-write"  # 実作業に必要。read-only では実装できない
+# 実装には書込みが必須。Windows では workspace-write でも codex の execpolicy が pwsh 書込みを
+# "blocked by policy" で拒否し**書けない** (2026-06-13 実証: workspace-write は全パターン不可、
+# danger-full-access のみ書込み可)。codex を実装者にする以上、loop の claude (=skip-permissions
+# で全権) と同等の全権を許す方針 (ユーザー決定 2026-06-13: 常に danger-full-access)。
+DEFAULT_CODEX_SANDBOX = "danger-full-access"
 
 
 def summarize_codex_event(ev: object) -> list[dict]:
