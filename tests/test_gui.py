@@ -1064,6 +1064,24 @@ def test_deadline_note_silent_when_ok(
     assert win._gemini_cli_deadline_note() == ""  # 期限まで余裕 = 黙る
 
 
+# ─── 計算オフロード自動利用トグル ────────────────────────────────
+
+
+def test_offload_toggle_default_on(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    """オフロードは既定 ON (必要なら自動でオフロードする方針)。"""
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    assert win.chk_offload.isChecked() is True
+
+
+def test_offload_toggle_persists_off(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    sp = tmp_path / "s.json"
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=sp)
+    win.chk_offload.setChecked(False)
+    win._save_settings()
+    win2 = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=sp)
+    assert win2.chk_offload.isChecked() is False
+
+
 def test_explicit_args_override_saved_settings(
     qapp: QtWidgets.QApplication, tmp_path: Path
 ) -> None:
