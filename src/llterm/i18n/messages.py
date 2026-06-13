@@ -270,32 +270,37 @@ MESSAGES: dict[str, dict[str, str]] = {
         "ja": "(claude既定)",
         "en": "(claude default)",
     },
-    "gui.label.free_player": {
-        "ja": "無料奏者:",
-        "en": "Free player:",
+    "gui.player.codex": {
+        "ja": "Codex(実装)",
+        "en": "Codex (impl)",
     },
-    "gui.free_player.none": {
-        "ja": "(なし)",
-        "en": "(none)",
+    "gui.player.claude": {
+        "ja": "Claude(保険)",
+        "en": "Claude (backup)",
     },
-    "gui.tip.free_player": {
-        "ja": "無料枠の OpenAI 互換 AI を chain 末尾の保険奏者に追加 (Claude/Codex が全て"
-              "レート制限のとき継続)。★テキスト専用 = ファイル編集/シェル実行は不可なので、"
-              "編集タスクの代役でなく分析/レビュー/keep-alive 向き。Groq/Cerebras/OpenRouter は "
-              "各 API キー env (GROQ_API_KEY 等) 必須、未設定なら自動で外す。Ollama はローカル"
-              "(http://localhost:11434) でキー不要・外部送信なし。実 claude のみ有効。",
-        "en": "Adds a free OpenAI-compatible AI as a last-resort backup player at the end of the "
-              "chain (continues when Claude/Codex are all rate-limited). NOTE: text-only — cannot "
-              "edit files or run shell, so it suits analysis/review/keep-alive, not standing in for "
-              "edit tasks. Groq/Cerebras/OpenRouter need their API key env (GROQ_API_KEY etc.); "
-              "auto-dropped if unset. Ollama is local (http://localhost:11434), no key, no external "
-              "send. Real claude only.",
+    "gui.player.gemini": {
+        "ja": "Gemini(無料)",
+        "en": "Gemini (free)",
     },
-    "gui.msg.free_player_no_key": {
-        "ja": "無料奏者 '{provider}' は API キー未設定のため chain から除外しました "
-              "(対応 env を設定すると保険奏者として参加します)",
-        "en": "Free player '{provider}' was excluded from the chain because its API key is unset "
-              "(set the matching env var to enroll it as a backup player)",
+    "gui.status.players": {
+        "ja": "奏者: {chain}",
+        "en": "Players: {chain}",
+    },
+    "gui.status.excluded": {
+        "ja": " / 除外: {reasons}",
+        "en": " / excluded: {reasons}",
+    },
+    "gui.exclude.codex_missing": {
+        "ja": "Codex=未導入",
+        "en": "Codex=not installed",
+    },
+    "gui.exclude.gemini_missing": {
+        "ja": "Gemini=未導入",
+        "en": "Gemini=not installed",
+    },
+    "gui.exclude.gemini_expired": {
+        "ja": "Gemini=無料枠失効",
+        "en": "Gemini=free tier expired",
     },
     "gui.label.reviewer": {
         "ja": "レビュー奏者:",
