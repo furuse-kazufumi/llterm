@@ -925,7 +925,7 @@ class SessionLoop:
             opener = self.resume_prompt
             if self.continuity:
                 opener = CONTINUITY_PREAMBLE + opener  # 全テンプレで前回の続きから再開
-            prompt = self._with_autonomy(self._augment(opener))  # autonomy は毎ターン動的評価
+            prompt = self._apply_directives(self._augment(opener))  # 安全弁/autonomy は毎ターン動的評価
             resume = False
             injected = False
             session_turns = 0
