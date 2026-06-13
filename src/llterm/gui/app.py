@@ -326,6 +326,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.btn_start.clicked.connect(self.start_loop)
         self.btn_stop.clicked.connect(self.stop_loop)
         self.btn_send.clicked.connect(self.send_input)
+        self.btn_emergency.clicked.connect(self.emergency_inject)
         self.btn_settings.clicked.connect(self._open_settings)
         self.btn_publish.clicked.connect(self._promote_clicked)
         self.chk_summary_raw.toggled.connect(self._refresh_summary)
