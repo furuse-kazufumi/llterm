@@ -1289,6 +1289,23 @@ class MainWindow(QtWidgets.QMainWindow):
         pos = bar.value()
         self.summary_view.setPlainText(text)  # 空なら placeholder が出る
         bar.setValue(min(pos, bar.maximum()))  # 読んでいた位置を維持 (rotate 更新で飛ばさない)
+        self._refresh_common_summary()  # 共通タブ (全 project 集約) も同時に更新
+
+    def _refresh_common_summary(self) -> None:
+        """共通タブを全 project の docs/next_plan.md 集約で再生成する。
+
+        記録された最終更新時刻 (無ければ mtime) の新しい順に並ぶので、どの project が
+        直近に動いたかを時刻つきで判断できる。IO 失敗でも GUI を殺さない (fail-safe)。
+        """
+        from llterm.progress import build_common_summary, collect_progress
+        try:
+            text = build_common_summary(collect_progress(self.projects_root))
+        except OSError:
+            text = ""
+        bar = self.common_view.verticalScrollBar()
+        pos = bar.value()
+        self.common_view.setPlainText(text)
+        bar.setValue(min(pos, bar.maximum()))  # 読んでいた位置を維持
 
     @QtCore.Slot(str, dict)
     def _on_event(self, kind: str, data: dict) -> None:
