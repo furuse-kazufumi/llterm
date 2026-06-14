@@ -909,6 +909,55 @@ def test_cli_dry_run_wires_end_to_end(tmp_path: Path) -> None:
     assert (tmp_path / ".llterm" / "loop_ledger.jsonl").exists()
 
 
+def _capture_cli_runner(tmp_path: Path, argv: list[str], monkeypatch) -> object:
+    """main() を loop 実行直前で止め、構築された runner を捕捉して返す (実 CLI を呼ばない)。"""
+    import llterm.host.loop as loop_mod
+
+    captured: dict = {}
+
+    class _Stop(Exception):
+        pass
+
+    def _fake_run(self) -> object:  # SessionLoop.run を差し替えて runner を捕捉
+        captured["runner"] = self.runner
+        raise _Stop
+
+    monkeypatch.setattr(loop_mod.SessionLoop, "run", _fake_run)
+    with pytest.raises(_Stop):
+        main(["--workdir", str(tmp_path), "--max-sessions", "1", *argv])
+    return captured["runner"]
+
+
+def test_cli_default_runner_is_codex_when_available(tmp_path: Path, monkeypatch) -> None:
+    """既定の自走奏者は Codex (2026-06-15 課金変更で Claude→Codex に既定変更)。codex 導入済み環境。"""
+    import llterm.host.loop as loop_mod
+    from llterm.host.codex_runner import CodexRunner
+
+    monkeypatch.setattr(loop_mod.shutil, "which", lambda name: "C:/codex.cmd")  # codex 導入済み
+    runner = _capture_cli_runner(tmp_path, [], monkeypatch)
+    assert isinstance(runner, CodexRunner)  # 既定 = Codex (ChatGPT Pro 固定枠 = API 実費なし)
+
+
+def test_cli_runner_claude_still_selectable(tmp_path: Path, monkeypatch) -> None:
+    """Claude は削除されておらず --runner claude で明示選択できる (奏者として残す)。"""
+    import llterm.host.loop as loop_mod
+    from llterm.host.loop import ClaudeRunner
+
+    monkeypatch.setattr(loop_mod.shutil, "which", lambda name: "C:/codex.cmd")  # codex 導入済みでも
+    runner = _capture_cli_runner(tmp_path, ["--runner", "claude"], monkeypatch)
+    assert isinstance(runner, ClaudeRunner)  # 明示指定で Claude を選べる
+
+
+def test_cli_default_falls_back_to_claude_when_codex_missing(tmp_path: Path, monkeypatch) -> None:
+    """codex 未導入なら既定 Codex でも Claude に倒す (空転防止の可用性ガード)。"""
+    import llterm.host.loop as loop_mod
+    from llterm.host.loop import ClaudeRunner
+
+    monkeypatch.setattr(loop_mod.shutil, "which", lambda name: None)  # codex 未導入
+    runner = _capture_cli_runner(tmp_path, [], monkeypatch)
+    assert isinstance(runner, ClaudeRunner)  # Codex 不可用 → Claude backbone に倒れる
+
+
 def test_next_prompt_injection_is_high_priority(tmp_path: Path) -> None:
     """注入タスクは最優先: 次のターン境界 (opener 含む) で即消費され、一度だけ実行される。"""
     injected = ["割り込みタスク X"]
