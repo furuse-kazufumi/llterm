@@ -171,9 +171,12 @@ class MainWindow(QtWidgets.QMainWindow):
         rad_default = rad_default or bool(saved.get("rad", False))
         offload_default = bool(saved.get("offload", True))  # 既定 ON = 必要なら自動オフロード
         autonomy_default = bool(saved.get("autonomy", False))
-        # codex_first 既定: 保存値があればそれ。無ければ codex が導入済みなら True (可用性ガード:
-        # codex 未導入環境で Codex 主にして空転させない)。ユーザー確定の既定プロファイル
-        # = Codex 実装 + Claude レビュー。
+        # codex_first 既定: 保存値があればそれ。無ければ codex が導入済みなら True
+        # (= 既定で Codex を主奏者にする)。理由 (2026-06-15 Anthropic 課金変更): claude -p 等の
+        # ヘッドレス自律利用はサブスク枠から分離され API 実費課金 (繰越なし) になったため、
+        # 自走でトークンを大量消費する用途は ChatGPT Pro 固定枠で動く Codex に寄せるのがコスト最適。
+        # Claude は引き続き選択可 (トグル OFF / レビュー奏者 / 責任者) で chain backbone に常駐。
+        # codex 未導入環境では False に倒し Codex 主の空転を防ぐ (可用性ガード)。
         if "codex_first" in saved:
             codex_first_default = bool(saved.get("codex_first"))
         else:
