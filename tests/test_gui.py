@@ -1061,6 +1061,42 @@ def test_chain_never_empty_claude_backbone(
     assert "ClaudeRunner" in names  # Claude が backbone として常駐
 
 
+def test_codex_first_default_on_when_codex_available(
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
+) -> None:
+    """既定: codex 導入済みなら codex_first トグルが ON (2026-06-15 課金変更で Codex を既定奏者に)。
+
+    保存値が無い (初回起動) 状態で codex が PATH にあれば、GUI は既定で Codex 優先になる。
+    """
+    _patch_which(monkeypatch, "codex")  # codex 導入済み・保存値なし (新規 settings)
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "fresh.json")
+    assert win.chk_codex_first.isChecked() is True  # 既定で Codex 優先 ON
+
+
+def test_codex_first_default_off_when_codex_missing(
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
+) -> None:
+    """codex 未導入なら codex_first 既定 OFF (Codex 主の空転を防ぐ可用性ガード)。"""
+    _patch_which(monkeypatch)  # codex 未導入
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "fresh.json")
+    assert win.chk_codex_first.isChecked() is False
+
+
+def test_default_real_run_prefers_codex_keeps_claude_backbone(
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
+) -> None:
+    """既定プロファイル (codex 導入済み・実 claude): 主奏者=Codex、Claude は保険に残る。
+
+    Codex を既定の自走奏者にしつつ、Claude は削除せず chain backbone として選択可能に残す。
+    """
+    _patch_which(monkeypatch, "codex")  # gemini 未導入 → 保険は Claude のみ
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "fresh.json")
+    win.chk_real.setChecked(True)  # codex_first は既定 ON (保存値なし)
+    primary, fallbacks = _provider_names(win)
+    assert primary == "CodexRunner"        # 既定で Codex が主
+    assert "ClaudeRunner" in fallbacks     # Claude は保険として残る (削除しない)
+
+
 def test_codex_first_persists(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
     sp = tmp_path / "s.json"
     win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=sp)
