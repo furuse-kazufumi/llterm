@@ -1205,7 +1205,14 @@ def main(argv: list[str] | None = None) -> int:
         if max_sessions is None:
             max_sessions = 2
     else:
-        runner = ClaudeRunner(effort=args.effort, model=args.model)
+        # 既定奏者 = Codex (2026-06-15 課金変更: claude -p ヘッドレス自走は API 実費課金になった
+        # ため、ChatGPT Pro 固定枠で動く Codex に寄せる)。Claude は --runner claude で明示選択可。
+        # codex 未導入時は自動で Claude へ倒し、CLI が空転 (not_found 連発) しないようにする。
+        if args.runner == "codex" and shutil.which("codex") is not None:
+            from llterm.host.codex_runner import CodexRunner
+            runner = CodexRunner()
+        else:
+            runner = ClaudeRunner(effort=args.effort, model=args.model)
 
     from llterm import templates as _templates
 
