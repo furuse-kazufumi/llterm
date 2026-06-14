@@ -1177,6 +1177,14 @@ def main(argv: list[str] | None = None) -> int:
                              "既定: %(default)s)")
     parser.add_argument("--template", default="general", help="テンプレ key (templates.py)")
     parser.add_argument("--param", default="", help="テンプレ引数 (例: rad_expand の分野名)")
+    # 既定の自走奏者 = Codex (2026-06-15 Anthropic 課金変更対応)。
+    # 2026-06-15 以降、claude -p 等のヘッドレス自律利用はサブスク枠から分離され、別建ての
+    # 月額クレジットを標準 API 実費で消費する (繰越なし)。一方 Codex は ChatGPT Pro の固定
+    # 月額枠で動くため、自走でトークンを大量消費する用途は Codex に寄せるのがコスト最適。
+    # Claude も明示選択可 (--runner claude)。codex 未導入なら自動で Claude に倒す (空転防止)。
+    parser.add_argument("--runner", default="codex", choices=("codex", "claude"),
+                        help="自走の既定奏者 (codex=ChatGPT Pro 固定枠 / claude=API 実費。"
+                             "既定: %(default)s。2026-06-15 課金変更で Codex を既定にした)")
     args = parser.parse_args(argv)
 
     workdir = Path(args.workdir).resolve()
