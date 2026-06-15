@@ -14,6 +14,60 @@ from pathlib import Path
 
 DEFAULT_SETTINGS_PATH = Path.home() / ".llterm" / "gui_settings.json"
 
+# 起動時 one-shot 入力プリフィルのファイル名 (settings と同じ ~/.llterm/ 配下)。
+STARTUP_INPUT_FILENAME = "startup_input.txt"
+
+
+def startup_input_path(settings_path: Path) -> Path:
+    """One-shot 起動時入力プリフィルのファイルパス (settings と同じディレクトリ配下)。"""
+    return Path(settings_path).parent / STARTUP_INPUT_FILENAME
+
+
+def write_startup_input(settings_path: Path, text: str) -> bool:
+    """次回 GUI 起動時に EditBox へ流し込む one-shot 入力を書く。
+
+    外部 (ccr 等) からの供給路: このファイルに指示文を書いておくだけで、次回 llterm 起動時に
+    EditBox へ入った状態になる。原子的書き込み (tmp → replace)・fail-safe。``text`` が
+    空/空白なら既存プリフィルを削除する (= 取り消し)。
+    """
+    path = startup_input_path(settings_path)
+    tmp = None
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if not text.strip():
+            path.unlink(missing_ok=True)
+            return True
+        tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+        tmp.write_text(text, encoding="utf-8")
+        tmp.replace(path)
+        return True
+    except (OSError, ValueError):
+        try:
+            if tmp is not None and tmp.exists():
+                tmp.unlink()
+        except OSError:
+            pass
+        return False
+
+
+def consume_startup_input(settings_path: Path) -> str:
+    """起動時 one-shot 入力プリフィルを読み、読めたら即クリアする (clear-on-load)。
+
+    外部 (ccr 等) が ``~/.llterm/startup_input.txt`` に書いておくだけで、次回 GUI 起動時に
+    EditBox へ入った状態になり、**消費後は消えて再発火しない** (1 回だけ)。読めない/空白のみ
+    なら ``""`` を返す (fail-safe: 壊れていても GUI を殺さない)。
+    """
+    path = startup_input_path(settings_path)
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return ""
+    try:
+        path.unlink(missing_ok=True)  # 消費 (clear-on-load): 同じプリフィルを次回再発火させない
+    except OSError:
+        pass
+    return text if text.strip() else ""
+
 
 def load_settings(path: Path) -> dict:
     """設定 JSON を読む。無い・壊れている場合は空 dict (既定値で起動)。"""
