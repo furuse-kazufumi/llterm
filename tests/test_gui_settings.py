@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from llterm.gui.settings import load_settings, save_settings
+from llterm.gui.settings import (
+    consume_startup_input,
+    load_settings,
+    save_settings,
+    startup_input_path,
+    write_startup_input,
+)
 
 
 def test_load_missing_file_returns_empty(tmp_path: Path) -> None:
