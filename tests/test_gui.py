@@ -31,6 +31,9 @@ def _make_window(tmp_path: Path, *, delay: float = 0.0, **loop_kw: object) -> Ma
     return MainWindow(
         projects_root=tmp_path,
         workdir=tmp_path,
+        # settings (と起動時 startup_input プリフィル) を tmp に隔離する。実ホーム
+        # ~/.llterm/ を読み書き/消費しない (テストの副作用防止)。
+        settings_path=tmp_path / "gui_settings.json",
         runner_factory=lambda: VirtualClaudeRunner(delay=delay),
         **loop_kw,
     )
