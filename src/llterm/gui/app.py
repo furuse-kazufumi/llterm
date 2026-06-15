@@ -356,6 +356,13 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.edit_param.setText(param_default)  # 前回のテンプレ引数を復元
         self._refresh_summary()  # 初期表示 (選択プロジェクトの既存サマリ)
 
+        # 起動時 one-shot 入力プリフィル: ~/.llterm/startup_input.txt があれば EditBox へ
+        # 流し込み、ファイルは即消費する (clear-on-load)。外部 (ccr) がこのファイルに指示文を
+        # 書いておくだけで、次回起動時に入力欄へ入った状態になり、消費後は再発火しない。
+        _prefill = gui_settings.consume_startup_input(self.settings_path)
+        if _prefill:
+            self.input.setPlainText(_prefill)
+
         # 走行中に無効化する設定系ウィジェット (途中変更で worker と不整合にしない)
         self._run_widgets: list[QtWidgets.QWidget] = [
             self.cmb_project, self.chk_real, self.chk_rad, self.chk_offload, self.spin_sessions,
