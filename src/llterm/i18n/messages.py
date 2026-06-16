@@ -636,6 +636,22 @@ MESSAGES: dict[str, dict[str, str]] = {
         "ja": "  (loop 未起動: 緊急注入は走行中のみ。Start 後に通常注入として反映されます)",
         "en": "  (loop not running: emergency inject needs a running loop; queued as normal inject)",
     },
+    "gui.msg.ctl_injected": {
+        "ja": "▶ [ctl注入] Claude/emit から実行: {text}  ({cid})",
+        "en": "▶ [ctl inject] executed from Claude/emit: {text}  ({cid})",
+    },
+    "gui.msg.ctl_held": {
+        "ja": "⏸ [ctl保留] 人間承認待ち (--requires-human): {reason}  ({cid})",
+        "en": "⏸ [ctl hold] awaiting human approval (--requires-human): {reason}  ({cid})",
+    },
+    "gui.msg.ctl_rejected": {
+        "ja": "× [ctl拒否] 未対応 action '{action}' は実行しません  ({cid})",
+        "en": "× [ctl reject] unsupported action '{action}' not executed  ({cid})",
+    },
+    "gui.msg.ctl_error": {
+        "ja": "× [ctl失敗] 注入処理でエラー  ({cid})",
+        "en": "× [ctl error] failure during injection  ({cid})",
+    },
     "gui.msg.promote_need_domain": {
         "ja": "error: 公開する分野名を引数欄に入れてください",
         "en": "error: enter the domain name to publish in the argument field",
