@@ -955,6 +955,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.worker.finished_outcome.connect(self._on_finished)
         self._streamed_text = 0
         self.worker.start()
+        self._start_ctl_consumer(workdir)  # Claude/emit の inject-task を走行中に拾う
         self._stopping = False
         self.btn_start.setEnabled(False)
         self.btn_stop.setEnabled(True)
