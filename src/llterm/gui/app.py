@@ -1508,6 +1508,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _on_finished(self, outcome: dict) -> None:
         reason = outcome.get("stop_reason")
         self._set_busy_cursor(False)  # 砂時計を解除 (graceful 停止/記録の完了)
+        self._stop_ctl_consumer()  # 走行終了で ctl ポーリングを止める
         self._stopping = False
         self.lbl_state.setText(f"done: {reason}")
         self.btn_start.setEnabled(True)
