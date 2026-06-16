@@ -840,6 +840,13 @@ class MainWindow(QtWidgets.QMainWindow):
             from llterm.host.codex_runner import CodexRunner
             return CodexRunner()
         if key == "gemini":
+            # レビュー奏者 (text 専用) は Gemini API が durable: CLI 無料枠は 6/18 停止
+            # かつクォータ枯渇 (429) で毎ターン失敗する。API キーがあれば gemini-api へ
+            # 自動ルートし、無いときだけ従来の CLI (GeminiRunner) にフォールバックする。
+            from llterm.host.openai_compat_runner import OpenAICompatRunner
+            api = OpenAICompatRunner(provider="gemini-api")
+            if api.key_available():
+                return api
             if shutil.which("gemini") is None:
                 return None
             from llterm.host.gemini_runner import GeminiRunner
