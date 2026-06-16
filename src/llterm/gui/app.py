@@ -1051,6 +1051,58 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.worker is not None and self.worker.isRunning():
             self.worker.set_autonomy(on)
 
+    # ---- ctl queue consumer (Claude/emit → worker.inject 配線) ----
+    def _start_ctl_consumer(self, workdir: Path) -> None:
+        """走行開始時に ctl queue consumer を立て、QTimer ポーリングを始める。
+
+        Claude (emit CLI) が ``<workdir>/.llterm/queue/`` に投函した inject-task を、GUI 手動
+        注入と同一経路 (``worker.inject`` → SessionLoop.next_prompt) へ流す。これまで consumer が
+        無く inject-task は queue/ に滞留していた (欠落配線の解消)。
+        """
+        root = workdir / ".llterm"
+        ledger = Ledger(root / "loop_ledger.jsonl")  # ループと同じ監査 ledger に相乗り
+        self._ctl_consumer = CtlConsumer(
+            CtlQueue(root, ledger=ledger),
+            inject=self._ctl_inject,
+            running=lambda: self.worker is not None and self.worker.isRunning(),
+            announce=self._ctl_announce,
+            ledger=ledger,
+        )
+        self._ctl_timer.start()
+
+    def _stop_ctl_consumer(self) -> None:
+        self._ctl_timer.stop()
+        self._ctl_consumer = None
+
+    @QtCore.Slot()
+    def _ctl_tick(self) -> None:
+        """QTimer から定期的に呼ばれ、走行中なら ctl queue を消費する (fail-safe)。"""
+        if self._ctl_consumer is None:
+            return
+        try:
+            self._ctl_consumer.tick()
+        except Exception:  # noqa: BLE001 — ポーリング失敗で GUI を殺さない
+            pass
+
+    def _ctl_inject(self, text: str, emergency: bool) -> None:
+        """consumer から受けた inject-task を走行中 worker へ注入する (手動注入と同経路)。"""
+        if self.worker is not None and self.worker.isRunning():
+            self.worker.inject(text, emergency=emergency)
+
+    def _ctl_announce(self, kind: str, cmd: CtlCommand, text: str) -> None:
+        """ctl 注入の結果を出力ビューに可視化する (監査性: 何が来て何をしたかが人間に見える)。"""
+        if kind == "executed":
+            self._append(t("gui.msg.ctl_injected", text=text, cid=cmd.id),
+                         PALETTE["inject"], bold=True, ts=True)
+        elif kind == "hold_for_human":
+            self._append(t("gui.msg.ctl_held", reason=cmd.reason, cid=cmd.id),
+                         PALETTE["rotate"], bold=True, ts=True)
+        elif kind == "error":
+            self._append(t("gui.msg.ctl_error", cid=cmd.id), PALETTE["err"], ts=True)
+        else:  # rejected / ignored
+            self._append(t("gui.msg.ctl_rejected", action=cmd.action, cid=cmd.id),
+                         PALETTE["dim"], ts=True)
+
     # ---- 選択ダイアログ ↔ ループ協調 (choice → inject) ----
     def _maybe_prompt_choice(self, text: str) -> bool:
         """agent 応答テキストに ⟦LLTERM_CHOICE⟧ があれば選択ダイアログを出す。
