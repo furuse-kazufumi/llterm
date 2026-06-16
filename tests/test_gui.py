@@ -1348,11 +1348,49 @@ def test_panel_reviewer_gemini_dropped_when_not_installed(
     qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
 ) -> None:
     monkeypatch.setattr("llterm.gui.app.shutil.which", lambda name: None)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)  # API キーも無 → API ルートも不可
     win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
     win.chk_real.setChecked(True)
     _set_panel(win, "gemini")
     primary, _ = win._resolve_providers()
     assert type(primary).__name__ == "ClaudeRunner"
+
+
+def test_reviewer_gemini_routes_to_api_when_key_set(
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
+) -> None:
+    """レビュー奏者 "gemini" は GEMINI_API_KEY があれば gemini-api (text 奏者) へ自動ルート。
+
+    CLI 無料枠は 6/18 停止 + クォータ枯渇 (429) のため、durable な API を優先する。
+    gemini が PATH にあっても (CLI 可用でも) API キーがある限り API を返す。
+    """
+    monkeypatch.setenv("GEMINI_API_KEY", "g-test")
+    _patch_which(monkeypatch, "gemini")  # CLI も導入済みだが API を優先する
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    runner = win._make_reviewer_runner("gemini")
+    assert type(runner).__name__ == "OpenAICompatRunner"
+    assert runner.provider == "gemini-api"
+
+
+def test_reviewer_gemini_falls_back_to_cli_when_no_api_key(
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
+) -> None:
+    """GEMINI_API_KEY 不在なら従来どおり CLI (GeminiRunner) にフォールバック (CLI が PATH 上)。"""
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    _patch_which(monkeypatch, "gemini")  # CLI のみ可用
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    runner = win._make_reviewer_runner("gemini")
+    assert type(runner).__name__ == "GeminiRunner"
+
+
+def test_reviewer_gemini_none_when_no_api_key_and_no_cli(
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
+) -> None:
+    """API キーも CLI も無ければ None (fail-safe = 奏者として参加させない)。"""
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    _patch_which(monkeypatch)  # CLI 未導入
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    assert win._make_reviewer_runner("gemini") is None
 
 
 def test_factchecker_perplexity_wires_when_key_set(
