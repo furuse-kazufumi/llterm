@@ -154,6 +154,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self._model_cli = model_default  # CLI 明示指定 (None = 未指定 → 保存値/既定に委ねる)
         self.loop_kw = dict(loop_kw)
         self.worker: LoopWorker | None = None
+        # ctl queue consumer: Claude (emit CLI) が投函した inject-task を GUI 手動注入と同じ
+        # 経路 (worker.inject) へ流す。走行中だけ QTimer で poll する (ccr→llterm 注入の欠落配線解消)。
+        self._ctl_consumer: CtlConsumer | None = None
+        self._ctl_timer = QtCore.QTimer(self)
+        self._ctl_timer.setInterval(_CTL_POLL_MS)
+        self._ctl_timer.timeout.connect(self._ctl_tick)
         self._streamed_text = 0  # 現ターン中にリアルタイム表示した応答数 (turn 完了時の二重表示防止)
         self._max_sessions = 0  # ステータス表示 (session N/max) 用。Start 時に確定
         self._cost_suffix = t("gui.cost.reported")  # cost ラベルの種別 (Start 時に課金有無で確定)
