@@ -41,6 +41,7 @@ if TYPE_CHECKING:
 
 DEFAULT_PROJECTS_ROOT = Path("D:/projects")
 _PROJECT_MARKERS = (".git", "pyproject.toml", "CLAUDE.md", "package.json", "Cargo.toml")
+_CTL_POLL_MS = 1500  # ctl queue を走行中にポーリングする間隔 (ms)
 
 # 出力ビューのセマンティックカラー (One Dark 系)。stream-json は ANSI を含まないため、
 # 端末色のパススルーではなくイベント種別ごとに llterm 自身が着色する。
