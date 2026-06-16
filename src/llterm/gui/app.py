@@ -1453,6 +1453,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
 def main(argv: list[str] | None = None) -> int:
     _ensure_utf8_stdout()
+    # ローカル鍵束 (D:/api-keys.json 等) を env へ補完する。env 未設定でも JSON 由来の鍵で
+    # 奏者を可用化する (例: GEMINI_API_KEY 不在で gemini-api 奏者が除外される問題の解消)。
+    # fail-safe (ファイル非存在/JSON 不正でも例外を投げない) なので無条件に呼んでよい。
+    # runner 構築 (MainWindow → _resolve_providers) より前に呼ぶのが要点。
+    from llterm.host.api_keys import load_api_keys_into_env
+    load_api_keys_into_env()
     import argparse
 
     parser = argparse.ArgumentParser(
