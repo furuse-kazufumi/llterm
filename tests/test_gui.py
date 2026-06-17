@@ -54,6 +54,43 @@ def _run_until_finished(qapp: QtWidgets.QApplication, win: MainWindow, timeout_m
     qapp.processEvents()  # 残った queued slot (on_event / on_finished) を流し切る
 
 
+# ─── ctl queue consumer (Claude/emit → worker.inject) ────────────
+
+
+def test_ctl_consumer_routes_inject_task_to_worker(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    """ctl emit inject-task が GUI consumer 経由で worker.inject に届く (欠落配線の回帰固定)。"""
+    from llterm.ctl.queue import CtlQueue
+    from llterm.ctl.schema import CtlCommand
+
+    win = _make_window(tmp_path)
+
+    class _FakeWorker:
+        def __init__(self) -> None:
+            self.injected: list[tuple[str, bool]] = []
+
+        def isRunning(self) -> bool:  # noqa: N802 (Qt API 名に合わせる)
+            return True
+
+        def inject(self, text: str, *, emergency: bool = False) -> None:
+            self.injected.append((text, emergency))
+
+    fake = _FakeWorker()
+    win.worker = fake  # type: ignore[assignment]
+    win._start_ctl_consumer(tmp_path)
+    try:
+        CtlQueue(tmp_path / ".llterm").submit(
+            CtlCommand(id="ctl-gui-1", action="inject-task", reason="ccr coord",
+                       args={"title": "hello from ccr"})
+        )
+        win._ctl_tick()
+        assert fake.injected == [("hello from ccr", False)]
+        assert (tmp_path / ".llterm" / "results" / "ctl-gui-1.json").exists()
+    finally:
+        win._stop_ctl_consumer()
+
+
 # ─── プロジェクト探索 / コンボボックス ───────────────────────────
 
 
