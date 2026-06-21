@@ -361,7 +361,10 @@ class CodexRunner:
         if interrupted:  # 緊急注入による中断 = 停止ではない。loop が注入を次ターンで消費する
             return TurnResult(session_id, 0, 0, 0, 0.0, "", True, "interrupted", 0, proc.returncode or -1)
         if timed_out.is_set():
-            return TurnResult(session_id, 0, 0, 0, 0.0, "", True, "other", 0, -1)
+            # 原因が見えない空テキスト err=other で silent circuit_open しないよう理由を明示する
+            # (gem-critic 指摘 2026-06-21)。タイムアウトは一過性のハングもあり得るため other を維持
+            # (3 連続のみ circuit_open) だが、GUI で「なぜ落ちたか」が読めるようにする。
+            return TurnResult(session_id, 0, 0, 0, 0.0, t("runner.codex.timeout"), True, "other", 0, -1)
         exit_code = proc.returncode if proc.returncode is not None else -1
         res = parse_codex_jsonl("".join(out_lines), exit_code=exit_code, stderr="".join(err_buf))
         if res.session_id:  # codex thread_id を覚えて次ターンの resume に使う
