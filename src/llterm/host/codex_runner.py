@@ -214,6 +214,9 @@ def parse_codex_jsonl(stdout: str, *, exit_code: int, stderr: str = "") -> TurnR
         blob = "\n".join((error_text, stderr)).lower()
         if any(s in blob for s in _RATE_LIMIT_SIGNALS):
             error_kind = "rate_limited"
+            # codex が "try again at <date>" を返していれば実リセットまで benched にする
+            # (無ければ 0 = loop は固定待ち。5 分ごとの再プローブ churn を防ぐ)。
+            resets_at = _parse_codex_retry_epoch(error_text + "\n" + stderr)
         elif any(s in blob for s in _AUTH_SIGNALS):
             # codex の認証切れは「使用不能」扱いにして loop を保険 (claude) へ graceful fallback
             # させる。claude の auth=fail-closed 全停止と異なり、codex は二次奏者なので全体を
