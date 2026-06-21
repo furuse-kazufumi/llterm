@@ -162,12 +162,16 @@ def parse_codex_jsonl(stdout: str, *, exit_code: int, stderr: str = "") -> TurnR
     text = agent_text or (error_text if is_error else "")
     error_kind = ""
     if is_error:
-        # 分類は error/turn.failed の message・stderr・(あれば) agent_text を走査する。
+        # 分類は **制御チャネルのみ** (error/turn.failed の message + stderr) を走査する。
         # 旧実装は error イベントの message を捨て (failed=True だけ)、stderr が空の実 codex
         # usage-limit 失敗を rate_limited と判定できず other へ誤分類していた。すると loop は
         # フォールバックせず同一プロバイダを再試行し consec_err 累積 → circuit_open で停止していた
         # (本不具合の根本原因。2026-06-21 実機 probe で確定)。
-        blob = "\n".join((error_text, stderr, agent_text)).lower()
+        # agent_message (agent_text) は走査対象に含めない: モデルの散文に "authentication"/"/login"
+        # 等が紛れると失敗ターンで誤って unavailable 恒久ブロックし得るため (gem-critic 指摘)。
+        # 実 codex のレート制限/認証はすべて error/turn.failed イベント = 制御チャネルに乗るので
+        # ここを見れば十分。parse_stream_json が JSON transcript を分類に使わない規律と整合させる。
+        blob = "\n".join((error_text, stderr)).lower()
         if any(s in blob for s in _RATE_LIMIT_SIGNALS):
             error_kind = "rate_limited"
         elif any(s in blob for s in _AUTH_SIGNALS):
