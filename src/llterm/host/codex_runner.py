@@ -28,6 +28,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from llterm.host.loop import (
+    _AUTH_SIGNALS,
     _NO_WINDOW,
     _RATE_LIMIT_SIGNALS,
     TurnResult,
