@@ -157,10 +157,26 @@ def parse_codex_jsonl(stdout: str, *, exit_code: int, stderr: str = "") -> TurnR
     context_tokens = 0
 
     is_error = exit_code != 0 or failed or not turn_completed
+    # 失敗時 (turn.failed) は agent_message が無いのが普通。原因が「中身の見えない err=other」に
+    # ならないよう、error/turn.failed の message を表示テキストへ昇格する (GUI で原因が読める)。
+    text = agent_text or (error_text if is_error else "")
     error_kind = ""
     if is_error:
-        blob = (text + "\n" + stderr).lower()
-        error_kind = "rate_limited" if any(s in blob for s in _RATE_LIMIT_SIGNALS) else "other"
+        # 分類は error/turn.failed の message・stderr・(あれば) agent_text を走査する。
+        # 旧実装は error イベントの message を捨て (failed=True だけ)、stderr が空の実 codex
+        # usage-limit 失敗を rate_limited と判定できず other へ誤分類していた。すると loop は
+        # フォールバックせず同一プロバイダを再試行し consec_err 累積 → circuit_open で停止していた
+        # (本不具合の根本原因。2026-06-21 実機 probe で確定)。
+        blob = "\n".join((error_text, stderr, agent_text)).lower()
+        if any(s in blob for s in _RATE_LIMIT_SIGNALS):
+            error_kind = "rate_limited"
+        elif any(s in blob for s in _AUTH_SIGNALS):
+            # codex の認証切れは「使用不能」扱いにして loop を保険 (claude) へ graceful fallback
+            # させる。claude の auth=fail-closed 全停止と異なり、codex は二次奏者なので全体を
+            # 止めず chain から外すのが正しい (人間の再ログイン経路は主奏者 claude が担う)。
+            error_kind = "unavailable"
+        else:
+            error_kind = "other"
 
     return TurnResult(
         session_id=thread_id,
