@@ -104,6 +104,44 @@ def _codex_error_message(ev: dict) -> str:
     return ""
 
 
+_CODEX_RETRY_RE = re.compile(
+    r"try again at\s+([A-Za-z]{3,9})\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})\s+"
+    r"(\d{1,2}):(\d{2})\s*([AaPp][Mm])",
+)
+_MONTHS = {m: i for i, m in enumerate(
+    ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"),
+    start=1)}
+
+
+def _parse_codex_retry_epoch(text: str) -> int:
+    """codex の ``try again at <date>`` を epoch 秒 (ローカル tz 仮定) へ best-effort 変換する。
+
+    例: ``try again at Jun 25th, 2026 6:26 AM`` → その時刻の epoch。解釈できなければ 0 を返し、
+    loop は固定待ち (rate_limit_fallback_wait_s) にフォールバックする (= 従来挙動・安全)。
+
+    tz は codex メッセージに明示されないためローカルと仮定する。usage-limit のリセットは通常
+    数時間〜数日先なので tz 誤差は実害がない (誤って長め/短めにブロックしても loop は保険 claude
+    で継続するため安全側)。これを設定すると codex が実リセットまで benched され、5 分ごとの
+    再プローブによる provider_switch churn (gem-critic 指摘) が解消する。
+    """
+    m = _CODEX_RETRY_RE.search(text or "")
+    if not m:
+        return 0
+    mon = _MONTHS.get(m.group(1)[:3].lower())
+    if mon is None:
+        return 0
+    day, year, hour, minute = int(m.group(2)), int(m.group(3)), int(m.group(4)), int(m.group(5))
+    ampm = m.group(6).lower()
+    if ampm == "pm" and hour != 12:
+        hour += 12
+    elif ampm == "am" and hour == 12:
+        hour = 0
+    try:
+        return int(datetime(year, mon, day, hour, minute).timestamp())
+    except (ValueError, OverflowError, OSError):
+        return 0
+
+
 def parse_codex_jsonl(stdout: str, *, exit_code: int, stderr: str = "") -> TurnResult:
     """``codex exec --json`` (JSONL) を 1 ターン結果へ defensively パースする。
 
