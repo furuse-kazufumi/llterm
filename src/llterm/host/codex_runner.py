@@ -110,6 +110,7 @@ def parse_codex_jsonl(stdout: str, *, exit_code: int, stderr: str = "") -> TurnR
     """
     thread_id = ""
     texts: list[str] = []
+    error_texts: list[str] = []  # error / turn.failed の message (分類 + GUI 表示に使う)
     usage: dict = {}
     turn_completed = False
     failed = False
@@ -138,8 +139,12 @@ def parse_codex_jsonl(stdout: str, *, exit_code: int, stderr: str = "") -> TurnR
                 usage = u
         elif etype in ("turn.failed", "error"):
             failed = True
+            msg = _codex_error_message(ev)
+            if msg:
+                error_texts.append(msg)
 
-    text = texts[-1] if texts else ""
+    agent_text = texts[-1] if texts else ""
+    error_text = "\n".join(error_texts)
     input_tokens = _as_int(usage.get("input_tokens"))
     output_tokens = _as_int(usage.get("output_tokens"))
     # context_tokens (= rotate を駆動する「瞬間の窓占有」) は **0 固定**にする。
