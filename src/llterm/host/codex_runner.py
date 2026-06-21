@@ -19,12 +19,14 @@ SESSION_SUMMARY / CLAUDE.md を読んで「前回の続き」を継続する)。
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import sys
 import threading
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 
 from llterm.host.loop import (
