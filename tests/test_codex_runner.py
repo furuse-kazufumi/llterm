@@ -73,6 +73,57 @@ def test_parse_codex_rate_limit_from_text() -> None:
     assert r.error_kind == "rate_limited"
 
 
+def test_parse_codex_usage_limit_event_is_rate_limited() -> None:
+    """実 codex 0.135.0 の usage-limit 失敗 (2026-06-21 probe を逐語再現) を rate_limited に分類する。
+
+    実機は **stderr が空**で、原因メッセージは ``error`` / ``turn.failed`` の JSON イベントに**だけ**
+    乗る。旧実装はこの message を捨て failed=True にするだけで、blob (text+stderr) が空 →
+    other 誤分類 → consec_err 累積 → circuit_open していた (本不具合の根本原因)。
+    """
+    stdout = "\n".join([
+        '{"type":"thread.started","thread_id":"019ee9fb-9523-7131-985f-7f9badb63a25"}',
+        '{"type":"turn.started"}',
+        '{"type":"error","message":"You\'ve hit your usage limit. Visit '
+        'https://chatgpt.com/codex/settings/usage to purchase more credits or try again at '
+        'Jun 25th, 2026 6:26 AM."}',
+        '{"type":"turn.failed","error":{"message":"You\'ve hit your usage limit. Visit '
+        'https://chatgpt.com/codex/settings/usage to purchase more credits or try again at '
+        'Jun 25th, 2026 6:26 AM."}}',
+    ])
+    r = parse_codex_jsonl(stdout, exit_code=1, stderr="")  # stderr 空 = 実機どおり
+    assert r.is_error is True
+    assert r.error_kind == "rate_limited"          # other ではなく rate_limited
+    assert "usage limit" in r.text.lower()         # 原因が GUI で読める (旧実装は空テキスト)
+
+
+def test_parse_codex_turn_failed_dict_message_captured() -> None:
+    """``turn.failed`` の error が dict ({"message": ...}) でも message を分類に使える。"""
+    stdout = '{"type":"turn.failed","error":{"message":"Rate limit reached for requests"}}'
+    r = parse_codex_jsonl(stdout, exit_code=1, stderr="")
+    assert r.error_kind == "rate_limited"
+    assert "rate limit" in r.text.lower()
+
+
+def test_parse_codex_auth_error_is_unavailable() -> None:
+    """codex の認証切れは unavailable に分類する (loop が保険 claude へ graceful fallback)。
+
+    claude の auth=fail-closed 全停止と違い、codex は二次奏者なので全体を止めず chain から外す。
+    """
+    stdout = ('{"type":"error","message":"Not authenticated. Please run codex login."}\n'
+              '{"type":"turn.failed","error":{"message":"Not authenticated."}}')
+    r = parse_codex_jsonl(stdout, exit_code=1, stderr="")
+    assert r.is_error is True
+    assert r.error_kind == "unavailable"
+
+
+def test_parse_codex_unknown_error_still_other() -> None:
+    """既知シグナルに当たらない失敗は従来どおり other (リトライ対象)。message は表示に昇格。"""
+    stdout = '{"type":"turn.failed","error":{"message":"unexpected internal failure xyz"}}'
+    r = parse_codex_jsonl(stdout, exit_code=1, stderr="")
+    assert r.error_kind == "other"
+    assert "unexpected internal failure" in r.text
+
+
 def test_summarize_codex_events() -> None:
     assert summarize_codex_event({"type": "thread.started", "thread_id": "t"}) == [
         {"kind": "init", "model": "codex", "session_id": "t"}]
