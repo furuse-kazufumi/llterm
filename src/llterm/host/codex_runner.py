@@ -201,6 +201,7 @@ def parse_codex_jsonl(stdout: str, *, exit_code: int, stderr: str = "") -> TurnR
     # ならないよう、error/turn.failed の message を表示テキストへ昇格する (GUI で原因が読める)。
     text = agent_text or (error_text if is_error else "")
     error_kind = ""
+    resets_at = 0  # rate_limited のとき codex の "try again at <date>" を epoch で拾う (無ければ 0)
     if is_error:
         # 分類は **制御チャネルのみ** (error/turn.failed の message + stderr) を走査する。
         # 旧実装は error イベントの message を捨て (failed=True だけ)、stderr が空の実 codex
