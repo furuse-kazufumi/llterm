@@ -80,6 +80,28 @@ def summarize_codex_event(ev: object) -> list[dict]:
     return []
 
 
+def _codex_error_message(ev: dict) -> str:
+    """``error`` / ``turn.failed`` イベントから人間可読のエラーメッセージを取り出す。
+
+    実 codex 0.135.0 のフォーマット (2026-06-21 probe):
+    - ``{"type":"error","message":"..."}``
+    - ``{"type":"turn.failed","error":{"message":"..."}}``  (error は dict)
+    旧テスト/将来形式の ``{"...":"error":"<文字列>"}`` (error が文字列) も許容する。
+    取り出した message は rate-limit / auth 分類の blob と GUI 表示テキストに使う。
+    """
+    msg = ev.get("message")
+    if isinstance(msg, str) and msg.strip():
+        return msg.strip()
+    err = ev.get("error")
+    if isinstance(err, dict):
+        m = err.get("message")
+        if isinstance(m, str) and m.strip():
+            return m.strip()
+    elif isinstance(err, str) and err.strip():
+        return err.strip()
+    return ""
+
+
 def parse_codex_jsonl(stdout: str, *, exit_code: int, stderr: str = "") -> TurnResult:
     """``codex exec --json`` (JSONL) を 1 ターン結果へ defensively パースする。
 
