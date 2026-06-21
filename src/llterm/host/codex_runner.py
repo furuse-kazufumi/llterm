@@ -237,6 +237,7 @@ def parse_codex_jsonl(stdout: str, *, exit_code: int, stderr: str = "") -> TurnR
         error_kind=error_kind,
         num_turns=1,
         raw_exit=exit_code,
+        rate_limit_resets_at=resets_at,
     )
 
 
