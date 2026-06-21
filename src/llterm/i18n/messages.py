@@ -71,6 +71,14 @@ MESSAGES: dict[str, dict[str, str]] = {
         "ja": "codex が見つかりません",
         "en": "codex was not found",
     },
+    "runner.claude.timeout": {
+        "ja": "claude ターンが制限時間を超過したため中断しました (応答が返りませんでした)",
+        "en": "The claude turn timed out and was aborted (no response returned)",
+    },
+    "runner.codex.timeout": {
+        "ja": "codex ターンが制限時間を超過したため中断しました (応答が返りませんでした)",
+        "en": "The codex turn timed out and was aborted (no response returned)",
+    },
     "runner.gemini.not_found": {
         "ja": "gemini が見つかりません (npm i -g @google/gemini-cli)",
         "en": "gemini was not found (npm i -g @google/gemini-cli)",
