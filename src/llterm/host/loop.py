@@ -684,7 +684,8 @@ class ClaudeRunner:
         if interrupted:  # 緊急注入による中断 = 停止ではない。loop が注入を次ターンで消費する
             return TurnResult(session_id, 0, 0, 0, 0.0, "", True, "interrupted", 0, proc.returncode or -1)
         if timed_out.is_set():
-            return TurnResult(session_id, 0, 0, 0, 0.0, "", True, "other", 0, -1)
+            # 空テキスト err=other で silent circuit_open しないよう理由を明示 (gem-critic 2026-06-21)
+            return TurnResult(session_id, 0, 0, 0, 0.0, t("runner.claude.timeout"), True, "other", 0, -1)
         exit_code = proc.returncode if proc.returncode is not None else -1
         return parse_stream_json("".join(out_lines), exit_code=exit_code, stderr="".join(err_buf))
 
