@@ -248,6 +248,55 @@ p({"type": "turn.completed", "usage": {"input_tokens": 1}})
 '''
 
 
+_USAGE_LIMIT_CODEX = '''\
+import json, sys
+def p(ev): print(json.dumps(ev), flush=True)
+p({"type": "thread.started", "thread_id": "th-rl"})
+p({"type": "turn.started"})
+p({"type": "error", "message": "You've hit your usage limit. try again at Jun 25th, 2026 6:26 AM."})
+p({"type": "turn.failed", "error": {"message": "You've hit your usage limit."}})
+sys.exit(1)
+'''
+
+
+def test_codex_usage_limit_falls_back_to_claude_not_circuit_open(tmp_path: Path) -> None:
+    """E2E: 実 subprocess の codex usage-limit 失敗で loop が circuit_open せず保険 claude へ切替える。
+
+    本不具合 (2026-06-21) の end-to-end 回帰防止。codex を実子プロセスで回し、usage-limit を
+    JSON イベントだけで返す (stderr 空 = 実機どおり)。修正前はここで err=other → 3 連続 →
+    circuit_open でループが死んでいた。修正後は rate_limited 分類 → provider_switch → claude 継続。
+    """
+    from llterm.ctl.ledger import Ledger
+    from llterm.host.loop import SessionLoop, TurnResult
+
+    codex = _scripted_codex(tmp_path, None, body=_USAGE_LIMIT_CODEX)
+
+    class _Ok:  # claude 役の保険 (成功 → rotate)
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def run_turn(self, *, prompt: str, session_id: str, resume: bool, cwd: Path) -> TurnResult:
+            self.calls += 1
+            return TurnResult(session_id, 150_000, 100, 150_000, 0.0, "ok", False, "", 1, 0)
+
+        def cancel(self) -> None:
+            pass
+
+    claude = _Ok()
+    events: list[tuple[str, dict]] = []
+    loop = SessionLoop(
+        runner=codex, fallback_runners=(claude,), workdir=tmp_path,
+        ledger=Ledger(tmp_path / "l.jsonl"),
+        window_tokens=200_000, threshold=0.70, max_sessions=2,
+        on_event=lambda k, d: events.append((k, d)),
+    )
+    outcome = loop.run()
+    assert outcome.stop_reason != "circuit_open"          # ← 修正前はこれだった
+    assert any(k == "rate_limited" for k, _ in events)    # codex が正しく rate_limited 分類
+    assert any(k == "provider_switch" for k, _ in events)  # 保険へ切替
+    assert claude.calls >= 1                               # claude が実際に走った
+
+
 def test_multiline_prompt_reaches_child_intact_via_stdin(tmp_path: Path) -> None:
     """複数行プロンプトが改行後も含めて全文 codex 子へ届く (argv truncation の回帰防止)。"""
     runner = _scripted_codex(tmp_path, None, body=_ECHO_STDIN_CODEX)
