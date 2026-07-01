@@ -121,7 +121,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "publish":
         try:
             res = promote(args.domain, docs_root=Path(args.docs_root), make_backup=not args.no_backup)
-        except RadError as exc:
+        except (RadError, OSError) as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2
         msg = f"published: {res.live}"
