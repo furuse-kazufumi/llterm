@@ -881,7 +881,7 @@ class SessionLoop:
         times = [t for t in self._blocked_until.values() if t > 0.0]
         return min(times) if times else 0.0
 
-    def _wait_until(self, resets_at: int) -> bool:
+    def _wait_until(self, resets_at: float) -> bool:
         """resetsAt (epoch秒) まで中断可能に待つ。Stop されたら False (= 自走を止める)。
 
         resetsAt 不明/過去なら固定待ち。max_rate_limit_wait_s で 1 回の待機を上限する。
