@@ -944,7 +944,7 @@ class SessionLoop:
             # 全プロバイダがレート制限中なら最も早い解除まで待つ (中断可能)。
             active_idx = self._select_available(self.now_fn())
             if active_idx is None:
-                if not self._wait_until(int(self._earliest_unblock())):
+                if not self._wait_until(self._earliest_unblock()):
                     return self._finish("stopped", sessions, turns, total_cost,
                                         "stop during rate-limit wait")
                 active_idx = self._select_available(self.now_fn()) or 0
