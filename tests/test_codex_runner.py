@@ -124,6 +124,60 @@ def test_parse_codex_unknown_error_still_other() -> None:
     assert "unexpected internal failure" in r.text
 
 
+def test_parse_codex_auth_words_in_agent_text_not_misclassified() -> None:
+    """失敗ターンの agent_message に auth 語 ("/login" 等) が紛れても unavailable にしない。
+
+    分類は制御チャネル (error/turn.failed + stderr) 限定。モデルの散文で codex を誤って恒久
+    ブロックしないための gem-critic 指摘対応。ここでは制御チャネルは generic error なので other。
+    """
+    stdout = "\n".join([
+        '{"type":"item.completed","item":{"type":"agent_message","text":'
+        '"I edited the /login handler and the unauthorized path. authentication wired."}}',
+        '{"type":"turn.failed","error":{"message":"internal error e123"}}',
+    ])
+    r = parse_codex_jsonl(stdout, exit_code=1, stderr="")
+    assert r.error_kind == "other"  # auth 語は agent_text のみ → unavailable にしない
+
+
+def test_parse_codex_retry_epoch() -> None:
+    """codex の "try again at <date>" を epoch へ best-effort 変換 (解釈不能なら 0)。"""
+    from datetime import datetime
+
+    from llterm.host.codex_runner import _parse_codex_retry_epoch
+    assert _parse_codex_retry_epoch("... try again at Jun 25th, 2026 6:26 AM.") == int(
+        datetime(2026, 6, 25, 6, 26).timestamp())
+    assert _parse_codex_retry_epoch("try again at Dec 1, 2026 11:00 PM") == int(
+        datetime(2026, 12, 1, 23, 0).timestamp())  # 序数なし・PM 12h 換算
+    assert _parse_codex_retry_epoch("no date here") == 0
+    assert _parse_codex_retry_epoch("") == 0
+
+
+def test_parse_codex_usage_limit_sets_resets_at() -> None:
+    """usage-limit メッセージに "try again at" があれば rate_limit_resets_at を立てる
+    (codex を実リセットまで benched にして 5 分ごとの再プローブ churn を防ぐ)。"""
+    stdout = ('{"type":"turn.failed","error":{"message":'
+              '"You\'ve hit your usage limit. try again at Jun 25th, 2026 6:26 AM."}}')
+    r = parse_codex_jsonl(stdout, exit_code=1, stderr="")
+    assert r.error_kind == "rate_limited"
+    assert r.rate_limit_resets_at > 0
+
+
+_SLEEP_CODEX = '''\
+import time
+time.sleep(30)
+'''
+
+
+def test_codex_timeout_returns_visible_reason(tmp_path: Path) -> None:
+    """タイムアウトは空テキスト err=other で silent circuit_open せず、理由テキストを返す。"""
+    runner = _scripted_codex(tmp_path, None, body=_SLEEP_CODEX)
+    runner.timeout = 0.1  # 子は 30s sleep → watchdog が 0.1s で kill
+    res = runner.run_turn(prompt="p", session_id="s", resume=False, cwd=tmp_path)
+    assert res.is_error is True
+    assert res.error_kind == "other"
+    assert res.text.strip()  # 空でない (GUI で「なぜ落ちたか」が読める)
+
+
 def test_summarize_codex_events() -> None:
     assert summarize_codex_event({"type": "thread.started", "thread_id": "t"}) == [
         {"kind": "init", "model": "codex", "session_id": "t"}]
