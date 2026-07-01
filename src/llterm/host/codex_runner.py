@@ -248,7 +248,7 @@ class CodexRunner:
     - ``resume=False`` → 新 codex thread を作る (`codex exec`)。前 thread は破棄。
     - ``resume=True``  → 直近 thread を継続 (`codex exec resume <thread_id>`)。
     - SessionLoop が渡す session_id (claude 用 uuid) は無視し、codex 自身の thread_id を内部管理。
-    - サンドボックス既定 = workspace-write (プロジェクト内の編集可・ネット/外部は不可)。
+    - サンドボックス既定 = danger-full-access (全権; Windows では workspace-write が codex execpolicy で書込み不可のため。詳細はモジュール冒頭コメント参照)。
     """
 
     exe: str = "codex"
