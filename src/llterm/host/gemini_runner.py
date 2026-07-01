@@ -132,7 +132,7 @@ def parse_gemini_json(stdout: str, *, exit_code: int, stderr: str = "") -> TurnR
     error_kind = ""
     if is_error:
         blob = (json.dumps(err_obj, ensure_ascii=False) if err_obj else "")
-        blob = (blob + "\n" + text + "\n" + stderr).lower()
+        blob = (blob + "\n" + stderr).lower()  # モデル応答文 (text) は分類に含めない (誤分類防止)
         if any(s in blob for s in _RATE_LIMIT_SIGNALS) or "quota" in blob or "429" in blob:
             error_kind = "rate_limited"
         elif any(s in blob for s in _AUTH_SIGNALS):
