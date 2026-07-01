@@ -163,6 +163,9 @@ def summarize_gemini_event(ev: object) -> list[dict]:
     if etype in ("tool", "tool_call", "tool_use"):
         return [{"kind": "tool_use", "name": str(ev.get("name") or "tool"),
                  "detail": str(ev.get("detail") or "")}]
+    if etype == "init":
+        return [{"kind": "init", "model": str(ev.get("model") or "gemini"),
+                 "session_id": str(ev.get("session_id") or "")}]
     return []
 
 
