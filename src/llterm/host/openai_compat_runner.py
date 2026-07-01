@@ -249,7 +249,7 @@ class OpenAICompatRunner:
             session_id=session_id, input_tokens=0, output_tokens=0, context_tokens=0,
             cost_usd=0.0, text=(exc.body or str(exc))[:2000], is_error=True,
             error_kind=kind, num_turns=0, raw_exit=exc.status or -1,
-            rate_limit_resets_at=exc.retry_after if kind == "rate_limited" and exc.retry_after else 0,
+            rate_limit_resets_at=(int(time.time()) + exc.retry_after) if kind == "rate_limited" and exc.retry_after else 0,
         )
 
     def cancel(self) -> None:
