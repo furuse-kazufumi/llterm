@@ -649,8 +649,8 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "▶ [ctl inject] executed from Claude/emit: {text}  ({cid})",
     },
     "gui.msg.ctl_held": {
-        "ja": "⏸ [ctl保留] 人間承認待ち (--requires-human): {reason}  ({cid})",
-        "en": "⏸ [ctl hold] awaiting human approval (--requires-human): {reason}  ({cid})",
+        "ja": "⏸ [ctl保留] 実行せず記録のみ・実行には再 emit 要 (--requires-human): {reason}  ({cid})",
+        "en": "⏸ [ctl hold] not executed; re-emit to run (--requires-human): {reason}  ({cid})",
     },
     "gui.msg.ctl_rejected": {
         "ja": "× [ctl拒否] 未対応 action '{action}' は実行しません  ({cid})",

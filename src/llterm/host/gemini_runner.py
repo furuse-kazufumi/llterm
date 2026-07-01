@@ -136,7 +136,10 @@ def parse_gemini_json(stdout: str, *, exit_code: int, stderr: str = "") -> TurnR
         if any(s in blob for s in _RATE_LIMIT_SIGNALS) or "quota" in blob or "429" in blob:
             error_kind = "rate_limited"
         elif any(s in blob for s in _AUTH_SIGNALS):
-            error_kind = "auth"
+            # Gemini は二次奏者。認証切れ・無料枠失効は codex と同じく "unavailable" にして
+            # ループを止めず chain から外す (fallback)。error_kind="auth" は主奏者 claude 専用で
+            # loop がループ全体を fail-closed 停止させる値のため使わない (J2, loop.py:1027)。
+            error_kind = "unavailable"
         else:
             error_kind = "other"
 

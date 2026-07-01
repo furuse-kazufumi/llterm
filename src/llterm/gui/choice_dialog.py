@@ -126,7 +126,12 @@ class ChoiceDialog(QtWidgets.QDialog):
     @QtCore.Slot()
     def _accept(self) -> None:
         """OK — 現在の選択を番号+ラベルの注入文へ確定し、ダイアログを閉じる。"""
-        self._indices = self._current_indices()
+        indices = self._current_indices()
+        # multi-select で 1 つも選ばれていない場合は確定させない (空の "選択: (なし)" 注入を防ぐ)。
+        # 「どれも選ばない」は Cancel (自由入力へ) が正路 (J9)。
+        if self._choice.multi and not indices:
+            return
+        self._indices = indices
         self._reply = format_choice_reply(self._choice, self._indices)
         self.accept()
 

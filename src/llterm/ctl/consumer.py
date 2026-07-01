@@ -15,7 +15,8 @@ producer (``llterm.ctl.emit`` / :meth:`CtlQueue.submit`) は ``queue/`` に JSON
   ``shutdown`` 等は gate で **REJECT** し ledger に残す (勝手に実行しない = 半端な実装で
   暴発させない)。各 action の host 実装が入ったらここを広げる。
 - ``requires_human`` (emit ``--requires-human``) は **HOLD_FOR_HUMAN**: 実行せず保留を記録
-  (人間が GUI で後追い承認する想定)。危険タスクの安全弁。
+  (ledger + results に記録されるのみ。承認 UI や再開キューは無いため、実行するには再 emit が
+  必要 [J8])。危険タスクの安全弁。
 - 全イベント (``executed`` / ``rejected`` / ``hold_for_human`` / ``ignored`` / ``error``) を
   ledger と ``results/`` に残す (producer 側 = ccr が次に結果を読める)。
 - ``inject`` が例外を投げても握り潰し ``ok=False`` で finish する (1 件の不良が tick を殺さない)。

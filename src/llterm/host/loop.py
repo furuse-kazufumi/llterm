@@ -1064,6 +1064,12 @@ class SessionLoop:
                                        detail=self.provider_name(active))
                     self._emit("rate_limit_resumed", session_id=sid,
                                provider=self.provider_name(active))
+                    # opener (resume=False) で rate_limited に当たると、元 sid のセッションが
+                    # 既に生成済みの場合 retry の --session-id が "already in use" で弾かれ、
+                    # err=other 累積 → circuit_open に至る (J1)。retry 前に fresh sid を採番して
+                    # 新規セッションとして開き直す (継続ターン resume=True では元 sid を維持)。
+                    if not resume:
+                        sid = self._new_session_id()
                     continue  # 同じ prompt を再試行 (consec_err は増やさない)
 
                 # プロバイダの実行ファイルを起動できない (未導入 / PATH 不在 / shim のみ)。

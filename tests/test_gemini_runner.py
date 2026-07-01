@@ -86,10 +86,12 @@ def test_parse_rate_limit_from_error() -> None:
     assert r.error_kind == "rate_limited"
 
 
-def test_parse_auth_error() -> None:
+def test_parse_auth_error_maps_to_unavailable() -> None:
+    # 二次奏者 Gemini の認証エラーは 'unavailable' (chain から外し fallback)。'auth' は主奏者
+    # claude 専用で loop 全体を fail-closed 停止させるため、二次奏者には使わない (J2)。
     stdout = json.dumps({"error": {"message": "request had invalid authentication credentials"}})
     r = parse_gemini_json(stdout, exit_code=1)
-    assert r.error_kind == "auth"
+    assert r.error_kind == "unavailable"
 
 
 def test_parse_malformed_json_is_error() -> None:

@@ -31,6 +31,13 @@ class CtlCommand:
     requires_human: bool = False
     created_at: str = ""
 
+    def __post_init__(self) -> None:
+        # 危険 action は構築時に requires_human=True へ正規化する。from_json だけでなく emit の
+        # 直接構築 (to_dict → on-disk JSON) でも invariant が成立し、永続化された監査記録が
+        # 実行時 (poll / gate 判定) と一致する (J7)。
+        if self.action in HUMAN_REQUIRED_ACTIONS and not self.requires_human:
+            object.__setattr__(self, "requires_human", True)
+
     @classmethod
     def from_json(cls, raw: str) -> "CtlCommand":
         try:
