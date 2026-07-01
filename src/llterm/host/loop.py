@@ -156,7 +156,7 @@ class TurnResult:
     cost_usd: float
     text: str
     is_error: bool
-    error_kind: str  # "" | "auth" | "rate_limited" | "unavailable" | "other" | "cancelled"
+    error_kind: str  # "" | "auth" | "rate_limited" | "unavailable" | "other" | "cancelled" | "interrupted"
     num_turns: int
     raw_exit: int
     context_window: int = 0  # result の modelUsage.contextWindow (実窓サイズ。0=不明→設定値を使う)
