@@ -13,7 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 # 見出しを 3 区分へ分類するキーワード (小文字照合)。順序は優先度 (next > done > state):
-# 「次の進捗」のように next/done 両方を含む見出しは next を優先する。
+# 「次にやること: 進捗更新」のように next/done 両方を含む見出しは next を優先する。
 _NEXT_KEYS = (
     "次の一手", "次にやる", "次に", "次回", "最優先", "top priority", "todo",
     "残作業", "残り", "やるべき", "next step", "next action", "next:", "next ",
