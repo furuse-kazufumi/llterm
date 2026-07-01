@@ -47,7 +47,10 @@ class TerminalLog:
                 self._prune(now)
                 self._current_stem = path.stem
             with path.open("a", encoding="utf-8") as f:
-                for line in text.split("\n"):  # 常に行単位 append (ユーザー要望)
+                lines = text.split("\n")
+                if lines and lines[-1] == "":
+                    lines.pop()  # 末尾改行による分割余りを除去 (本物の空行は保持)
+                for line in lines:  # 常に行単位 append (ユーザー要望)
                     f.write(line + "\n")
         except OSError:
             pass  # ログ失敗で GUI を殺さない
