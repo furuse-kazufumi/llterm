@@ -73,7 +73,7 @@ def load_api_keys_into_env(path: pathlib.Path | None = None) -> list[str]:
     target = _resolve_path(path)
     try:
         raw = target.read_text(encoding="utf-8")
-    except (FileNotFoundError, NotADirectoryError, IsADirectoryError, OSError):
+    except (FileNotFoundError, NotADirectoryError, IsADirectoryError, UnicodeDecodeError, OSError):
         return []
     try:
         data = json.loads(raw)
