@@ -1338,6 +1338,8 @@ class MainWindow(QtWidgets.QMainWindow):
         """
         from llterm.host.loop import ClaudeRunner
 
+        if type(runner).__name__ == "OrchestraRunner":
+            runner = runner.conductor  # type: ignore[attr-defined]
         if isinstance(runner, ClaudeRunner):
             if runner.use_subscription:
                 return t("gui.cost.subscription"), False
