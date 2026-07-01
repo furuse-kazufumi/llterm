@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import time
 
 from llterm.host.openai_compat_runner import (
     PROVIDERS,
@@ -171,7 +172,11 @@ def test_429_maps_to_rate_limited(monkeypatch) -> None:
     res = r.run_turn(prompt="q", session_id="s", resume=False)
     assert res.is_error is True
     assert res.error_kind == "rate_limited"
-    assert res.rate_limit_resets_at == 42
+    # Retry-After=42 (delta秒) は絶対 epoch (now+42) として格納される (11-fix:
+    # delta を epoch フィールドに入れると rate-limit が効かなかった回帰の是正)。
+    # 呼び出しと assert の間の clock tick 分の許容を持たせて epoch セマンティクスを検証。
+    now = int(time.time())
+    assert now + 40 <= res.rate_limit_resets_at <= now + 44
 
 
 def test_401_maps_to_auth(monkeypatch) -> None:

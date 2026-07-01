@@ -118,7 +118,12 @@ def test_extract_tokens_missing_is_zero() -> None:
 
 def test_summarize_response_event() -> None:
     assert summarize_gemini_event({"type": "response", "text": "hi"}) == [{"kind": "text", "text": "hi"}]
-    assert summarize_gemini_event({"type": "init"}) == []
+    # init は GUI にストリーム開始 (model/session_id) を届けるため summarize が分岐する
+    # (2026-07-01 修正)。model 欠損時は既定 "gemini"、session_id 欠損時は空文字。
+    assert summarize_gemini_event({"type": "init"}) == [{"kind": "init", "model": "gemini", "session_id": ""}]
+    assert summarize_gemini_event({"type": "init", "model": "gemini-2.5-flash", "session_id": "abc"}) == [
+        {"kind": "init", "model": "gemini-2.5-flash", "session_id": "abc"}
+    ]
 
 
 # ─── _build_args ─────────────────────────────────────────────────

@@ -1037,7 +1037,12 @@ class SessionLoop:
                 # consec_err は増やさない (失敗ではなく待ち / 切替)。
                 if res.error_kind == "rate_limited" and self.auto_resume_on_rate_limit:
                     now = self.now_fn()
-                    until = float(res.rate_limit_resets_at) if res.rate_limit_resets_at \
+                    # resetsAt が未来のときのみそこまで benched。過去/不明 (0) は固定待ちへ落とす
+                    # (_wait_until と同じ past-guard)。過去 epoch を block に入れると即解除され、
+                    # 直前に rate_limited を返したプロバイダを再選択して provider_switch を逃す
+                    # (codex の "try again at <過去日>" / tz スキューで過去化した場合の回帰)。
+                    until = float(res.rate_limit_resets_at) \
+                        if res.rate_limit_resets_at and res.rate_limit_resets_at > now \
                         else now + self.rate_limit_fallback_wait_s
                     self._blocked_until[active_idx] = until
                     self.ledger.append(
