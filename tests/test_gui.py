@@ -2305,6 +2305,23 @@ def test_deadline_note_silent_when_ok(
     assert win._gemini_cli_deadline_note() == ""  # 期限まで余裕 = 黙る
 
 
+def test_deadline_note_suppressed_when_gemini_api_key_present(
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
+) -> None:
+    """GEMINI_API_KEY があれば、gemini 導入済み+失効+レビュー奏者=gemini でも黙る (移行済み=誤検知抑止)。
+
+    レビュー奏者 "gemini" は gemini-api へ自動ルートし、自動チェーンの CLI 奏者は失効後
+    除外されるため、死んだ CLI に当たる経路が無い → 警告は出さない。
+    """
+    _patch_which(monkeypatch, "gemini")  # CLI は PATH にあるが…
+    monkeypatch.setenv("GEMINI_API_KEY", "AIza-test-key")  # …Gemini API へ移行済み
+    monkeypatch.setattr("llterm.host.gemini_runner.gemini_cli_free_tier_status",
+                        lambda today=None: ("expired", -22))
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    win.chk_reviewers["gemini"].setChecked(True)  # CLI レビュー奏者を選んでいても…
+    assert win._gemini_cli_deadline_note() == ""  # …API があるので黙る
+
+
 # ─── 計算オフロード自動利用トグル ────────────────────────────────
 
 
