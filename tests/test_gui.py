@@ -2270,8 +2270,9 @@ def test_deadline_note_empty_when_gemini_cli_not_used(
 def test_deadline_note_expired_when_gemini_installed(
     qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
 ) -> None:
-    """gemini が導入済み (自動可用見込み) かつ無料枠失効なら超過通知を出す。"""
+    """gemini が導入済み (自動可用見込み) かつ無料枠失効 かつ Gemini API 未設定なら超過通知を出す。"""
     _patch_which(monkeypatch, "gemini")
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)  # API へ未移行 = CLI に依存しうる
     monkeypatch.setattr("llterm.host.gemini_runner.gemini_cli_free_tier_status",
                         lambda today=None: ("expired", -3))
     win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
