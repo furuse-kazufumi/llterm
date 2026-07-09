@@ -2283,8 +2283,9 @@ def test_deadline_note_expired_when_gemini_installed(
 def test_deadline_note_soon_when_reviewer_is_gemini_cli(
     qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
 ) -> None:
-    """gemini 未導入でもレビュー奏者で Gemini CLI を選べば期限間近通知を出す。"""
+    """gemini 未導入でもレビュー奏者で Gemini CLI を選び、かつ Gemini API 未設定なら期限間近通知を出す。"""
     _patch_which(monkeypatch)  # gemini 未導入 = 自動可用ではない (レビュー奏者選択で発火)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)  # API へ未移行 = CLI に依存しうる
     monkeypatch.setattr("llterm.host.gemini_runner.gemini_cli_free_tier_status",
                         lambda today=None: ("soon", 5))
     win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
