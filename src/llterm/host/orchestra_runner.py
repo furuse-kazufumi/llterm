@@ -40,6 +40,11 @@ from llterm.host.loop import TurnResult, TurnRunner
 _DIFF_MAX_CHARS = 4000   # レビューに添える git diff の上限 (プロンプト肥大を防ぐ)
 _REVIEW_MAX_CHARS = 4000  # 指揮者へ渡すレビュー/集約本文の上限
 _PANEL_MAX_CHARS = 2000  # 集約プロンプトに載せる 1 レビューあたりの上限
+_AUX_COOLDOWN_TURNS = {
+    "rate_limited": 3,
+    "auth": 1,
+    "unavailable": 1,
+}
 
 
 def runner_label(runner: object) -> str:
@@ -73,6 +78,10 @@ class OrchestraRunner:
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
     _cancelled: bool = field(default=False, repr=False, compare=False)
     _interrupted: bool = field(default=False, repr=False, compare=False)  # 緊急注入の一発中断
+    # key は runner object の寿命内で安定な `id(runner)`。補助奏者は OrchestraRunner が強参照し
+    # 実行中に GC されない前提なので、現設計では role 名より安価に bench 状態を持てる。
+    _disabled_aux_until: dict[int, int] = field(default_factory=dict, repr=False, compare=False)
+    _turn_seq: int = field(default=0, repr=False, compare=False)
     # 旧 API (`reviewer=` 単一・`reviewers` 未指定) で構築されたか。True のとき派生 session_id を
     # `-review` (無印) にして既存テスト/呼び出しと後方互換を保つ (複数パネルは `-review{i}`)。
     _legacy_single: bool = field(default=False, repr=False, compare=False)
@@ -185,12 +194,43 @@ class OrchestraRunner:
         with self._lock:
             return self._cancelled
 
+    def _aux_enabled(self, runner: TurnRunner | None) -> bool:
+        if runner is None:
+            return False
+        until = self._disabled_aux_until.get(id(runner), 0)
+        if until > self._turn_seq:
+            return False
+        self._disabled_aux_until.pop(id(runner), None)  # cooldown 経過で half-open 再試行
+        return True
+
+    def _maybe_disable_aux(self, runner: TurnRunner, result: TurnResult, *,
+                           label: str, conductor_label: str) -> None:
+        """rate_limit/auth/unavailable な補助役を cooldown 付きで一時 bench する。
+
+        レビュー/真偽確認/責任者が Claude limit 等で毎ターン失敗すると、Codex 主運用でも
+        無駄な補助ターンを延々叩き続けて代替運用の足を引っ張る。aux role は best-effort なので、
+        構造的な失敗を返したら一旦 bench して conductor の進行を優先しつつ、cooldown 後に
+        再試行して一時障害からの回復も拾う。
+        """
+        cooldown = _AUX_COOLDOWN_TURNS.get(result.error_kind, 0)
+        if cooldown > 0:
+            self._disabled_aux_until[id(runner)] = self._turn_seq + cooldown + 1
+            self._emit({
+                "kind": "review",
+                "phase": "aux_benched",
+                "runner": label,
+                "conductor": conductor_label,
+                "error_kind": result.error_kind,
+                "cooldown_turns": cooldown,
+            })
+
     # ─── 1 ターン = 実装 → パネル → 真偽確認 → 集約 → 修正 → sign-off ─────
     def run_turn(self, *, prompt: str, session_id: str, resume: bool, cwd: Path) -> TurnResult:
         if self._is_cancelled():
             return TurnResult(session_id, 0, 0, 0, 0.0, "", True, "cancelled", 0, -1)
         with self._lock:
             self._interrupted = False  # ターン開始時にリセット (走行中の interrupt() だけを拾う)
+            self._turn_seq += 1
 
         # 1. 指揮者が実装。stream は指揮者のものをそのまま流す。
         # 緊急注入で指揮者が interrupt されると res.error_kind="interrupted" が返り、
@@ -214,21 +254,24 @@ class OrchestraRunner:
         for i, rev_runner in enumerate(self.reviewers):
             if self._is_cancelled():
                 break
+            if not self._aux_enabled(rev_runner):
+                continue
             label = runner_label(rev_runner)
             independent = label != conductor_label
             self._emit({"kind": "review", "phase": "start", "reviewer": label,
                         "conductor": conductor_label, "independent": independent, "index": i})
             # 後方互換: 旧 API の単一 reviewer は `-review` (無印)。パネルは `-review{i}`。
             review_sid = f"{session_id}-review" if self._legacy_single else f"{session_id}-review{i}"
-            cost, turns, text, is_error = self._sub_review(
-                rev_runner, self._review_prompt(res.text, diff), review_sid, cwd)
-            total_cost += cost
-            total_turns += turns
+            rr = self._sub_review(
+                rev_runner, self._review_prompt(res.text, diff), review_sid, cwd,
+                label=label, conductor_label=conductor_label)
+            total_cost += rr.cost_usd
+            total_turns += rr.num_turns
             self._emit({"kind": "review", "phase": "end", "reviewer": label,
                         "conductor": conductor_label, "independent": independent, "index": i,
-                        "text": text, "is_error": is_error})
-            if not is_error and text.strip():
-                panel.append((label, text))
+                        "text": rr.text, "is_error": rr.is_error})
+            if not rr.is_error and rr.text.strip():
+                panel.append((label, rr.text))
 
         # 緊急注入がレビュー中に来た場合: 残りの集約/修正/sign-off を行わず即 interrupted を返す
         # (loop はループを止めず注入を次ターンで消費する)。指揮者実装/修正フェーズ中の中断は
@@ -238,21 +281,30 @@ class OrchestraRunner:
         if interrupted:
             return TurnResult(res.session_id or session_id, res.input_tokens, res.output_tokens,
                               res.context_tokens, total_cost, "", True, "interrupted",
-                              max(1, total_turns), -1, context_window=res.context_window)
+                              max(1, total_turns), -1, context_window=res.context_window,
+                              context_observable=res.context_observable,
+                              context_observable_reason=res.context_observable_reason,
+                              rate_limit_status=res.rate_limit_status,
+                              rate_limit_resets_at=res.rate_limit_resets_at,
+                              cached_input_tokens=res.cached_input_tokens,
+                              reasoning_output_tokens=res.reasoning_output_tokens,
+                              token_usage_kind=res.token_usage_kind,
+                              provider_version=res.provider_version)
 
         # 4. 真偽確認奏者 (あれば): 実装報告 + diff の事実主張を裏取り (best-effort / stateless)。
         factcheck_text = ""
-        if self.factchecker is not None and not self._is_cancelled():
+        if self._aux_enabled(self.factchecker) and not self._is_cancelled():
             fc_label = runner_label(self.factchecker)
-            cost, turns, text, is_error = self._sub_review(
+            fr = self._sub_review(
                 self.factchecker, self._factcheck_prompt(res.text, diff),
-                f"{session_id}-factcheck", cwd)
-            total_cost += cost
-            total_turns += turns
+                f"{session_id}-factcheck", cwd,
+                label=fc_label, conductor_label=conductor_label)
+            total_cost += fr.cost_usd
+            total_turns += fr.num_turns
             self._emit({"kind": "review", "phase": "factcheck", "checker": fc_label,
-                        "text": text, "is_error": is_error})
-            if not is_error and text.strip():
-                factcheck_text = text
+                        "text": fr.text, "is_error": fr.is_error})
+            if not fr.is_error and fr.text.strip():
+                factcheck_text = fr.text
 
         # 5. 責任者が集約 (取りまとめ + 総合判断)。actionable な統合指示を得る。
         # _aggregate は (指示文, 追加コスト, 追加ターン) を返す
@@ -275,17 +327,18 @@ class OrchestraRunner:
             fixed = True
 
         # 7. 最終 sign-off (責任者がループを閉じる)。有界: 再修正はしない (最大 1 回)。
-        if (self.final_signoff and self.lead is not None and fixed
+        if (self.final_signoff and self._aux_enabled(self.lead) and fixed
                 and not final.is_error and not self._is_cancelled()):
             lead_label = runner_label(self.lead)
             new_diff = self._capture_diff(cwd) if self.include_diff else ""
-            cost, turns, text, is_error = self._sub_review(
-                self.lead, self._signoff_prompt(new_diff), f"{session_id}-signoff", cwd)
-            total_cost += cost
-            total_turns += turns
-            approved = (not is_error) and "APPROVED" in text.strip().upper()[:40]
+            sr = self._sub_review(
+                self.lead, self._signoff_prompt(new_diff), f"{session_id}-signoff", cwd,
+                label=lead_label, conductor_label=conductor_label)
+            total_cost += sr.cost_usd
+            total_turns += sr.num_turns
+            approved = (not sr.is_error) and "APPROVED" in sr.text.strip().upper()[:40]
             self._emit({"kind": "review", "phase": "signoff", "lead": lead_label,
-                        "text": text, "is_error": is_error, "approved": approved})
+                        "text": sr.text, "is_error": sr.is_error, "approved": approved})
 
         # 集計した cost / num_turns を最終 TurnResult に載せ替えて返す。
         return TurnResult(
@@ -294,7 +347,13 @@ class OrchestraRunner:
             context_tokens=final.context_tokens, cost_usd=total_cost, text=final.text,
             is_error=final.is_error, error_kind=final.error_kind, num_turns=max(1, total_turns),
             raw_exit=final.raw_exit, context_window=final.context_window,
+            context_observable=final.context_observable,
+            context_observable_reason=final.context_observable_reason,
             rate_limit_status=final.rate_limit_status, rate_limit_resets_at=final.rate_limit_resets_at,
+            cached_input_tokens=final.cached_input_tokens,
+            reasoning_output_tokens=final.reasoning_output_tokens,
+            token_usage_kind=final.token_usage_kind,
+            provider_version=final.provider_version,
         )
 
     def run_turn_unreviewed(self, *, prompt: str, session_id: str, resume: bool,
@@ -312,18 +371,31 @@ class OrchestraRunner:
             prompt=prompt, session_id=session_id, resume=resume, cwd=cwd)
 
     def _sub_review(self, runner: TurnRunner, prompt: str, session_id: str,
-                    cwd: Path) -> tuple[float, int, str, bool]:
+                    cwd: Path, *, label: str, conductor_label: str) -> TurnResult:
         """レビュー系の 1 サブターンを stateless (resume=False) で回す (best-effort)。
 
-        戻り値 = (cost, num_turns, text, is_error)。失敗 (例外含む) は is_error=True で握り潰す。
+        失敗 (例外含む) は is_error=True の TurnResult で握り潰す。構造的失敗
+        (rate_limited/auth/unavailable) は bench 対象にする。
         """
         runner.on_stream = self._review_stream  # type: ignore[attr-defined]
         try:
             r = runner.run_turn(prompt=prompt, session_id=session_id, resume=False, cwd=cwd)
         except Exception:  # noqa: BLE001 — レビュー系の失敗は指揮者の結果を殺さない
-            return 0.0, 0, "", True
-        text = r.text if not r.is_error else ""
-        return r.cost_usd, r.num_turns, text, r.is_error
+            return TurnResult(session_id, 0, 0, 0, 0.0, "", True, "other", 0, -1)
+        self._maybe_disable_aux(runner, r, label=label, conductor_label=conductor_label)
+        if r.is_error:
+            return TurnResult(session_id, r.input_tokens, r.output_tokens, r.context_tokens,
+                              r.cost_usd, "", True, r.error_kind, r.num_turns, r.raw_exit,
+                              context_window=r.context_window,
+                              context_observable=r.context_observable,
+                              context_observable_reason=r.context_observable_reason,
+                              rate_limit_status=r.rate_limit_status,
+                              rate_limit_resets_at=r.rate_limit_resets_at,
+                              cached_input_tokens=r.cached_input_tokens,
+                              reasoning_output_tokens=r.reasoning_output_tokens,
+                              token_usage_kind=r.token_usage_kind,
+                              provider_version=r.provider_version)
+        return r
 
     def _aggregate(self, work: str, diff: str, panel: list[tuple[str, str]], factcheck: str,
                    session_id: str, cwd: Path) -> tuple[str, float, int]:
@@ -336,21 +408,22 @@ class OrchestraRunner:
 
         戻り値 = (統合指示文, 追加コスト, 追加ターン)。
         """
-        need_aggregate = (self.lead is not None
+        need_aggregate = (self._aux_enabled(self.lead)
                           and (len(panel) >= 2 or bool(factcheck.strip()))
                           and not self._is_cancelled())
         if need_aggregate:
             assert self.lead is not None
             lead_label = runner_label(self.lead)
-            cost, turns, text, is_error = self._sub_review(
+            ar = self._sub_review(
                 self.lead, self._aggregate_prompt(work, diff, panel, factcheck),
-                f"{session_id}-aggregate", cwd)
+                f"{session_id}-aggregate", cwd,
+                label=lead_label, conductor_label=runner_label(self.conductor))
             self._emit({"kind": "review", "phase": "aggregate", "lead": lead_label,
-                        "text": text, "is_error": is_error})
-            if not is_error and text.strip():
-                return text, cost, turns
+                        "text": ar.text, "is_error": ar.is_error})
+            if not ar.is_error and ar.text.strip():
+                return ar.text, ar.cost_usd, ar.num_turns
             # 集約失敗時は fail-safe でパネル所見にフォールバック
-            return self._fallback_instructions(panel), cost, turns
+            return self._fallback_instructions(panel), ar.cost_usd, ar.num_turns
         return self._fallback_instructions(panel), 0.0, 0
 
     @staticmethod

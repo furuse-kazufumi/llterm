@@ -13,8 +13,14 @@ from llterm.host.orchestra_runner import OrchestraRunner, runner_label
 
 
 def _tr(text: str = "", *, cost: float = 0.0, is_error: bool = False, error_kind: str = "",
-        ctx: int = 0, num_turns: int = 1, session_id: str = "s") -> TurnResult:
-    return TurnResult(session_id, 0, 0, ctx, cost, text, is_error, error_kind, num_turns, 0)
+        ctx: int = 0, num_turns: int = 1, session_id: str = "s",
+        inp: int = 0, out: int = 0, cached: int = 0, reasoning: int = 0,
+        token_usage_kind: str = "instant", context_observable: bool = True,
+        provider_version: str = "") -> TurnResult:
+    return TurnResult(session_id, inp, out, ctx, cost, text, is_error, error_kind, num_turns, 0,
+                      context_observable=context_observable,
+                      cached_input_tokens=cached, reasoning_output_tokens=reasoning,
+                      token_usage_kind=token_usage_kind, provider_version=provider_version)
 
 
 @dataclass
@@ -105,6 +111,47 @@ def test_reviewer_error_returns_conductor_result(tmp_path: Path) -> None:
     assert res.is_error is False
     assert res.text == "実装"
     assert len(c.calls) == 1  # レビュー失敗 → 修正ターンなし
+
+
+def test_rate_limited_reviewer_is_benched_for_next_turn(tmp_path: Path) -> None:
+    """limit/auth 系で落ちた補助役は次ターン以降 bench され、毎回叩かない。"""
+    orch, c, r = _orch(
+        [_tr("実装1"), _tr("実装2")],
+        [_tr("", is_error=True, error_kind="rate_limited"), _tr("LGTM")],
+    )
+    res1 = orch.run_turn(prompt="p1", session_id="s1", resume=False, cwd=tmp_path)
+    res2 = orch.run_turn(prompt="p2", session_id="s2", resume=True, cwd=tmp_path)
+    assert res1.text == "実装1" and res2.text == "実装2"
+    assert len(r.calls) == 1  # 2 ターン目は bench 済みで再度呼ばれない
+
+
+def test_aux_bench_event_emitted_with_conductor_context(tmp_path: Path) -> None:
+    """補助役の bench 開始時は GUI 向け degraded-mode イベントを流す。"""
+    seen: list[dict] = []
+    orch, _, _ = _orch(
+        [_tr("実装1")],
+        [_tr("", is_error=True, error_kind="rate_limited")],
+    )
+    orch.on_stream = seen.append
+    orch.run_turn(prompt="p1", session_id="s1", resume=False, cwd=tmp_path)
+    bench = next(e for e in seen if e.get("phase") == "aux_benched")
+    assert bench["runner"] == "FakeRunner"
+    assert bench["conductor"] == "FakeRunner"
+    assert bench["error_kind"] == "rate_limited"
+    assert bench["cooldown_turns"] == 3
+
+
+def test_rate_limited_reviewer_retries_after_cooldown(tmp_path: Path) -> None:
+    """rate_limited reviewer は cooldown 後に half-open 再試行される。"""
+    orch, c, r = _orch(
+        [_tr("実装1"), _tr("実装2"), _tr("実装3"), _tr("実装4"), _tr("実装5")],
+        [_tr("", is_error=True, error_kind="rate_limited"), _tr("LGTM")],
+    )
+    for i in range(4):
+        orch.run_turn(prompt=f"p{i}", session_id=f"s{i}", resume=bool(i), cwd=tmp_path)
+    assert len(r.calls) == 1  # cooldown 中は bench
+    orch.run_turn(prompt="p4", session_id="s4", resume=True, cwd=tmp_path)
+    assert len(r.calls) == 2  # cooldown 経過で再試行
 
 
 # ─── git diff / stream / cancel ──────────────────────────────────
@@ -204,6 +251,37 @@ def test_lead_aggregates_panel_findings(tmp_path: Path) -> None:
     assert res.text == "修正した"
 
 
+def test_rate_limited_lead_falls_back_to_panel_without_retry_storm(tmp_path: Path) -> None:
+    """lead が rate_limited なら単一/複数 panel のフォールバックで進み、次ターン以降 bench される。"""
+    c = FakeRunner([_tr("実装1"), _tr("修正1"), _tr("実装2"), _tr("修正2")])
+    r0 = FakeRunner([_tr("- bug A"), _tr("- bug B")])
+    r1 = FakeRunner([_tr("- bug C"), _tr("- bug D")])
+    lead = FakeRunner([_tr("", is_error=True, error_kind="rate_limited"), _tr("統合指示")])
+    orch = OrchestraRunner(conductor=c, reviewers=[r0, r1], lead=lead, include_diff=False)
+    res1 = orch.run_turn(prompt="p1", session_id="s1", resume=False, cwd=tmp_path)
+    res2 = orch.run_turn(prompt="p2", session_id="s2", resume=True, cwd=tmp_path)
+    assert "bug A" in c.calls[1]["prompt"] and "bug C" in c.calls[1]["prompt"]  # panel フォールバック
+    assert res1.text == "修正1" and res2.text == "修正2"
+    assert len(lead.calls) == 1  # 2 ターン目は bench 済みで再集約しない
+
+
+def test_auth_lead_retries_after_single_turn_cooldown(tmp_path: Path) -> None:
+    """auth/unavailable は永久 bench せず、短い cooldown 後に再試行される。"""
+    c = FakeRunner([_tr("実装1"), _tr("修正1"), _tr("実装2"), _tr("修正2"), _tr("実装3"), _tr("修正3")])
+    r0 = FakeRunner([_tr("- bug A"), _tr("- bug B"), _tr("- bug C")])
+    r1 = FakeRunner([_tr("- bug D"), _tr("- bug E"), _tr("- bug F")])
+    lead = FakeRunner([_tr("", is_error=True, error_kind="auth"), _tr("統合指示"), _tr("統合指示")])
+    orch = OrchestraRunner(
+        conductor=c, reviewers=[r0, r1], lead=lead, include_diff=False, final_signoff=False
+    )
+    orch.run_turn(prompt="p1", session_id="s1", resume=False, cwd=tmp_path)
+    orch.run_turn(prompt="p2", session_id="s2", resume=True, cwd=tmp_path)
+    assert len(lead.calls) == 1  # 1 ターン cooldown
+    orch.run_turn(prompt="p3", session_id="s3", resume=True, cwd=tmp_path)
+    assert len(lead.calls) == 2  # 復帰後は aggregate を再試行
+    assert [call["session_id"] for call in lead.calls] == ["s1-aggregate", "s3-aggregate"]
+
+
 def test_interrupt_from_conductor_propagates_and_skips_review(tmp_path: Path) -> None:
     """指揮者が interrupted を返すと orchestra も interrupted を返し、レビューに進まない。"""
     orch, c, r = _orch(
@@ -241,7 +319,46 @@ def test_run_turn_unreviewed_runs_only_conductor(tmp_path: Path) -> None:
     assert len(c.calls) == 1          # 指揮者のみ
     assert len(r.calls) == 0          # レビュー奏者は呼ばれない
     assert res.text == "記録した" and res.cost_usd == 1.0 and res.context_tokens == 42
-    assert c.calls[0]["resume"] is True
+
+
+def test_final_result_preserves_cached_tokens_and_usage_kind(tmp_path: Path) -> None:
+    c = FakeRunner([_tr("実装", inp=5_000_000, out=1000, cached=98_000, reasoning=200,
+                        token_usage_kind="cumulative", context_observable=False,
+                        provider_version="codex-cli 0.test")])
+    orch = OrchestraRunner(conductor=c, reviewers=[], lead=None, include_diff=False)
+    res = orch.run_turn(prompt="p", session_id="s", resume=False, cwd=tmp_path)
+    assert res.input_tokens == 5_000_000
+    assert res.output_tokens == 1000
+    assert res.cached_input_tokens == 98_000
+    assert res.reasoning_output_tokens == 200
+    assert res.token_usage_kind == "cumulative"
+    assert res.context_observable is False
+    assert res.provider_version == "codex-cli 0.test"
+
+
+def test_interrupted_result_preserves_cached_tokens_and_usage_kind(tmp_path: Path) -> None:
+    class InterruptingReviewer(FakeRunner):
+        orch: OrchestraRunner | None = None
+
+        def run_turn(self, *, prompt: str, session_id: str, resume: bool, cwd: Path) -> TurnResult:
+            assert self.orch is not None
+            self.orch.interrupt()
+            return super().run_turn(prompt=prompt, session_id=session_id, resume=resume, cwd=cwd)
+
+    c = FakeRunner([_tr("実装", inp=5_000_000, out=1000, cached=98_000, reasoning=200,
+                        token_usage_kind="cumulative", context_observable=False,
+                        provider_version="codex-cli 0.test")])
+    r = InterruptingReviewer([_tr("LGTM")])
+    orch = OrchestraRunner(conductor=c, reviewer=r, include_diff=False)
+    r.orch = orch
+    res = orch.run_turn(prompt="p", session_id="s", resume=False, cwd=tmp_path)
+    assert res.is_error is True
+    assert res.error_kind == "interrupted"
+    assert res.cached_input_tokens == 98_000
+    assert res.reasoning_output_tokens == 200
+    assert res.token_usage_kind == "cumulative"
+    assert res.context_observable is False
+    assert res.provider_version == "codex-cli 0.test"
 
 
 def test_final_signoff_called_after_fix(tmp_path: Path) -> None:

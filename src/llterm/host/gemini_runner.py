@@ -233,6 +233,7 @@ class GeminiRunner:
         with self._lock:
             if self._cancelled:
                 return TurnResult(session_id, 0, 0, 0, 0.0, "", True, "cancelled", 0, -1)
+            self._interrupted = False  # ターン開始時にリセット (走行中の interrupt() だけを拾う)
         self._notify_stream(json.dumps({"type": "init", "model": self.model or "gemini"}))
         try:
             proc = subprocess.Popen(
@@ -248,8 +249,20 @@ class GeminiRunner:
         with self._lock:
             self._proc = proc
             kill_now = self._cancelled
-        if kill_now:
+            interrupt_now = self._interrupted
+            if interrupt_now and not kill_now:
+                self._interrupted = False
+        if kill_now or interrupt_now:
             self._kill(proc)
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                pass
+            with self._lock:
+                if self._proc is proc:
+                    self._proc = None
+            if interrupt_now and not kill_now:
+                return TurnResult(session_id, 0, 0, 0, 0.0, "", True, "interrupted", 0, -1)
 
         # プロンプトを stdin へ書き切って EOF (gemini は piped stdin をプロンプトとして読む)。
         # 別スレッドで書くことで stdout を読む前に大きな prompt を書いてもデッドロックしない。
@@ -298,6 +311,10 @@ class GeminiRunner:
                 proc.wait(timeout=30)
             except subprocess.TimeoutExpired:
                 self._kill(proc)
+                try:
+                    proc.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    pass
         except (OSError, ValueError):
             self._kill(proc)
         finally:
@@ -318,7 +335,7 @@ class GeminiRunner:
             return TurnResult(session_id, 0, 0, 0, 0.0, "", True, "interrupted", 0,
                               proc.returncode or -1)
         if timed_out.is_set():
-            return TurnResult(session_id, 0, 0, 0, 0.0, "", True, "other", 0, -1)
+            return TurnResult(session_id, 0, 0, 0, 0.0, t("runner.gemini.timeout"), True, "other", 0, -1)
         exit_code = proc.returncode if proc.returncode is not None else -1
         res = parse_gemini_json(out, exit_code=exit_code, stderr="".join(err_buf))
         # session_id は呼び出し側 (loop) の uuid を保持して返す (gemini 側 session は無いため)

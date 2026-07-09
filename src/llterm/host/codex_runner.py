@@ -15,6 +15,8 @@ SESSION_SUMMARY / CLAUDE.md を読んで「前回の続き」を継続する)。
 - ``item.completed``  : ``item`` (``type``=agent_message/command_execution/… と ``text``)
 - ``turn.completed``  : ``usage`` (input_tokens / cached_input_tokens / output_tokens / …)
 - ``turn.failed`` / ``error`` : エラー
+- 末尾に非 JSON の診断行 (`Reading additional input from stdin...`) が混ざる probe もあるため、
+  parser は成功時はそれらを無視し、**失敗時のみ** 補助診断として拾う
 """
 from __future__ import annotations
 
@@ -25,7 +27,7 @@ import subprocess
 import sys
 import threading
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
 
@@ -45,6 +47,19 @@ from llterm.i18n import t
 # danger-full-access のみ書込み可)。codex を実装者にする以上、loop の claude (=skip-permissions
 # で全権) と同等の全権を許す方針 (ユーザー決定 2026-06-13: 常に danger-full-access)。
 DEFAULT_CODEX_SANDBOX = "danger-full-access"
+
+
+def _append_diagnostic_text(base: str, diagnostic: str) -> str:
+    """失敗時の補助診断を既存テキストへ重複なく追記する。"""
+    base = (base or "").strip()
+    diagnostic = (diagnostic or "").strip()
+    if not diagnostic:
+        return base
+    if not base:
+        return diagnostic
+    if diagnostic in base:
+        return base
+    return f"{base}\n{diagnostic}"
 
 
 def summarize_codex_event(ev: object) -> list[dict]:
@@ -151,6 +166,7 @@ def parse_codex_jsonl(stdout: str, *, exit_code: int, stderr: str = "") -> TurnR
     thread_id = ""
     texts: list[str] = []
     error_texts: list[str] = []  # error / turn.failed の message (分類 + GUI 表示に使う)
+    diagnostic_lines: list[str] = []  # 非 JSON 診断行。成功時は捨て、失敗時だけ補助テキストに使う。
     usage: dict = {}
     turn_completed = False
     failed = False
@@ -162,6 +178,7 @@ def parse_codex_jsonl(stdout: str, *, exit_code: int, stderr: str = "") -> TurnR
         try:
             ev = json.loads(line)
         except json.JSONDecodeError:
+            diagnostic_lines.append(line)
             continue
         if not isinstance(ev, dict):
             continue
@@ -186,7 +203,9 @@ def parse_codex_jsonl(stdout: str, *, exit_code: int, stderr: str = "") -> TurnR
     agent_text = texts[-1] if texts else ""
     error_text = "\n".join(error_texts)
     input_tokens = _as_int(usage.get("input_tokens"))
+    cached_input_tokens = _as_int(usage.get("cached_input_tokens"))
     output_tokens = _as_int(usage.get("output_tokens"))
+    reasoning_output_tokens = _as_int(usage.get("reasoning_output_tokens"))
     # context_tokens (= rotate を駆動する「瞬間の窓占有」) は **0 固定**にする。
     # 理由: codex の turn.completed.usage は 1 ターン内の全内部 API 往復の **累積**で、
     # 各往復が文脈を丸ごと再送するため N×文脈に膨れる (実測 ctx 2549% = 物理的に窓を超える
@@ -199,7 +218,10 @@ def parse_codex_jsonl(stdout: str, *, exit_code: int, stderr: str = "") -> TurnR
     is_error = exit_code != 0 or failed or not turn_completed
     # 失敗時 (turn.failed) は agent_message が無いのが普通。原因が「中身の見えない err=other」に
     # ならないよう、error/turn.failed の message を表示テキストへ昇格する (GUI で原因が読める)。
+    diagnostic_text = "\n".join(diagnostic_lines[:4])
     text = agent_text or (error_text if is_error else "")
+    if is_error:
+        text = _append_diagnostic_text(text, diagnostic_text)
     error_kind = ""
     resets_at = 0  # rate_limited のとき codex の "try again at <date>" を epoch で拾う (無ければ 0)
     if is_error:
@@ -237,7 +259,12 @@ def parse_codex_jsonl(stdout: str, *, exit_code: int, stderr: str = "") -> TurnR
         error_kind=error_kind,
         num_turns=1,
         raw_exit=exit_code,
+        context_observable=False,
+        context_observable_reason="cumulative_only",
         rate_limit_resets_at=resets_at,
+        cached_input_tokens=cached_input_tokens,
+        reasoning_output_tokens=reasoning_output_tokens,
+        token_usage_kind="cumulative",
     )
 
 
@@ -260,8 +287,10 @@ class CodexRunner:
     _thread_id: str = field(default="", repr=False, compare=False)
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
     _proc: subprocess.Popen | None = field(default=None, repr=False, compare=False)
+    _probe_proc: subprocess.Popen | None = field(default=None, repr=False, compare=False)
     _cancelled: bool = field(default=False, repr=False, compare=False)
     _interrupted: bool = field(default=False, repr=False, compare=False)  # 緊急注入の一発中断
+    _provider_version_cache: str | None = field(default=None, repr=False, compare=False)
 
     def _resolved_exe(self) -> str:
         """codex の実体を解決する。codex は npm 配布で Windows では codex.CMD shim が正規なので、
@@ -269,6 +298,64 @@ class CodexRunner:
         フルパスの .cmd を list 形式で安全に起動できる (バッチ用 quoting 適用)。"""
         found = shutil.which(self.exe)
         return found or self.exe
+
+    def _provider_version_args(self) -> list[str]:
+        """provider version probe の argv。テストではここを差し替えて長時間 probe を再現する。"""
+        return [self._resolved_exe(), "--version"]
+
+    def _provider_version(self) -> str:
+        """Codex CLI の version 文字列を 1 回だけ取得する。
+
+        per-turn telemetry に載せておくと、「この cumulative-only 観測はどの codex CLI で見たか」を
+        docs 外にも残せる。取得失敗は空文字にフォールバック (fail-safe)。
+
+        ただし stop / 緊急注入の fast-path を阻害してはいけないため、probe は cancel/interrupt から
+        kill 可能な短命 subprocess として扱う。pre-start の停止要求が入ったら、version provenance は
+        諦めて空文字で返す。
+        """
+        if self._provider_version_cache is not None:
+            return self._provider_version_cache
+        try:
+            proc = subprocess.Popen(
+                self._provider_version_args(),
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                creationflags=_NO_WINDOW,
+            )
+        except FileNotFoundError:
+            text = ""
+            self._provider_version_cache = text
+            return text
+        except (OSError, ValueError, subprocess.SubprocessError):
+            return ""
+        with self._lock:
+            self._probe_proc = proc
+            stop_now = self._cancelled or self._interrupted
+        if stop_now and proc.poll() is None:
+            self._kill(proc)
+        cancelled_probe = False
+        try:
+            stdout, stderr = proc.communicate(timeout=10)
+            text = (stdout or stderr or "").strip()
+        except (FileNotFoundError, OSError, subprocess.SubprocessError, ValueError):
+            self._kill(proc)
+            text = ""
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                pass
+        finally:
+            with self._lock:
+                cancelled_probe = self._cancelled or self._interrupted
+                if self._probe_proc is proc:
+                    self._probe_proc = None
+        if not cancelled_probe:
+            self._provider_version_cache = text
+        return text
 
     def _build_args(self, *, resume: bool, cwd: Path) -> list[str]:
         """codex の引数列を組む。**プロンプトは argv に置かず stdin で渡す** ("-" センチネル)。
@@ -317,10 +404,21 @@ class CodexRunner:
                 pass
 
     def run_turn(self, *, prompt: str, session_id: str, resume: bool, cwd: Path) -> TurnResult:
-        args = self._build_args(resume=resume, cwd=cwd)  # プロンプトは stdin で渡す (下記)
         with self._lock:
             if self._cancelled:
-                return TurnResult(session_id, 0, 0, 0, 0.0, "", True, "cancelled", 0, -1)
+                return TurnResult(session_id, 0, 0, 0, 0.0, "", True, "cancelled", 0, -1,
+                                  provider_version="")
+            self._interrupted = False  # ターン開始時にリセット (走行中の interrupt() だけを拾う)
+        provider_version = self._provider_version()
+        with self._lock:
+            if self._cancelled:
+                return TurnResult(session_id, 0, 0, 0, 0.0, "", True, "cancelled", 0, -1,
+                                  provider_version="")
+            if self._interrupted:
+                self._interrupted = False
+                return TurnResult(session_id, 0, 0, 0, 0.0, "", True, "interrupted", 0, -1,
+                                  provider_version="")
+        args = self._build_args(resume=resume, cwd=cwd)  # プロンプトは stdin で渡す (下記)
         try:
             proc = subprocess.Popen(
                 args, cwd=str(cwd), stdin=subprocess.PIPE,
@@ -331,12 +429,27 @@ class CodexRunner:
         except FileNotFoundError:
             # codex 未導入 = 使用不能 → loop が別プロバイダへ即フォールバック (silent circuit 回避)
             return TurnResult(session_id, 0, 0, 0, 0.0, t("runner.codex.not_found"),
-                              True, "unavailable", 0, 127)
+                              True, "unavailable", 0, 127, provider_version=provider_version)
         with self._lock:
             self._proc = proc
             kill_now = self._cancelled
-        if kill_now:
+            interrupt_now = self._interrupted
+            if interrupt_now and not kill_now:
+                self._interrupted = False
+        if kill_now or interrupt_now:
             self._kill(proc)
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                pass
+            with self._lock:
+                if self._proc is proc:
+                    self._proc = None
+            if interrupt_now and not kill_now:
+                return TurnResult(
+                    session_id, 0, 0, 0, 0.0, "", True, "interrupted", 0, -1,
+                    provider_version=provider_version
+                )
 
         # プロンプトを stdin へ書き切って EOF を送る (codex は "-" で stdin から全文を読む)。
         # 別スレッドにすることで、stdout を読む前に大きな prompt を書いてもパイプ
@@ -406,16 +519,20 @@ class CodexRunner:
             interrupted = self._interrupted
             self._interrupted = False  # 一発: 次の run_turn は通常起動できる
         if cancelled:
-            return TurnResult(session_id, 0, 0, 0, 0.0, "", True, "cancelled", 0, proc.returncode or -1)
+            return TurnResult(session_id, 0, 0, 0, 0.0, "", True, "cancelled", 0, proc.returncode or -1,
+                              provider_version=provider_version)
         if interrupted:  # 緊急注入による中断 = 停止ではない。loop が注入を次ターンで消費する
-            return TurnResult(session_id, 0, 0, 0, 0.0, "", True, "interrupted", 0, proc.returncode or -1)
+            return TurnResult(session_id, 0, 0, 0, 0.0, "", True, "interrupted", 0, proc.returncode or -1,
+                              provider_version=provider_version)
         if timed_out.is_set():
             # 原因が見えない空テキスト err=other で silent circuit_open しないよう理由を明示する
             # (gem-critic 指摘 2026-06-21)。タイムアウトは一過性のハングもあり得るため other を維持
             # (3 連続のみ circuit_open) だが、GUI で「なぜ落ちたか」が読めるようにする。
-            return TurnResult(session_id, 0, 0, 0, 0.0, t("runner.codex.timeout"), True, "other", 0, -1)
+            return TurnResult(session_id, 0, 0, 0, 0.0, t("runner.codex.timeout"), True, "other", 0, -1,
+                              provider_version=provider_version)
         exit_code = proc.returncode if proc.returncode is not None else -1
         res = parse_codex_jsonl("".join(out_lines), exit_code=exit_code, stderr="".join(err_buf))
+        res = replace(res, provider_version=provider_version)
         if res.session_id:  # codex thread_id を覚えて次ターンの resume に使う
             self._thread_id = res.session_id
         return res
@@ -425,8 +542,11 @@ class CodexRunner:
         with self._lock:
             self._cancelled = True
             proc = self._proc
+            probe = self._probe_proc
         if proc is not None and proc.poll() is None:
             self._kill(proc)
+        if probe is not None and probe.poll() is None:
+            self._kill(probe)
 
     def interrupt(self) -> None:
         """現ターンだけを kill する (恒久 cancel と違い、次の run_turn は新規に起動できる)。
@@ -436,8 +556,11 @@ class CodexRunner:
         with self._lock:
             self._interrupted = True
             proc = self._proc
+            probe = self._probe_proc
         if proc is not None and proc.poll() is None:
             self._kill(proc)
+        if probe is not None and probe.poll() is None:
+            self._kill(probe)
 
     def _kill(self, proc: subprocess.Popen) -> None:
         try:

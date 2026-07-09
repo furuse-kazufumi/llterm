@@ -19,6 +19,7 @@ env/
 .coverage
 htmlcov/
 .tox/
+.tmp_pytest_*.txt
 
 # Editor / OS
 .vscode/

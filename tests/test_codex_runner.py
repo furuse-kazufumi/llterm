@@ -6,10 +6,15 @@ parse_codex_jsonl は実 codex 0.135.0 の probe 出力フォーマットに準�
 """
 from __future__ import annotations
 
+import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
+import pytest
+
+from llterm.host.loop import TurnResult
 from llterm.host.codex_runner import CodexRunner, parse_codex_jsonl, summarize_codex_event
 
 
@@ -22,17 +27,67 @@ def test_parse_codex_success() -> None:
         '{"type":"turn.started"}',
         '{"type":"item.completed","item":{"id":"i0","type":"agent_message","text":"答えは 42"}}',
         '{"type":"turn.completed","usage":{"input_tokens":9926,"cached_input_tokens":8064,'
-        '"output_tokens":20}}',
+        '"output_tokens":20,"reasoning_output_tokens":13}}',
     ])
     r = parse_codex_jsonl(stdout, exit_code=0)
     assert r.session_id == "th-123"          # codex thread_id
     assert r.text == "答えは 42"
     assert r.is_error is False
     assert r.input_tokens == 9926            # usage は情報として保持 (cost/ログ用)
+    assert r.cached_input_tokens == 8064
+    assert r.reasoning_output_tokens == 13
     # context_tokens は 0 固定: codex の usage は 1 ターンの全 API 往復の累積で瞬間占有にならない。
     # 占有率にすると毎ターン rotate するため 0 とし turn 数で rotate する (codex は自前で文脈圧縮)。
     assert r.context_tokens == 0
+    assert r.context_observable is False
+    assert r.context_observable_reason == "cumulative_only"
+    assert r.token_usage_kind == "cumulative"
     assert r.cost_usd == 0.0                 # サブスク = 課金なし
+
+
+def test_parse_codex_ignores_non_json_probe_diagnostics() -> None:
+    """実 codex 0.135.0 probe の末尾に混ざる非 JSON 診断行を黙って無視できる。"""
+    stdout = "\n".join([
+        '{"type":"thread.started","thread_id":"th-123"}',
+        '{"type":"turn.started"}',
+        '{"type":"item.completed","item":{"id":"i0","type":"agent_message","text":"OK"}}',
+        '{"type":"turn.completed","usage":{"input_tokens":13063,"cached_input_tokens":2432,'
+        '"output_tokens":15,"reasoning_output_tokens":8}}',
+        "Reading additional input from stdin...",
+    ])
+    r = parse_codex_jsonl(stdout, exit_code=0)
+    assert r.session_id == "th-123"
+    assert r.text == "OK"
+    assert r.is_error is False
+    assert r.input_tokens == 13063
+    assert r.cached_input_tokens == 2432
+    assert r.reasoning_output_tokens == 8
+
+
+def test_parse_codex_promotes_non_json_diagnostics_on_error() -> None:
+    """失敗時に JSON event が無ければ、非 JSON 診断行を補助エラーテキストへ昇格する。"""
+    stdout = "\n".join([
+        "Reading additional input from stdin...",
+        "fatal: backend disconnected unexpectedly",
+    ])
+    r = parse_codex_jsonl(stdout, exit_code=1, stderr="")
+    assert r.is_error is True
+    assert r.error_kind == "other"
+    assert "backend disconnected unexpectedly" in r.text
+
+
+def test_parse_codex_appends_non_json_diagnostics_after_error_text() -> None:
+    """error/turn.failed の本文があっても、非 JSON 診断は追記で残す。"""
+    stdout = "\n".join([
+        '{"type":"turn.failed","error":{"message":"unexpected internal failure xyz"}}',
+        "fatal: backend disconnected unexpectedly",
+        "hint: retry with --verbose",
+    ])
+    r = parse_codex_jsonl(stdout, exit_code=1, stderr="")
+    assert r.error_kind == "other"
+    assert "unexpected internal failure xyz" in r.text
+    assert "fatal: backend disconnected unexpectedly" in r.text
+    assert "hint: retry with --verbose" in r.text
 
 
 def test_parse_codex_huge_cumulative_usage_does_not_overcount() -> None:
@@ -42,11 +97,13 @@ def test_parse_codex_huge_cumulative_usage_does_not_overcount() -> None:
         '{"type":"item.completed","item":{"type":"agent_message","text":"done"}}',
         # 1 ターン内の多数ツール往復で累積 5.1M (= 窓 200k の 2549% 相当)
         '{"type":"turn.completed","usage":{"input_tokens":5000000,'
-        '"cached_input_tokens":98000,"output_tokens":1000}}',
+        '"cached_input_tokens":98000,"output_tokens":1000,"reasoning_output_tokens":200}}',
     ])
     r = parse_codex_jsonl(stdout, exit_code=0)
     assert r.context_tokens == 0        # 占有率には使わない (rotate を駆動させない)
     assert r.input_tokens == 5_000_000  # 情報としては保持
+    assert r.cached_input_tokens == 98_000
+    assert r.reasoning_output_tokens == 200
 
 
 def test_parse_codex_uses_last_agent_message() -> None:
@@ -176,6 +233,7 @@ def test_codex_timeout_returns_visible_reason(tmp_path: Path) -> None:
     assert res.is_error is True
     assert res.error_kind == "other"
     assert res.text.strip()  # 空でない (GUI で「なぜ落ちたか」が読める)
+    assert res.provider_version == "codex-cli 0.test"
 
 
 def test_summarize_codex_events() -> None:
@@ -200,7 +258,7 @@ p({"type": "thread.started", "thread_id": "fake-thread"})
 p({"type": "turn.started"})
 p({"type": "item.completed", "item": {"type": "command_execution", "command": "echo hi"}})
 p({"type": "item.completed", "item": {"type": "agent_message", "text": "codex done"}})
-p({"type": "turn.completed", "usage": {"input_tokens": 100, "cached_input_tokens": 50, "output_tokens": 10}})
+p({"type": "turn.completed", "usage": {"input_tokens": 100, "cached_input_tokens": 50, "output_tokens": 10, "reasoning_output_tokens": 7}})
 '''
 
 
@@ -211,6 +269,9 @@ def _scripted_codex(tmp_path: Path, on_stream, *, body: str = _FAKE_CODEX) -> Co
     class Scripted(CodexRunner):
         def _build_args(self, *, resume: bool, cwd: Path) -> list[str]:
             return [sys.executable, str(script)]
+
+        def _provider_version(self) -> str:
+            return "codex-cli 0.test"
 
     return Scripted(on_stream=on_stream)
 
@@ -224,16 +285,237 @@ def test_codex_runner_streams_and_parses(tmp_path: Path) -> None:
     assert res.text == "codex done"
     assert res.is_error is False
     assert res.context_tokens == 0  # 累積 usage は占有率にしない (毎ターン rotate 防止)
+    assert res.provider_version == "codex-cli 0.test"
     assert runner._thread_id == "fake-thread"  # 次ターンの resume 用に thread_id を保持
 
 
 def test_codex_runner_cancel_before_start_is_sticky(tmp_path: Path) -> None:
     runner = _scripted_codex(tmp_path, None)
     runner.cancel()
+
+    def _must_not_run() -> str:
+        raise AssertionError("_provider_version should not run after cancel()")
+
+    runner._provider_version = _must_not_run  # type: ignore[method-assign]
     t0 = time.monotonic()
     res = runner.run_turn(prompt="p", session_id="s", resume=False, cwd=tmp_path)
     assert res.error_kind == "cancelled"
+    assert res.provider_version == ""
     assert time.monotonic() - t0 < 1.0  # 子を spawn していない
+
+
+def test_codex_runner_idle_interrupt_does_not_poison_next_turn(tmp_path: Path) -> None:
+    runner = _scripted_codex(tmp_path, None)
+    runner.interrupt()
+    res = runner.run_turn(prompt="p", session_id="s", resume=False, cwd=tmp_path)
+    assert res.is_error is False
+    assert res.error_kind == ""
+    assert res.provider_version == "codex-cli 0.test"
+
+
+def test_provider_version_not_found_is_cached_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    runner = CodexRunner()
+    calls = 0
+
+    def _boom(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        raise FileNotFoundError("missing codex")
+
+    monkeypatch.setattr("llterm.host.codex_runner.subprocess.Popen", _boom)
+    assert runner._provider_version() == ""
+    assert runner._provider_version() == ""
+    assert calls == 1
+
+
+def test_provider_version_transient_failure_is_not_cached(monkeypatch: pytest.MonkeyPatch) -> None:
+    runner = CodexRunner()
+    calls = 0
+
+    def _boom(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        raise OSError("broken codex")
+
+    monkeypatch.setattr("llterm.host.codex_runner.subprocess.Popen", _boom)
+    assert runner._provider_version() == ""
+    assert runner._provider_version() == ""
+    assert calls == 2
+    assert runner._provider_version_cache is None
+
+
+def test_provider_version_probe_uses_devnull_stdin(monkeypatch: pytest.MonkeyPatch) -> None:
+    runner = CodexRunner()
+    seen: dict[str, object] = {}
+
+    class _FakeProc:
+        def communicate(self, timeout=None):
+            return ("codex-cli 0.test", "")
+
+        def poll(self):
+            return 0
+
+    def _fake_popen(*args, **kwargs):
+        seen.update(kwargs)
+        return _FakeProc()
+
+    monkeypatch.setattr("llterm.host.codex_runner.subprocess.Popen", _fake_popen)
+    assert runner._provider_version() == "codex-cli 0.test"
+    assert seen["stdin"] is subprocess.DEVNULL
+
+
+_SLOW_VERSION_PROBE = '''\
+import pathlib, sys, time
+pathlib.Path(sys.argv[1]).write_text("started", encoding="utf-8")
+time.sleep(10)
+print("codex-cli slow-test", flush=True)
+'''
+
+
+def test_codex_runner_cancel_during_provider_version_probe_returns_fast(tmp_path: Path) -> None:
+    marker = tmp_path / "probe-started.txt"
+    script = tmp_path / "slow_version.py"
+    script.write_text(_SLOW_VERSION_PROBE, encoding="utf-8")
+
+    class SlowProbe(CodexRunner):
+        def _provider_version_args(self) -> list[str]:
+            return [sys.executable, str(script), str(marker)]
+
+        def _build_args(self, *, resume: bool, cwd: Path) -> list[str]:
+            raise AssertionError("main codex process should not spawn after cancel()")
+
+    runner = SlowProbe()
+    result: list[TurnResult] = []
+    th = threading.Thread(
+        target=lambda: result.append(
+            runner.run_turn(prompt="p", session_id="s", resume=False, cwd=tmp_path)
+        ),
+        daemon=True,
+    )
+    th.start()
+    for _ in range(100):
+        if marker.exists():
+            break
+        time.sleep(0.01)
+    assert marker.exists()
+    runner.cancel()
+    th.join(timeout=5.0)
+    assert not th.is_alive()
+    assert result and result[0].error_kind == "cancelled"
+    assert result[0].provider_version == ""
+
+
+def test_codex_runner_interrupt_during_provider_version_probe_returns_fast(tmp_path: Path) -> None:
+    marker = tmp_path / "probe-started.txt"
+    script = tmp_path / "slow_version.py"
+    script.write_text(_SLOW_VERSION_PROBE, encoding="utf-8")
+
+    class SlowProbe(CodexRunner):
+        def _provider_version_args(self) -> list[str]:
+            return [sys.executable, str(script), str(marker)]
+
+        def _build_args(self, *, resume: bool, cwd: Path) -> list[str]:
+            raise AssertionError("main codex process should not spawn after interrupt()")
+
+    runner = SlowProbe()
+    result: list[TurnResult] = []
+    th = threading.Thread(
+        target=lambda: result.append(
+            runner.run_turn(prompt="p", session_id="s", resume=False, cwd=tmp_path)
+        ),
+        daemon=True,
+    )
+    th.start()
+    for _ in range(100):
+        if marker.exists():
+            break
+        time.sleep(0.01)
+    assert marker.exists()
+    runner.interrupt()
+    th.join(timeout=2.0)
+    assert not th.is_alive()
+    assert result and result[0].error_kind == "interrupted"
+    assert result[0].provider_version == ""
+
+
+def test_interrupt_during_probe_does_not_poison_provider_version_cache(tmp_path: Path) -> None:
+    marker = tmp_path / "probe-started.txt"
+    slow = tmp_path / "slow_version.py"
+    fast = tmp_path / "fast_version.py"
+    slow.write_text(_SLOW_VERSION_PROBE, encoding="utf-8")
+    fast.write_text('print("codex-cli recovered", flush=True)\n', encoding="utf-8")
+    fake_codex = tmp_path / "fake_codex.py"
+    fake_codex.write_text(_FAKE_CODEX, encoding="utf-8")
+
+    class SwitchProbe(CodexRunner):
+        def __init__(self) -> None:
+            super().__init__()
+            self.slow = True
+
+        def _provider_version_args(self) -> list[str]:
+            script = slow if self.slow else fast
+            args = [sys.executable, str(script)]
+            if self.slow:
+                args.append(str(marker))
+            return args
+
+        def _build_args(self, *, resume: bool, cwd: Path) -> list[str]:
+            return [sys.executable, str(fake_codex)]
+
+    runner = SwitchProbe()
+    result: list[TurnResult] = []
+    th = threading.Thread(
+        target=lambda: result.append(
+            runner.run_turn(prompt="p", session_id="s", resume=False, cwd=tmp_path)
+        ),
+        daemon=True,
+    )
+    th.start()
+    for _ in range(100):
+        if marker.exists():
+            break
+        time.sleep(0.01)
+    assert marker.exists()
+    runner.interrupt()
+    th.join(timeout=2.0)
+    assert not th.is_alive()
+    assert result and result[0].error_kind == "interrupted"
+    assert runner._provider_version_cache is None
+
+    runner.slow = False
+    res2 = runner.run_turn(prompt="p", session_id="s2", resume=False, cwd=tmp_path)
+    assert res2.is_error is False
+    assert res2.provider_version == "codex-cli recovered"
+
+
+def test_codex_runner_interrupt_in_post_spawn_window_returns_interrupted_and_clears_proc(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake_codex = tmp_path / "fake_codex.py"
+    fake_codex.write_text(_FAKE_CODEX, encoding="utf-8")
+    proc_box: dict[str, subprocess.Popen[str]] = {}
+    original_popen = subprocess.Popen
+
+    def _hooked_popen(*args, **kwargs):
+        proc = original_popen(*args, **kwargs)
+        proc_box["proc"] = proc
+        runner.interrupt()  # Popen 後にフラグを立て、post-spawn 判定がそれを拾うことを固定する
+        return proc
+
+    class SpawnInterruptRunner(CodexRunner):
+        def _provider_version(self) -> str:
+            return "codex-cli test"
+
+        def _build_args(self, *, resume: bool, cwd: Path) -> list[str]:
+            return [sys.executable, str(fake_codex)]
+
+    runner = SpawnInterruptRunner()
+    monkeypatch.setattr(subprocess, "Popen", _hooked_popen)
+    result = runner.run_turn(prompt="p", session_id="s", resume=False, cwd=tmp_path)
+    assert result.error_kind == "interrupted"
+    assert runner._proc is None
+    proc = proc_box["proc"]
+    proc.wait(timeout=2.0)
 
 
 def test_codex_runner_resume_uses_thread_id(tmp_path: Path) -> None:

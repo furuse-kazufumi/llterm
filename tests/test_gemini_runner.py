@@ -9,9 +9,12 @@ from __future__ import annotations
 import json
 import sys
 import time
+import subprocess
+import threading
 from pathlib import Path
 
 from datetime import date
+import pytest
 
 from llterm.host.gemini_runner import (
     GEMINI_CLI_FREE_TIER_END,
@@ -21,6 +24,7 @@ from llterm.host.gemini_runner import (
     parse_gemini_json,
     summarize_gemini_event,
 )
+from llterm.i18n import t
 
 
 # ─── Gemini CLI 無料枠 期限通知 ───────────────────────────────────
@@ -171,6 +175,11 @@ print(json.dumps({"response": data, "stats": {"input_tokens": 1, "output_tokens"
                  ensure_ascii=False))
 '''
 
+_SLEEP_GEMINI = '''\
+import time
+time.sleep(30)
+'''
+
 
 def _scripted_gemini(tmp_path: Path, body: str = _ECHO_STDIN_GEMINI) -> GeminiRunner:
     script = tmp_path / "fake_gemini.py"
@@ -201,3 +210,112 @@ def test_cancel_before_start_is_sticky(tmp_path: Path) -> None:
     res = runner.run_turn(prompt="p", session_id="s", resume=False, cwd=tmp_path)
     assert res.error_kind == "cancelled"
     assert time.monotonic() - t0 < 2.0  # 子を spawn していない
+
+
+def test_gemini_runner_idle_interrupt_does_not_poison_next_turn(tmp_path: Path) -> None:
+    runner = _scripted_gemini(tmp_path)
+    runner.interrupt()
+    res = runner.run_turn(prompt="p", session_id="s", resume=False, cwd=tmp_path)
+    assert res.is_error is False
+    assert res.error_kind == ""
+
+
+def test_gemini_timeout_returns_visible_reason(tmp_path: Path) -> None:
+    runner = _scripted_gemini(tmp_path, body=_SLEEP_GEMINI)
+    runner.timeout = 0.1
+    res = runner.run_turn(prompt="p", session_id="s", resume=False, cwd=tmp_path)
+    assert res.is_error is True
+    assert res.error_kind == "other"
+    assert res.text == t("runner.gemini.timeout")
+
+
+def test_gemini_timeout_waits_again_after_kill(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    class _FakeIn:
+        def write(self, _: str) -> None:
+            return None
+
+        def flush(self) -> None:
+            return None
+
+        def close(self) -> None:
+            return None
+
+    class _FakeOut:
+        def read(self) -> str:
+            return ""
+
+    class _FakeErr:
+        def __iter__(self):
+            return iter(())
+
+    class _FakeProc:
+        def __init__(self) -> None:
+            self.stdin = _FakeIn()
+            self.stdout = _FakeOut()
+            self.stderr = _FakeErr()
+            self.returncode = None
+            self.pid = 1234
+            self.wait_calls = 0
+
+        def poll(self):
+            return None
+
+        def wait(self, timeout=None):
+            self.wait_calls += 1
+            if self.wait_calls == 1:
+                raise subprocess.TimeoutExpired("gemini", timeout)
+            self.returncode = -9
+            return self.returncode
+
+    fake = _FakeProc()
+
+    def _fake_popen(*args, **kwargs):
+        return fake
+
+    class _ImmediateTimer:
+        def __init__(self, timeout, fn):
+            self.fn = fn
+            self.daemon = False
+
+        def start(self):
+            self.fn()
+
+        def cancel(self):
+            return None
+
+    runner = GeminiRunner()
+    killed: list[_FakeProc] = []
+    monkeypatch.setattr(subprocess, "Popen", _fake_popen)
+    monkeypatch.setattr(threading, "Timer", _ImmediateTimer)
+    monkeypatch.setattr(runner, "_kill", lambda proc: killed.append(proc))
+    res = runner.run_turn(prompt="p", session_id="s", resume=False, cwd=tmp_path)
+    assert res.error_kind == "other"
+    assert fake.wait_calls == 2
+    assert killed and all(proc is fake for proc in killed)
+
+
+def test_interrupt_in_post_spawn_window_returns_interrupted_and_clears_proc(
+    tmp_path: Path, monkeypatch
+) -> None:
+    fake = tmp_path / "fake_gemini_interrupt.py"
+    fake.write_text(_ECHO_STDIN_GEMINI, encoding="utf-8")
+    proc_box: dict[str, subprocess.Popen[str]] = {}
+    original_popen = subprocess.Popen
+
+    def _hooked_popen(*args, **kwargs):
+        proc = original_popen(*args, **kwargs)
+        proc_box["proc"] = proc
+        runner.interrupt()  # Popen 後にフラグを立て、post-spawn 判定がそれを拾うことを固定する
+        return proc
+
+    class SpawnInterruptRunner(GeminiRunner):
+        def _build_args(self) -> list[str]:
+            return [sys.executable, str(fake)]
+
+    runner = SpawnInterruptRunner()
+    monkeypatch.setattr(subprocess, "Popen", _hooked_popen)
+    result = runner.run_turn(prompt="p", session_id="s", resume=False, cwd=tmp_path)
+    assert result.error_kind == "interrupted"
+    assert runner._proc is None
+    proc = proc_box["proc"]
+    proc.wait(timeout=2.0)

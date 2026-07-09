@@ -87,8 +87,10 @@ class LoopWorker(QtCore.QThread):
         """実行中ターンだけを中断する (恒久 cancel ではない = 次ターンは起動できる)。
 
         active がどの runner か worker は知らないので全 runner に interrupt を投げる
-        (実行中でない runner への interrupt は proc 無しで no-op)。interrupt 非対応の
-        runner は getattr で素通り (緊急中断できないだけで害はない)。
+        (実行中でない runner は kill 自体は no-op)。一部 runner は idle 中でも
+        `_interrupted` フラグを立てるが、次の run_turn 開始時に stale 分をリセットして
+        「走行中に届いた interrupt だけ」を拾う。interrupt 非対応の runner は getattr
+        で素通り (緊急中断できないだけで害はない)。
         """
         for r in (self._runner, *self._fallback_runners):
             fn = getattr(r, "interrupt", None)

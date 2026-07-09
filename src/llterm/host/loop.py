@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -39,6 +40,7 @@ from typing import Protocol
 from llterm.ctl.ledger import Ledger
 from llterm.host.offload_tools import build_offload_hint
 from llterm.i18n import t
+from llterm.progress import DEFAULT_PROJECTS_ROOT, refresh_common_summary_for_project
 
 
 def _ensure_utf8_stdout() -> None:
@@ -104,8 +106,10 @@ DEFAULT_RESUME_PROMPT = (
 )
 DEFAULT_EXIT_PREP_PROMPT = (
     "コンテキスト上限が近い。今は新規作業を始めず EXIT準備のみ行え: "
-    "docs/SESSION_SUMMARY.md と next_plan を現状と『次の具体的な一手』へ更新し、"
-    "新セッションが続きを再開できる状態にせよ。"
+    "docs/SESSION_SUMMARY.md と docs/next_plan.md を更新し、新セッションが続きを再開できる"
+    "状態にせよ。next_plan.md では `> 最終更新: YYYY-MM-DD HH:MM JST` を更新し、"
+    "`## 現在地` / `## 直近の成果` / `## 次の一手` / `## 環境メモ` を必ず埋めること。"
+    "『次の一手』は次セッションがそのまま着手できる具体度で書け。"
 )
 DEFAULT_CONTINUE_PROMPT = "前回の続きを自律継続せよ。確認は求めない。"
 
@@ -144,6 +148,79 @@ DEFAULT_RAD_HINT = (
     "既存手法・先行研究・差別化軸を確認せよ(車輪の再発明を防ぐ)。該当が無ければ通常どおり進めてよい。"
 )
 
+_QUERY_INJECTION_POSITIVE: tuple[str, ...] = (
+    "要約", "進捗", "状況", "現状", "何をした", "何をやった", "まとめて",
+    "what did you do", "what have you done", "report progress", "explain current", "current state",
+)
+_QUERY_INJECTION_POSITIVE_RE: tuple[re.Pattern[str], ...] = (
+    re.compile(r"\bsummary\b"),
+    re.compile(r"\bsummarize\b"),
+    re.compile(r"\bstatus\b"),
+    re.compile(r"\bprogress\b"),
+    re.compile(r"\bwhat did you do\b"),
+    re.compile(r"\bwhat have you done\b"),
+    re.compile(r"\breport progress\b"),
+    re.compile(r"\bexplain current\b"),
+    re.compile(r"\bcurrent state\b"),
+)
+_QUERY_INJECTION_NEGATIVE: tuple[str, ...] = (
+    "修正", "実装", "変更", "追加", "削除", "作成", "更新", "適用", "編集", "移動",
+    "名前変更", "改名", "rename", "refactor", "リファクタ", "cleanup", "clean up",
+    "fix", "implement", "change", "edit", "write", "create", "update", "delete",
+    "remove", "apply patch", "move", "rewrite", "replace", "patch",
+    "書く", "書いて", "書き込む", "追記", "挿入", "差し替え", "上書き", "新規",
+    "作り直", "直す", "直し", "消す", "消し", "書き換", "やり直",
+    "整理", "整える", "統合", "並べ替え", "並び替え", "移す",
+)
+_QUERY_INJECTION_SEQUENCE_MARKERS: tuple[str, ...] = (
+    "その後", "そのあと", "続けて", "ついでに", "あとで", "and then", "then ",
+    " then", "after that", "also ", " also", "next ",
+    " and ", "、", "，", "および", " と ", "また",
+)
+
+
+def supports_unreviewed_turns(runner: TurnRunner) -> bool:
+    """runner が `run_turn_unreviewed()` を持つか。telemetry もこの実経路に合わせる。"""
+    return callable(getattr(runner, "run_turn_unreviewed", None))
+
+
+def is_query_like_injection(prompt: str) -> bool:
+    """注入タスクが非編集の問い合わせ系かを保守的に判定する。
+
+    Orchestra のフルレビューは「今の進捗を要約して」には過剰だが、実装依頼の注入まで
+    bypass すると品質ゲートを落とす。そこで summary/status/progress 系の明確な文言があり、
+    かつ「その後」「and then」等の複合要求マーカーや mutation 動詞を含まない場合だけ
+    fast path に載せる。fast path は最適化にすぎないため、曖昧な複合節は full review へ
+    倒すほうを正とする。
+    """
+    text = re.sub(r"\s+", " ", prompt.strip().lower())
+    if not text:
+        return False
+    if not (
+        any(sig in text for sig in _QUERY_INJECTION_POSITIVE)
+        or any(p.search(text) for p in _QUERY_INJECTION_POSITIVE_RE)
+    ):
+        return False
+    if any(sig in text for sig in _QUERY_INJECTION_SEQUENCE_MARKERS):
+        return False
+    return not any(sig in text for sig in _QUERY_INJECTION_NEGATIVE)
+
+
+def _resolve_projects_root(workdir: Path, cli_projects_root: str | None) -> Path:
+    """共通進捗の projects root を決める。
+
+    明示指定があればそれを優先する。未指定時は workdir の親を既定候補にし、
+    使えない場合だけ DEFAULT_PROJECTS_ROOT へフォールバックする。
+    refresh 側は layout 不一致なら fail-closed no-op なので、ここでは保守的に
+    「明示 > 親 > 既定」の順で配線する。
+    """
+    if cli_projects_root:
+        return Path(cli_projects_root).resolve()
+    parent = workdir.parent.resolve()
+    if parent != workdir:
+        return parent
+    return Path(DEFAULT_PROJECTS_ROOT).resolve()
+
 
 @dataclass(frozen=True)
 class TurnResult:
@@ -160,8 +237,14 @@ class TurnResult:
     num_turns: int
     raw_exit: int
     context_window: int = 0  # result の modelUsage.contextWindow (実窓サイズ。0=不明→設定値を使う)
+    context_observable: bool = True  # ctx 占有を観測できるか。Codex の累積 usage は False
+    context_observable_reason: str = ""  # "cumulative_only" など。不観測理由の補助情報
     rate_limit_status: str = ""  # rate_limit_event の status (allowed / 制限種別)
     rate_limit_resets_at: int = 0  # rate_limit_event の resetsAt (epoch秒。自動再開の待機目標)
+    cached_input_tokens: int = 0  # cache/read 系。Codex では累積 usage の一部として別表示に使う
+    reasoning_output_tokens: int = 0  # reasoning / thinking 系の出力。Codex の累積 usage で観測できる
+    token_usage_kind: str = "instant"  # "instant" | "cumulative"
+    provider_version: str = ""  # CLI / provider の実バージョン (再現条件の運搬用)
 
 
 def parse_stream_json(stdout: str, *, exit_code: int, stderr: str = "") -> TurnResult:
@@ -268,6 +351,11 @@ def parse_stream_json(stdout: str, *, exit_code: int, stderr: str = "") -> TurnR
         context_window=context_window,
         rate_limit_status=rl_status,
         rate_limit_resets_at=rl_resets,
+        cached_input_tokens=(
+            _as_int(usage.get("cache_read_input_tokens"))
+            + _as_int(usage.get("cache_creation_input_tokens"))
+        ),
+        reasoning_output_tokens=0,
     )
 
 
@@ -610,6 +698,7 @@ class ClaudeRunner:
         with self._lock:
             if self._cancelled:
                 return TurnResult(session_id, 0, 0, 0, 0.0, "", True, "cancelled", 0, -1)
+            self._interrupted = False  # ターン開始時にリセット (走行中の interrupt() だけを拾う)
         try:
             proc = subprocess.Popen(
                 args, cwd=str(cwd), stdin=subprocess.DEVNULL,
@@ -625,8 +714,20 @@ class ClaudeRunner:
         with self._lock:
             self._proc = proc
             kill_now = self._cancelled  # Popen 中 (=_proc 未設定) に cancel が来た窓を閉じる
-        if kill_now:
+            interrupt_now = self._interrupted
+            if interrupt_now and not kill_now:
+                self._interrupted = False
+        if kill_now or interrupt_now:
             self._kill(proc)
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                pass
+            with self._lock:
+                if self._proc is proc:
+                    self._proc = None
+            if interrupt_now and not kill_now:
+                return TurnResult(session_id, 0, 0, 0, 0.0, "", True, "interrupted", 0, -1)
 
         timed_out = threading.Event()
 
@@ -768,6 +869,7 @@ class SessionLoop:
     on_event: Callable[[str, dict], None] | None = None
     should_stop: Callable[[], bool] | None = None  # GUI の Stop ボタン等 (協調停止)
     next_prompt: Callable[[], str | None] | None = None  # GUI のタスク注入 (継続ターンで一度だけ優先)
+    projects_root: Path | None = None  # 共通進捗を更新する既知の projects root。未設定なら更新しない
     _blocked_until: dict[int, float] = field(default_factory=dict, repr=False, compare=False)
 
     def _emit(self, kind: str, **data: object) -> None:
@@ -832,11 +934,11 @@ class SessionLoop:
         except Exception:  # noqa: BLE001
             return None
 
-    def _continue_prompt(self) -> tuple[str, bool]:
-        """継続ターンの prompt と「注入タスクか」フラグ。GUI inject があれば一度だけ優先する。"""
+    def _continue_prompt(self) -> tuple[str, bool, str | None]:
+        """継続ターンの prompt / 注入フラグ / 注入原文。GUI inject があれば一度だけ優先する。"""
         got = self._take_injection()
         base = got if got else self.continue_prompt
-        return self._apply_directives(self._augment(base)), got is not None
+        return self._apply_directives(self._augment(base)), got is not None, got
 
     def used_pct(self, res: TurnResult) -> float:
         # result イベントの実窓サイズ (modelUsage.contextWindow) があればそちらを分母にする。
@@ -849,6 +951,27 @@ class SessionLoop:
         # [0, 1] にクランプし、累積 usage が紛れても rotate 判定 (used >= threshold) を壊さない
         # (ユーザー指摘 2026-06-13: orchestra で ctx 2549% → 毎ターン rotate していた)。
         return min(1.0, max(0.0, res.context_tokens / denom))
+
+    @staticmethod
+    def normalize_context_observable_reason(res: TurnResult) -> str:
+        """observability reason の空欄を保守的に補完する。"""
+        if res.context_observable:
+            return ""
+        if res.context_observable_reason:
+            return res.context_observable_reason
+        if res.token_usage_kind == "cumulative":
+            return "cumulative_only"
+        return "unobservable"
+
+    @classmethod
+    def context_state(cls, res: TurnResult) -> str:
+        """consumer 向けの安定した列挙値へ正規化する。"""
+        if res.context_observable:
+            return "measured"
+        reason = cls.normalize_context_observable_reason(res)
+        if reason == "cumulative_only":
+            return "provider_managed_cumulative"
+        return "unobservable"
 
     def _new_session_id(self) -> str:
         # rotation = 新 session-id = fresh context。UUID 衝突は事実上ゼロ。
@@ -863,9 +986,30 @@ class SessionLoop:
 
     @staticmethod
     def provider_name(runner: TurnRunner) -> str:
-        """表示用プロバイダ名 (claude / codex / クラス名)。"""
+        """表示用プロバイダ名。
+
+        既存 consumer は provider 文字列を集計キーに使うため、telemetry 側だけ独自規約を
+        増やさず、runner 自身の `provider_label()` があればそれを優先する。無い場合も
+        Orchestra/GUI と同じ既知ラベルへ寄せる。
+        """
+        if type(runner).__name__ == "OrchestraRunner":
+            inner = getattr(runner, "conductor", None)
+            if inner is not None:
+                runner = inner
+        label = getattr(runner, "provider_label", None)
+        if callable(label):
+            try:
+                return str(label())
+            except Exception:  # noqa: BLE001
+                pass
         cls = type(runner).__name__
-        return {"ClaudeRunner": "claude", "CodexRunner": "codex"}.get(cls, cls)
+        return {
+            "ClaudeRunner": "claude",
+            "CodexRunner": "codex",
+            "GeminiRunner": "gemini",
+            "OpenAICompatRunner": "openai-compat",
+            "VirtualClaudeRunner": "virtual",
+        }.get(cls, cls)
 
     def _select_available(self, now: float, *, exclude: int | None = None) -> int | None:
         """利用可能 (ブロック解除済) な最優先プロバイダの index。無ければ None。"""
@@ -923,11 +1067,28 @@ class SessionLoop:
         self._emit("handoff", session_id=sid)
         try:
             r = self._handoff_run_turn(runner, prompt=self.exit_prep_prompt, sid=sid, resume=True)
+            if r.is_error:
+                self.ledger.append(event="exit_prep_failed", cmd_id=sid, action="shutdown",
+                                   detail=f"handoff failed: {r.error_kind or 'other'}")
+                return r.cost_usd
+            self._refresh_common_progress()
             self.ledger.append(event="exit_prep", cmd_id=sid, action="shutdown",
                                detail="handoff on stop")
             return r.cost_usd
         except Exception:  # noqa: BLE001
             return 0.0
+
+    def _refresh_common_progress(self) -> None:
+        """この workdir が属する projects_root の共通進捗サマリーを再生成する。
+
+        rotate / graceful stop 後に ``docs/next_plan.md`` の更新を共通ビュー
+        (``_shared/PROGRESS.md``) へ反映する決定論的フック。推定できないレイアウトや
+        projects_root 未設定時は何もしない (fail-closed)。IO 失敗は下位で握り潰され、
+        自走を止めない (fail-safe)。
+        """
+        if self.projects_root is None:
+            return
+        refresh_common_summary_for_project(self.workdir, projects_root=self.projects_root)
 
     def run(self) -> Outcome:
         sessions = 0
@@ -970,9 +1131,10 @@ class SessionLoop:
             # orchestra では _continue_prompt に到達せず注入が永久に飲み込まれた (= 飢餓)。
             # ユーザー指摘 2026-06-13「注入の優先度は高くあるべき」への対処。
             injected = False
+            injected_text: str | None = None
             got = self._take_injection()
             if got:
-                opener, injected = got, True
+                opener, injected, injected_text = got, True, got
             prompt = self._apply_directives(self._augment(opener))  # 安全弁/autonomy は毎ターン動的評価
             resume = False
             session_turns = 0
@@ -989,22 +1151,45 @@ class SessionLoop:
                     return self._finish("max_cost", sessions, turns, total_cost, "cost cap reached")
 
                 # これから claude に送る prompt を GUI に見せる (特に注入タスクの実行点を可視化)。
+                unreviewed_injection = (
+                    injected
+                    and is_query_like_injection(injected_text or "")
+                    and supports_unreviewed_turns(active)
+                )
                 self._emit("task", session_id=sid, session_index=sessions + 1, turn=turns + 1,
-                           injected=injected, prompt=prompt)
-                res = active.run_turn(prompt=prompt, session_id=sid, resume=resume, cwd=self.workdir)
+                           injected=injected, prompt=prompt,
+                           review_mode="unreviewed" if unreviewed_injection else "normal")
+                if unreviewed_injection:
+                    res = self._handoff_run_turn(active, prompt=prompt, sid=sid, resume=resume)
+                else:
+                    res = active.run_turn(prompt=prompt, session_id=sid, resume=resume, cwd=self.workdir)
                 turns += 1
                 session_turns += 1
                 total_cost += res.cost_usd
                 used = self.used_pct(res)
+                ctx_reason = self.normalize_context_observable_reason(res)
+                ctx_state = self.context_state(res)
                 self.ledger.append(
                     event="turn", cmd_id=sid, action="query-state",
-                    detail=f"ctx={res.context_tokens} used={used:.0%} cost={res.cost_usd:.4f} "
+                    detail=f"ctx={res.context_tokens if res.context_observable else 'n/a'} "
+                           f"used={used:.0%} cost={res.cost_usd:.4f} "
                            f"err={res.error_kind or '-'}",
                 )
                 self._emit(
                     "turn", session_id=sid, session_index=sessions + 1, turn=turns,
-                    context_tokens=res.context_tokens, used_pct=used, cost_usd=res.cost_usd,
+                    context_tokens=res.context_tokens,
+                    used_pct=used,
+                    cost_usd=res.cost_usd,
                     total_cost=total_cost, text=res.text, error_kind=res.error_kind,
+                    input_tokens=res.input_tokens, output_tokens=res.output_tokens,
+                    context_observable=res.context_observable,
+                    context_observable_reason=ctx_reason,
+                    context_state=ctx_state,
+                    cached_input_tokens=res.cached_input_tokens,
+                    reasoning_output_tokens=res.reasoning_output_tokens,
+                    token_usage_kind=res.token_usage_kind,
+                    provider_version=res.provider_version,
+                    provider=self.provider_name(active),
                 )
 
                 # cancelled = Stop / ウィンドウ終了由来。リトライせず即停止する。
@@ -1020,7 +1205,8 @@ class SessionLoop:
                     )
                     self._emit("interrupted", session_id=sid, session_index=sessions + 1, turn=turns)
                     consec_err = 0
-                    (prompt, injected), resume = self._continue_prompt(), True
+                    prompt, injected, injected_text = self._continue_prompt()
+                    resume = True
                     continue
 
                 # 認証切れ = 構造的上限。fail-closed で停止 (暴走させない / 人間を待つ)。
@@ -1101,7 +1287,8 @@ class SessionLoop:
                         )
                         return self._finish("circuit_open", sessions, turns, total_cost,
                                             f"{consec_err} consecutive errors")
-                    (prompt, injected), resume = self._continue_prompt(), True
+                    prompt, injected, injected_text = self._continue_prompt()
+                    resume = True
                     continue
                 consec_err = 0
 
@@ -1115,18 +1302,48 @@ class SessionLoop:
                     )
                     turns += 1
                     total_cost += er.cost_usd
-                    self.ledger.append(
-                        event="exit_prep", cmd_id=sid, action="rotate",
-                        detail=f"used={used:.0%} turns={session_turns} → rotate",
+                    if er.error_kind == "rate_limited" and self.auto_resume_on_rate_limit:
+                        if not self._wait_until(er.rate_limit_resets_at):
+                            return self._finish(
+                                "stopped", sessions, turns, total_cost,
+                                "stop during rotate handoff rate-limit wait",
+                            )
+                        er = self._handoff_run_turn(
+                            active, prompt=self.exit_prep_prompt, sid=sid, resume=True,
+                        )
+                        turns += 1
+                        total_cost += er.cost_usd
+                    if er.is_error:
+                        self.ledger.append(
+                            event="exit_prep_failed", cmd_id=sid, action="rotate",
+                            detail=f"used={used:.0%} turns={session_turns} "
+                                   f"handoff failed: {er.error_kind or 'other'}",
+                        )
+                        return self._finish(
+                            "exit_prep_failed", sessions, turns, total_cost,
+                            f"rotate handoff failed: {er.error_kind or 'other'}",
+                        )
+                    else:
+                        self._refresh_common_progress()
+                        self.ledger.append(
+                            event="exit_prep", cmd_id=sid, action="rotate",
+                            detail=f"used={used:.0%} turns={session_turns} → rotate",
+                        )
+                    self._emit(
+                        "rotate", session_id=sid, session_index=sessions + 1,
+                        used_pct=used,
+                        context_observable=res.context_observable,
+                        context_observable_reason=ctx_reason,
+                        context_state=ctx_state,
+                        session_turns=session_turns,
                     )
-                    self._emit("rotate", session_id=sid, session_index=sessions + 1,
-                               used_pct=used, session_turns=session_turns)
                     # rotate 地点で停止要求があれば、handoff (exit準備) 済みのまま停止する
                     if self._stop_requested():
                         return self._finish("stopped", sessions, turns, total_cost, "stop requested")
                     break  # → 新セッションへ rotate
 
-                (prompt, injected), resume = self._continue_prompt(), True  # 閾値未満: 同セッション継続
+                prompt, injected, injected_text = self._continue_prompt()
+                resume = True  # 閾値未満: 同セッション継続
 
             sessions += 1
 
@@ -1165,6 +1382,9 @@ def main(argv: list[str] | None = None) -> int:
         description="llterm L2: 公式 headless protocol で Claude Code を自走ループ駆動 (端末を通らない)",
     )
     parser.add_argument("--workdir", required=True, help="claude を起動する対象プロジェクトのパス")
+    parser.add_argument("--projects-root", default="",
+                        help="共通進捗 (_shared/PROGRESS.md) を再生成する projects root。"
+                             "未指定時は <workdir> の親を優先し、使えなければ既定 root へフォールバック")
     parser.add_argument("--resume-prompt", default=DEFAULT_RESUME_PROMPT)
     parser.add_argument("--exit-prep-prompt", default=DEFAULT_EXIT_PREP_PROMPT)
     parser.add_argument("--window-tokens", type=int, default=DEFAULT_WINDOW_TOKENS)
@@ -1238,6 +1458,7 @@ def main(argv: list[str] | None = None) -> int:
         runner=runner,
         workdir=workdir,
         ledger=Ledger(ledger_path),
+        projects_root=_resolve_projects_root(workdir, args.projects_root or None),
         resume_prompt=_ov.get("resume_prompt", args.resume_prompt),
         continue_prompt=_ov.get("continue_prompt", DEFAULT_CONTINUE_PROMPT),
         exit_prep_prompt=args.exit_prep_prompt,

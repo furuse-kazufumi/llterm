@@ -1,3 +1,209 @@
+# llterm Session Summary — 2026-07-10 (EXIT 準備 / shared progress hardening 収束点)
+
+> 自動生成・追記運用メモ: 次回開始時はまず `docs/next_plan.md` を正本として読み、ここは直近セッションの
+> 補助文脈として使うこと。`_shared/PROGRESS.md` は派生ビューなので、差異があれば `next_plan` を優先する。
+
+## 2026-07-10 EXIT 準備まとめ
+- **snapshot recency / stale worker queued signal / denylist 漏れを補修**:
+  `src/llterm/progress.py` は snapshot の stale 判定に project 名を使わず、
+  `(updated, mtime)` 専用キー `_snapshot_recency_key()` で freshness を比べるよう変更した。
+  `src/llterm/gui/app.py` の `_on_stream()` / `_on_event()` は current worker 以外の queued signal
+  を無視し、sender が `LoopWorker` なら retire へ送る。
+  `src/llterm/host/loop.py` の query denylist には `整理` / `整える` / `統合` /
+  `並べ替え` / `並び替え` / `移す` を追加した。`.gitignore` には `.tmp_pytest_*.txt` を追加。
+  追試は `tests/test_progress.py` targeted = 3 passed、`tests/test_gui.py` targeted = 4 passed、
+  `tests/test_loop.py -k "query_like_injection_detector_is_conservative"` = 1 passed、
+  host/progress 横断 = 292 passed。
+- **未決の残余**:
+  rotate handoff 中の `interrupted` を fail-closed 停止のまま許容するか、次ターン消費へ戻すかは未決。
+  いまはコード変更せず残余として維持。
+  新セッションの最優先は、`tests/test_gui.py` 全量で残る Windows teardown access violation の最小再現化と、
+  stale worker signal ガード追加後の `LoopWorker` 寿命管理 (`_retire_worker` / `deleteLater` / cleanup fixture) の切り分け。
+- **rotate handoff の一時 rate limit を 1 回救済**:
+  `src/llterm/host/loop.py` の rotate 分岐は、handoff が `rate_limited` を返したときだけ
+  `_wait_until(resets_at)` 後に同一 provider / 同一 session で 1 回 retry するよう変更した。
+  待機中 stop 要求なら `"stopped"`、retry 後も失敗なら `exit_prep_failed` で fail-closed 停止。
+  `tests/test_loop.py` に success / retry failure / wait 中 stop の 3 本を追加し、
+  `tests/test_loop.py = 112 passed` を確認。
+- **CLI `--projects-root` を追加**:
+  `main()` はこれまで `DEFAULT_PROJECTS_ROOT` を固定注入していたが、いまは `--projects-root`
+  明示指定を優先し、未指定時は `workdir.parent` を projects root 候補に使う。
+  `tests/test_loop.py` で explicit override と parent fallback を固定した。
+- **GUI 全量の Windows teardown crash は追跡残し**:
+  `tests/test_gui.py` 全量は今回も Windows teardown access violation で安定完走していない。
+  直近安定値は 447 passed のまま、今回の再確認は smoke 2 pass に留まることを明示する。
+- **rotate 前 handoff failure は fail-closed 停止へ変更**:
+  `src/llterm/host/loop.py` の rotate 分岐は、`_handoff_run_turn()` が失敗した場合に
+  そのまま `stop_reason="exit_prep_failed"` で停止するよう変更した。
+  これで handoff 未更新のまま fresh session へ進んで context を捨てる窓を閉じた。
+  `tests/test_loop.py::test_rotate_does_not_refresh_shared_progress_when_exit_prep_fails` は
+  `max_sessions=2` へ広げ、handoff failure 後に `runner.calls == 2` のまま止まることを固定。
+  追試は `tests/test_loop.py -k "rotate_does_not_refresh_shared_progress_when_exit_prep_fails or rotate_then_stop_records_handoff or graceful_stop_does_not_refresh_shared_progress_when_handoff_fails" = 3 passed`。
+- **common summary stale-guard を sidecar metadata へ移動**:
+  `src/llterm/progress.py` の same-minute stale-guard は index 行末の marker を廃止し、
+  `._shared/PROGRESS.md.meta.json` の snapshot fingerprint 比較へ切り替えた。
+  これで GUI `All` タブ / durable `PROGRESS.md` から `<!-- ... -->` が消え、
+  stale 判定も先頭 1 project ではなく snapshot 全体の `(name, updated, mtime)` 配列で比較できる。
+  可視本文だけ stale で meta が同一 snapshot のケースは安全に再 commit し、
+  別 snapshot の same-minute readback には再 commit しない。
+- **GUI 側の sort / writer start 失敗も補正**:
+  `src/llterm/gui/app.py` の common project tab は `(updated, mtime)` sort に揃えた。
+  background common writer は `start()` 失敗時も `_common_summary_write_active=False` /
+  `_common_summary_writer_thread=None` に戻し、ランタイム中の durable write ジャムを防ぐ。
+- **今回の検証**:
+  `py -3.11 -m pytest -q tests/test_progress.py -k "build_common_summary_breaks_same_minute_ties_with_mtime or write_common_summary_items_rewrites_when_lower_project_only_changes_same_minute or write_common_summary_items_rewrites_older_same_minute_snapshot_using_mtime_tiebreak or write_common_summary_items_does_not_clobber_same_minute_readback_mismatch"` = **4 passed**。
+  `py -3.11 -m pytest -q tests/test_gui.py -k "summary_has_live_and_common_tabs or common_summary_writer_start_failure_resets_active or refresh_common_summary_collects_once_and_writes_same_snapshot or common_summary_writer_coalesces_pending_snapshots"` = **4 passed**。
+  `py -3.11 -m pytest -q tests/test_gui.py tests/test_progress.py tests/test_codex_runner.py tests/test_gemini_runner.py tests/test_loop.py tests/test_orchestra_runner.py` = **447 passed**。
+- **query denylist の活用形補完**: `src/llterm/host/loop.py` の `_QUERY_INJECTION_NEGATIVE`
+  に `作り直` / `直す` / `直し` / `消す` / `消し` / `書き換` / `やり直` を追加した。
+  これで `進捗ファイルを作り直す` や `不要な項目を消す` のような口語 mutation でも
+  fast-path を通らず full review 側へ倒れる。
+- **same-minute sort の第二キー追加**: `src/llterm/progress.py` の `build_common_summary()` は
+  sort key を `(updated, mtime)` に広げた。hidden marker の `(updated, mtime)` 比較だけでなく、
+  index 先頭の代表 project 自体も same-minute で `mtime` 最新が来るよう補正した。
+- **provider cleanup の補足修正**:
+  `src/llterm/host/gemini_runner.py` は timeout 後の `_kill(proc)` のあとに
+  `proc.wait(timeout=10)` を追加して bounded reap を保証。
+  `src/llterm/host/codex_runner.py` の version probe は `stdin=subprocess.DEVNULL` を明示し、
+  親 stdin を継承しないようにした。
+- **今回の検証**:
+  `py -3.11 -m pytest -q tests/test_loop.py -k "query_like_injection_detector_is_conservative"` = **1 passed**。
+  `py -3.11 -m pytest -q tests/test_progress.py -k "build_common_summary_breaks_same_minute_ties_with_mtime or write_common_summary_items_rewrites_older_same_minute_snapshot_using_mtime_tiebreak or write_common_summary_items_does_not_clobber_same_minute_readback_mismatch"` = **3 passed**。
+  `py -3.11 -m pytest -q tests/test_gemini_runner.py -k "gemini_timeout_returns_visible_reason or gemini_timeout_waits_again_after_kill"` = **2 passed**。
+  `py -3.11 -m pytest -q tests/test_codex_runner.py -k "provider_version_probe_uses_devnull_stdin or provider_version_transient_failure_is_not_cached or provider_version_not_found_is_cached_once"` = **3 passed**。
+  `py -3.11 -m pytest -q tests/test_gui.py tests/test_progress.py tests/test_codex_runner.py tests/test_gemini_runner.py tests/test_loop.py tests/test_orchestra_runner.py` = **445 passed**。
+- **query fast-path を単一問い合わせ節へ保守化**: `src/llterm/host/loop.py` の
+  `_QUERY_INJECTION_SEQUENCE_MARKERS` に `and` / `、` / `，` / `および` / `と` / `また`
+  を追加し、`status summary and review the diff` や `現状をまとめて、バグも直して`
+  のような複合要求は full review 側へ倒すようにした。fast-path は最適化にすぎず、
+  曖昧な複合節を review 付きへ倒すほうを正と明記。
+- **same-minute 共通進捗 tie-break を追加**: `src/llterm/progress.py` の共通進捗インデックス行へ
+  hidden marker `<!-- updated=... mtime=... -->` を埋め、readback 比較を `(updated, mtime)` の
+  tuple へ引き上げた。表示時刻は従来どおり分単位のまま、同じ分の手書き時刻でも
+  source file `mtime` が新しい snapshot を stale readback 補正で優先できる。
+- **低 nit の補足**:
+  `src/llterm/host/codex_runner.py` の provider version probe 例外後に `wait()` を追加し、
+  `src/llterm/gui/app.py` の `_drain_common_summary_write()` docstring は
+  「close 終端だけ GUI スレッド同期 flush を許す例外」と明記した。
+  `src/llterm/host/orchestra_runner.py` の `id(runner)` key には、runner が強参照される前提コメントを足した。
+- **今回の検証**:
+  `py -3.11 -m pytest -q tests/test_loop.py -k "query_like_injection_detector_is_conservative"` = **1 passed**。
+  `py -3.11 -m pytest -q tests/test_progress.py -k "write_common_summary_items_does_not_clobber_same_minute_readback_mismatch or write_common_summary_items_rewrites_older_same_minute_snapshot_using_mtime_tiebreak"` = **2 passed**。
+  `py -3.11 -m pytest -q tests/test_gui.py -k "summary_has_live_and_common_tabs or refresh_common_summary_collects_once_and_writes_same_snapshot or common_summary_writer_coalesces_pending_snapshots or close_drains_common_summary_writer_latest_pending or common_summary_writer_drain_timeout_is_bounded or common_summary_writer_recovers_after_write_exception or common_summary_writer_does_not_lose_pending_schedule_at_exit_boundary or common_summary_writer_finally_does_not_clobber_new_worker_registration"` = **8 passed**。
+  `py -3.11 -m pytest -q tests/test_codex_runner.py -k "provider_version_not_found_is_cached_once or provider_version_transient_failure_is_not_cached or interrupt_during_probe_does_not_poison_provider_version_cache"` = **3 passed**。
+  `py -3.11 -m pytest -q tests/test_loop.py tests/test_progress.py tests/test_codex_runner.py tests/test_gemini_runner.py tests/test_orchestra_runner.py -k "query_like or common_summary or provider_version or timeout_returns_visible_reason or idle_interrupt_does_not_poison_next_turn"` = **29 passed**。
+  `py -3.11 -m pytest -q tests/test_gui.py tests/test_progress.py tests/test_codex_runner.py tests/test_gemini_runner.py tests/test_loop.py tests/test_orchestra_runner.py` = **442 passed**。
+- **GUI 共通タブの single-snapshot 化**: `src/llterm/gui/app.py` の `_refresh_common_summary()` は、
+  `collect_progress()` を 1 回だけ呼んだ snapshot から All / project 別タブを描くようにした。
+  `_shared/PROGRESS.md` への反映は `write_common_summary_items()` を使って同じ snapshot を別スレッドで commit する。
+  これで GUI 内の projection 同士のズレと、GUI スレッド上の fsync を同時に避ける。
+- **GUI common writer の coalescing**: `_schedule_common_summary_write()` は単一 worker + latest pending 方式へ変更した。
+  refresh 連打時は古い中間 snapshot を捨てて最新 pending だけを書き、daemon thread を増やし続けない。
+- **GUI close 時の writer drain + tooltip reset**: `closeEvent()` は background common writer を
+  **2.0s bounded / best-effort** で drain してから閉じる。
+  `session_start` では token 表示 text だけでなく tooltip も reset し、前セッションの `provider_version` を残さない。
+- **GUI common writer の例外復旧 + daemon 回帰**: `_writer()` は write 例外時も active/thread フラグを必ず復旧する。
+  writer thread は `daemon=True` に戻し、close 時の明示 drain を残したまま shutdown の bounded 性を優先した。
+- **GUI common writer の lost-wakeup race 修正**: `pending is None` 分岐で active/thread の reset までを同じロック内へ移した。
+  schedule が終了分岐へ割り込んでも pending が worker 不在で宙吊りにならないようにした。
+- **横断回帰の再確認**: `tests/test_gui.py tests/test_progress.py tests/test_codex_runner.py tests/test_loop.py tests/test_orchestra_runner.py`
+  をまとめて再実行し、411 passed / ruff clean。GUI writer hardening が host/provider 契約へ波及していないことを確認した。
+- **追加修正 3 件**:
+  1. `CodexRunner.run_turn()` の proc 起動直後 kill 判定に `_interrupted` を含め、post-spawn interrupt を cancel と対称化。
+  2. common summary writer の `finally` reset は「自分が現登録 thread のときだけ」に限定し、後着 worker の registration clobber を防止。
+  3. `is_query_like_injection()` の否定語に `書いて/追記` などの日本語 mutation 動詞を追加し、
+     `status/progress/summary` は語境界寄りに締めて review gate の false-negative を減らした。
+- **ClaudeRunner interrupt 窓も対称化**: `src/llterm/host/loop.py` の `ClaudeRunner.run_turn()` は
+  `Popen` 後 `_proc` 登録直後の kill 判定が `cancel` のみだったため、`interrupt()` がその窓へ入ると
+  現ターン即中断契約を破り得た。post-spawn 判定を `cancel or interrupt` へ広げ、interrupt なら
+  即 kill + `error_kind="interrupted"` を返すよう修正した。`tests/test_loop.py` に
+  spawn 完了同期つき回帰を追加し、`tests/test_loop.py = 106 passed` を確認した。
+- **post-spawn interrupt fast-path の cleanup も補強**: `ClaudeRunner` / `CodexRunner` とも、
+  post-spawn interrupt 即返しが `try/finally` より前だったため `_proc` 参照と child handle が残り得た。
+  両 runner に `proc.wait(timeout=10)` と `if self._proc is proc: self._proc = None` を追加し、
+  `_interrupted` 消費条件も `interrupt and not cancel` へ揃えた。回帰は `Popen` hook 内 interrupt へ
+  締め直し、window-specific に `runner._proc is None` まで固定した。
+- **GeminiRunner も同じ停止意味論へ揃えた**: `src/llterm/host/gemini_runner.py` は
+  `interrupt()` を持つのに post-spawn 判定が旧来の `cancel` のみだったため、
+  `Claude` / `Codex` と同型の窓が残っていた。`kill_now or interrupt_now` 判定、
+  `interrupt and not cancel` の一発消費、bounded `wait()`、`_proc=None` cleanup を追加し、
+  `tests/test_gemini_runner.py` に window-specific 回帰を足した。横断セットは
+  `tests/test_gui.py tests/test_progress.py tests/test_codex_runner.py tests/test_gemini_runner.py tests/test_loop.py tests/test_orchestra_runner.py = 436 passed`。
+- **stale `_interrupted` の開始時リセットも 3 runner に追加**: `orchestra_runner` は元から
+  ターン開始時に `_interrupted=False` を入れていたが、`Claude` / `Codex` / `Gemini` には無く、
+  idle 中に `worker.request_interrupt()` で立った flag が fallback runner の次ターンを
+  無関係に `interrupted` で潰し得た。3 runner とも `cancel` pre-check 直後に stale `_interrupted`
+  をリセットし、「走行中に届いた interrupt だけ」を拾うよう修正した。`worker.py` の docstring も
+  実態に合わせて補正。回帰は各 runner の idle interrupt ケースを追加し、横断セットは
+  `tests/test_gui.py tests/test_progress.py tests/test_codex_runner.py tests/test_gemini_runner.py tests/test_loop.py tests/test_orchestra_runner.py = 439 passed`。
+- **Gemini timeout 文言も補完**: `GeminiRunner` の timeout は `err=other` だが理由文が空だったため、
+  `runner.gemini.timeout` の i18n キーを追加して `src/llterm/host/gemini_runner.py` から返すようにした。
+  `tests/test_gemini_runner.py` に watchdog timeout 時でも `res.text` が空でない回帰を追加し、
+  横断セットは `tests/test_gui.py tests/test_progress.py tests/test_codex_runner.py tests/test_gemini_runner.py tests/test_loop.py tests/test_orchestra_runner.py = 440 passed`。
+- **Gemini timeout 回帰を文言一致に締め直し**: `tests/test_gemini_runner.py::test_gemini_timeout_returns_visible_reason`
+  は前回まで非空しか見ていなかったため、`t("runner.gemini.timeout")` との一致へ差し替えた。
+  実装ロジックの変更はなし。これで timeout 専用文言以外の別メッセージ混入では緑にならない。
+- **provider_version 例外 cache を非対称解消**: `src/llterm/host/codex_runner.py` の `_provider_version()` は
+  これまで Popen 例外を種別問わず空文字で cache していたが、今は `FileNotFoundError` だけを恒久欠落として cache し、
+  一過性 `OSError` / `SubprocessError` は cache しない。`tests/test_codex_runner.py` では
+  `not_found_is_cached_once` と `transient_failure_is_not_cached` の 2 本に分けて固定し、
+  横断セットは `tests/test_gui.py tests/test_progress.py tests/test_codex_runner.py tests/test_gemini_runner.py tests/test_loop.py tests/test_orchestra_runner.py = 441 passed`。
+- **writer drain / handoff 前提の文言補正**: common summary writer の close 時 flush は
+  `2.0s bounded / best-effort` と明記し、この summary / `docs/next_plan.md` は current working tree の
+  `src/` + `tests/` + `docs/` 差分を前提とする旨も追記した。
+- **handoff 前提の明示**: 本 summary / `docs/next_plan.md` は current working tree の `src/` + `tests/` +
+  `docs/` 差分を前提にしており、docs だけ独立確定した状態は正としない。最新の横断確認値は
+  `tests/test_gui.py tests/test_progress.py tests/test_codex_runner.py tests/test_gemini_runner.py tests/test_loop.py tests/test_orchestra_runner.py = 447 passed`。
+- **provider_version cache 調整**: `src/llterm/host/codex_runner.py` の `_provider_version()` は、
+  `cancel()` / `interrupt()` で probe が止まった結果の空文字を cache しないようにした。
+  停止起因の欠測は次ターンで再観測可能に保ち、正常系では provenance が復帰する。
+- **非 JSON 診断の結合方法を固定**: 失敗時の非 JSON 診断行は、既存の error text があればその後ろへ
+  改行追記する。成功時は引き続き非表示。これで情報損失と表示順の揺れを避ける。
+- **非 JSON 診断行の扱いを調整**: `src/llterm/host/codex_runner.py` の `parse_codex_jsonl()` は、
+  非 JSON 行を成功時は無視したまま、失敗時だけ補助診断テキストへ昇格するようにした。
+  これで `error/turn.failed` 無しの `err=other` でも原因手掛かりを GUI / ledger に残せる。
+- **Codex version probe race 修正**: `src/llterm/host/codex_runner.py` の `provider_version` 取得は
+  `_probe_proc` で追跡する kill 可能 subprocess へ変えた。`cancel()` / `interrupt()` は
+  main turn だけでなく version probe も kill し、pre-start / probe 後の両方で
+  `cancelled` / `interrupted` を返せるようにした。停止要求が勝った場合の `provider_version` は空文字に落とす。
+- **Codex cancel fast-path 修正**: `src/llterm/host/codex_runner.py` の `run_turn()` は、
+  `cancel()` 済みなら `codex --version` を呼ばず即 `cancelled` を返すよう戻した。
+  provenance より停止要求を優先し、pre-start cancel だけは `provider_version=""` のまま返す。
+- **shared progress 書込み hardening**: `src/llterm/progress.py` の `write_common_summary()` は
+  いま `tmp write -> replace -> parent dir fsync` の `_commit_summary_text()` 経路へ統一済み。
+  直接 `PROGRESS.md` を `"w"` truncate する fallback は撤去した。
+- **stale 再現確認の追試**: 実ファイル `D:/projects/_shared/PROGRESS.md` は
+  `py -3.11 -m llterm.progress --projects-root D:/projects` 実行前後で Python read / PowerShell read が一致。
+  さらに隔離 `projects_root` 上で `next_plan` の `最終更新` を 6 回進めながら毎回別プロセス CLI 実行直後に
+  `Get-Content` を読んでも、6/6 回とも最新値が返り stale は再現しなかった。
+- **stale readback 補正の現状**:
+  - readback mismatch 時は、より新しい並行 writer を潰さないよう fail-closed を維持。
+  - ただし単独 writer の stale 残留を潰すため、
+    1. 現在ファイルの最新時刻が期待 summary より古い、または
+    2. 最新時刻は同じでも、**現在の source 群から再集約した本文**が期待値と一致する
+    場合に限って、同じ commit 経路を 1 回だけ再試行する。
+- **durability 補強**: `_write_text_sync()` で file `flush + fsync`、さらに rename 後に
+  `_fsync_parent_dir()` を best-effort 実行する形へ揃えた。
+- **テスト到達点**: `py -3.11 -m pytest -q tests/test_progress.py` = **89 passed**、
+  `ruff check src/llterm/progress.py tests/test_progress.py --isolated` = pass。
+- **Codex probe 追記**: `codex-cli 0.135.0` の `codex exec --json` 再probeでも
+  `thread.started / turn.started / item.completed / turn.completed.usage` 以外の公開 event は出ず、
+  per-call / span の瞬間占有は未観測のまま。stdout 末尾に非 JSON 診断行
+  `Reading additional input from stdin...` が混ざるケースを確認したため、parser が黙って無視できる回帰を追加した。
+- **実ファイル状態**: `docs/next_plan.md` と `D:/projects/_shared/PROGRESS.md` は
+  **同じ記録時刻の `llterm` を先頭にそろえる**運用へ戻した。`next_plan` の `> 最終更新` を更新したら、
+  共通進捗もその時刻で再生成して整合を保つ。
+
+## 次の具体的一手
+1. `progress.py` 系は**再現不能のまま追加 hardening しない**。新しい stale 実例が出た時だけ、
+   `CLI 実行経路 / shell 側 readback / キャッシュ` のどこでずれるかを追加観測する。
+2. `Codex` の per-call 占有は引き続き **未公開 schema** として扱い、今後も `ctx n/a` を維持する。
+   ただし `codex --json` の event schema や `usage` field が将来増えたら再probeして取り込む。
+3. 実測済みの非 JSON 診断行 (`Reading additional input from stdin...`) は parser が黙って無視できる前提でよい。
+   以後の probe で別の診断ノイズが出たら同じく回帰へ固定する。
+
+---
+
 # llterm Session Summary — 2026-06-12 (i18n 実装 + GUI 大幅強化)
 
 ## 2026-06-12 (夜) 多言語対応 (i18n) 実装完了

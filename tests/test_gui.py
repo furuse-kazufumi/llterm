@@ -6,17 +6,23 @@ conftest が QT_QPA_PLATFORM=offscreen を立てる。PySide6 未導入環境で
 from __future__ import annotations
 
 from pathlib import Path
+import threading
+import time
 
 import pytest
 
 pytest.importorskip("PySide6", reason="GUI テストは PySide6 が要る (pip install PySide6)")
 
+import llterm.gui.app as app_mod  # noqa: E402
 from PySide6 import QtCore, QtWidgets  # noqa: E402
 
 from llterm import rad, templates  # noqa: E402
+from llterm.ctl.ledger import Ledger  # noqa: E402
 from llterm.gui.app import PALETTE, MainWindow, discover_projects  # noqa: E402
 from llterm.gui.virtual import VirtualClaudeRunner  # noqa: E402
-from llterm.host.loop import ClaudeRunner  # noqa: E402
+from llterm.host.loop import ClaudeRunner, SessionLoop, TurnResult  # noqa: E402
+from llterm.host.orchestra_runner import OrchestraRunner  # noqa: E402
+from llterm.progress import ProjectProgress, write_common_summary_items  # noqa: E402
 
 PALETTE_ERR = PALETTE["err"]
 
@@ -25,6 +31,25 @@ PALETTE_ERR = PALETTE["err"]
 def qapp() -> QtWidgets.QApplication:
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     return app  # offscreen なので teardown 不要 (プロセス終了で破棄)
+
+
+@pytest.fixture(autouse=True)
+def _cleanup_widgets(qapp: QtWidgets.QApplication):
+    yield
+    for widget in list(qapp.topLevelWidgets()):
+        worker = getattr(widget, "worker", None)
+        if worker is not None and hasattr(worker, "isRunning") and worker.isRunning():
+            try:
+                worker.request_stop(force=True)
+                worker.wait(2000)
+            except Exception:  # noqa: BLE001
+                pass
+        widget.close()
+        qapp.processEvents()
+        if widget.isVisible():
+            continue  # closeEvent が ignore した窓は destroy 予約しない
+        widget.deleteLater()
+    qapp.processEvents()
 
 
 def _make_window(tmp_path: Path, *, delay: float = 0.0, **loop_kw: object) -> MainWindow:
@@ -42,15 +67,16 @@ def _make_window(tmp_path: Path, *, delay: float = 0.0, **loop_kw: object) -> Ma
 def _run_until_finished(qapp: QtWidgets.QApplication, win: MainWindow, timeout_ms: int = 15000) -> None:
     """worker スレッドが終わるまでイベントループを回す (offscreen, 競合に耐性)。"""
     assert win.worker is not None
+    worker = win.worker
     loop = QtCore.QEventLoop()
-    win.worker.finished.connect(loop.quit)  # QThread 標準シグナル (必ず発火)
+    worker.finished.connect(loop.quit)  # QThread 標準シグナル (必ず発火)
     guard = QtCore.QTimer()
     guard.setSingleShot(True)
     guard.timeout.connect(loop.quit)
     guard.start(timeout_ms)
-    if not win.worker.isFinished():
+    if not worker.isFinished():
         loop.exec()
-    win.worker.wait(2000)
+    worker.wait(2000)
     qapp.processEvents()  # 残った queued slot (on_event / on_finished) を流し切る
 
 
@@ -415,6 +441,75 @@ def test_turn_without_choice_marker_no_dialog(qapp: QtWidgets.QApplication, tmp_
     _run_until_finished(qapp, win)
 
 
+def test_finished_run_clears_worker_reference(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    win = _make_window(tmp_path, max_sessions=1, delay=0.0)
+    win.start_loop()
+    assert win.worker is not None
+    _run_until_finished(qapp, win)
+    assert win.worker is None
+
+
+def test_start_loop_waits_for_finished_slot_to_clear_worker(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    win = _make_window(tmp_path, max_sessions=1, delay=0.0)
+
+    class _DoneWorker:
+        def isRunning(self) -> bool:  # noqa: N802
+            return False
+
+    stale = _DoneWorker()
+    win.worker = stale  # type: ignore[assignment]
+    win.start_loop()
+    assert win.worker is not stale
+    assert win.worker is not None
+
+
+def test_common_project_tab_marks_file_time_fallback(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    alpha_docs = tmp_path / "alpha" / "docs"
+    alpha_docs.mkdir(parents=True)
+    (alpha_docs / "next_plan.md").write_text("# alpha\n## 次の一手\n- do A\n", encoding="utf-8")
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path / "alpha",
+                     settings_path=tmp_path / "s.json")
+    win._refresh_summary()
+    alpha_view = win.common_tabs.widget(1)
+    assert isinstance(alpha_view, QtWidgets.QPlainTextEdit)
+    assert "(ファイル時刻)" in alpha_view.toPlainText()
+    assert "format gaps:" in alpha_view.toPlainText()
+
+
+def test_common_project_tab_handles_bad_timestamp_failsafe(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    win = _make_window(tmp_path)
+    text = win._render_common_project_text(
+        ProjectProgress("bad", Path("x"), "body", updated=10**30, source="next_plan")
+    )
+    assert "> 更新: ?" in text
+
+
+def test_next_start_reaps_retired_worker(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    from llterm.gui.worker import LoopWorker
+
+    win = _make_window(tmp_path, max_sessions=1, delay=0.0)
+    win.start_loop()
+    assert win.worker is not None
+    first = win.worker
+    _run_until_finished(qapp, win)
+    assert win.worker is None
+    win.start_loop()
+    assert win.worker is not None and win.worker is not first
+    qapp.processEvents()
+    workers = [child for child in win.children() if isinstance(child, LoopWorker)]
+    assert len(workers) == 1
+
+
 def test_choice_marker_in_code_fence_not_triggered(
     qapp: QtWidgets.QApplication, tmp_path: Path
 ) -> None:
@@ -668,6 +763,16 @@ def test_injected_task_shown_at_consumption(qapp: QtWidgets.QApplication, tmp_pa
     assert ("長い再開プロンプト" * 50) not in after
 
 
+def test_injected_task_unreviewed_path_shown_at_consumption(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    win = _make_window(tmp_path)
+    win._on_event("task", {"session_index": 1, "turn": 2, "injected": True,
+                           "review_mode": "unreviewed",
+                           "prompt": "現在の進捗を要約して"})
+    assert "▶ 注入タスク実行(簡易経路): 現在の進捗を要約して" in win.output.toPlainText()
+
+
 def test_output_lines_include_timestamps(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
     """指令時 (task) と応答受信時 (turn) と境界に [HH:MM:SS] が出る (要望: 時刻表示)。"""
     import re
@@ -694,6 +799,58 @@ def test_status_shows_session_progress_over_max(
                            "text": "", "error_kind": ""})
     assert "session 3/8" in win.lbl_session.text()
     assert "turn 5" in win.lbl_session.text()
+
+
+def test_stale_worker_stream_signal_is_ignored(
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from llterm.gui.worker import LoopWorker
+
+    win = _make_window(tmp_path)
+    current = LoopWorker(
+        runner=VirtualClaudeRunner(delay=0.0),
+        workdir=tmp_path,
+        ledger_path=tmp_path / "cur.jsonl",
+        loop_kw={"max_sessions": 1},
+    )
+    stale = LoopWorker(
+        runner=VirtualClaudeRunner(delay=0.0),
+        workdir=tmp_path,
+        ledger_path=tmp_path / "stale.jsonl",
+        loop_kw={"max_sessions": 1},
+    )
+    win.worker = current
+    before = win.output.toPlainText()
+    monkeypatch.setattr(win, "sender", lambda: stale)
+    win._on_stream({"kind": "text", "text": "stale text"})
+    assert win.output.toPlainText() == before
+    assert stale in win._retired_workers
+
+
+def test_stale_worker_event_signal_is_ignored(
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from llterm.gui.worker import LoopWorker
+
+    win = _make_window(tmp_path)
+    current = LoopWorker(
+        runner=VirtualClaudeRunner(delay=0.0),
+        workdir=tmp_path,
+        ledger_path=tmp_path / "cur.jsonl",
+        loop_kw={"max_sessions": 1},
+    )
+    stale = LoopWorker(
+        runner=VirtualClaudeRunner(delay=0.0),
+        workdir=tmp_path,
+        ledger_path=tmp_path / "stale.jsonl",
+        loop_kw={"max_sessions": 1},
+    )
+    win.worker = current
+    initial = win.lbl_session.text()
+    monkeypatch.setattr(win, "sender", lambda: stale)
+    win._on_event("session_start", {"session_id": "abcdef123456", "session_index": 9})
+    assert win.lbl_session.text() == initial
+    assert stale in win._retired_workers
 
 
 def test_ctx_bar_shows_rotate_threshold(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
@@ -760,19 +917,429 @@ def test_summary_has_live_and_common_tabs(qapp: QtWidgets.QApplication, tmp_path
     共通タブは各 project の docs/next_plan.md を記録時刻つきで横断表示する
     (ユーザー指摘 2026-06-13: タブで分ける + 日付だけでは直前判定不能)。
     """
-    # 別 project に時刻つき next_plan を置く → 共通タブに 15:42 つきで現れる
+    # 別 project に時刻つき next_plan を置く → 共通タブの All と project 別サブタブに現れる
     alpha_docs = tmp_path / "alpha" / "docs"
     alpha_docs.mkdir(parents=True)
     (alpha_docs / "next_plan.md").write_text(
         "# alpha\n> 最終更新: 2026-06-13 15:42 JST\n## 次の一手\n- do A\n", encoding="utf-8")
+    beta_docs = tmp_path / "beta" / "docs"
+    beta_docs.mkdir(parents=True)
+    (beta_docs / "next_plan.md").write_text(
+        "# beta\n> 最終更新: 2026-06-13 16:05 JST\n## 次の一手\n- do B\n", encoding="utf-8")
+    original_schedule = MainWindow._schedule_common_summary_write
+
+    def _sync_schedule(self: MainWindow, items: list[ProjectProgress]) -> None:
+        write_common_summary_items(items, self.projects_root / "_shared" / "PROGRESS.md")
+
+    MainWindow._schedule_common_summary_write = _sync_schedule
     win = MainWindow(projects_root=tmp_path, workdir=tmp_path / "alpha",
                      settings_path=tmp_path / "s.json")
-    assert win.summary_tabs.count() == 2
-    win._refresh_summary()  # 共通タブも再生成される
-    common = win.common_view.toPlainText()
-    assert "alpha" in common
-    assert "15:42" in common              # 記録された最終更新が時刻つきで出る (日付だけでない)
-    assert "(ファイル時刻)" not in common  # 記録時刻つきなので mtime フォールバック注記は無い
+    try:
+        assert win.summary_tabs.count() == 2
+        win._refresh_summary()  # 共通タブも再生成される
+        common = win.common_view.toPlainText()
+        assert "alpha" in common
+        assert "15:42" in common              # 記録された最終更新が時刻つきで出る (日付だけでない)
+        assert "(ファイル時刻)" not in common  # 記録時刻つきなので mtime フォールバック注記は無い
+        assert "<!--" not in common
+        assert win.common_tabs.count() == 3
+        assert win.common_tabs.tabText(0) == "All"
+        assert win.common_tabs.tabText(1) == "beta"
+        assert win.common_tabs.tabText(2) == "alpha"
+        beta_view = win.common_tabs.widget(1)
+        assert isinstance(beta_view, QtWidgets.QPlainTextEdit)
+        assert "> source: next_plan" in beta_view.toPlainText()
+        assert "- do B" in beta_view.toPlainText()
+        assert "format gaps:" in beta_view.toPlainText()
+        out = tmp_path / "_shared" / "PROGRESS.md"
+        assert out.exists()
+        common_file = out.read_text(encoding="utf-8")
+        assert "**beta**: 2026-06-13 16:05" in common_file
+        assert "<!--" not in common_file
+    finally:
+        MainWindow._schedule_common_summary_write = original_schedule
+
+
+def test_refresh_common_summary_collects_once_and_writes_same_snapshot(
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    item = ProjectProgress(
+        "beta",
+        tmp_path / "beta" / "docs" / "next_plan.md",
+        "# beta\n> 最終更新: 2026-06-13 16:05 JST\n## 次の一手\n- do B\n",
+        updated=1718262300.0,
+        source="next_plan",
+        updated_source="header",
+        format_gaps=("現在地", "直近の成果", "環境メモ"),
+    )
+    calls = 0
+    captured: dict[str, object] = {}
+
+    def _fake_collect(root: Path) -> list[ProjectProgress]:
+        nonlocal calls
+        calls += 1
+        if calls > 1:
+            raise AssertionError("collect_progress called more than once")
+        return [item]
+
+    monkeypatch.setattr(app_mod, "collect_progress", _fake_collect)
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+
+    def _capture_schedule(items: list[ProjectProgress]) -> None:
+        captured["items"] = items
+
+    monkeypatch.setattr(win, "_schedule_common_summary_write", _capture_schedule)
+    calls = 0
+    win._refresh_common_summary()
+    assert calls == 1
+    assert captured["items"] == [item]
+    assert "beta" in win.common_view.toPlainText()
+    assert win.common_tabs.count() == 2
+    beta_view = win.common_tabs.widget(1)
+    assert isinstance(beta_view, QtWidgets.QPlainTextEdit)
+    assert "- do B" in beta_view.toPlainText()
+
+
+def test_common_summary_writer_coalesces_pending_snapshots(
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    alpha = ProjectProgress(
+        "alpha",
+        tmp_path / "alpha" / "docs" / "next_plan.md",
+        "# alpha\n",
+        updated=1.0,
+        source="next_plan",
+    )
+    beta = ProjectProgress(
+        "beta",
+        tmp_path / "beta" / "docs" / "next_plan.md",
+        "# beta\n",
+        updated=2.0,
+        source="next_plan",
+    )
+    gamma = ProjectProgress(
+        "gamma",
+        tmp_path / "gamma" / "docs" / "next_plan.md",
+        "# gamma\n",
+        updated=3.0,
+        source="next_plan",
+    )
+    started = threading.Event()
+    release = threading.Event()
+    done = threading.Event()
+    calls: list[list[str]] = []
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    original_write = app_mod.write_common_summary_items
+
+    def _fake_write(items: list[ProjectProgress], out_path: Path) -> str:
+        calls.append([item.name for item in items])
+        if len(calls) == 1:
+            started.set()
+            release.wait(2.0)
+        if len(calls) >= 2:
+            done.set()
+        return original_write(items, out_path)
+
+    monkeypatch.setattr(app_mod, "write_common_summary_items", _fake_write)
+    win._schedule_common_summary_write([alpha])
+    assert started.wait(2.0)
+    win._schedule_common_summary_write([beta])
+    win._schedule_common_summary_write([gamma])
+    release.set()
+    assert done.wait(2.0)
+    deadline = time.time() + 2.0
+    while time.time() < deadline:
+        with win._common_summary_write_lock:
+            if not win._common_summary_write_active:
+                break
+        time.sleep(0.01)
+    assert calls == [["alpha"], ["gamma"]]
+    out = tmp_path / "_shared" / "PROGRESS.md"
+    assert out.exists()
+    assert "**gamma**" in out.read_text(encoding="utf-8")
+
+
+def test_close_drains_common_summary_writer_latest_pending(
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    alpha = ProjectProgress(
+        "alpha",
+        tmp_path / "alpha" / "docs" / "next_plan.md",
+        "# alpha\n",
+        updated=1.0,
+        source="next_plan",
+    )
+    beta = ProjectProgress(
+        "beta",
+        tmp_path / "beta" / "docs" / "next_plan.md",
+        "# beta\n",
+        updated=2.0,
+        source="next_plan",
+    )
+    started = threading.Event()
+    release = threading.Event()
+    calls: list[list[str]] = []
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    original_write = app_mod.write_common_summary_items
+
+    def _fake_write(items: list[ProjectProgress], out_path: Path) -> str:
+        calls.append([item.name for item in items])
+        if calls == [["alpha"]]:
+            started.set()
+            release.wait(2.0)
+        return original_write(items, out_path)
+
+    monkeypatch.setattr(app_mod, "write_common_summary_items", _fake_write)
+    monkeypatch.setattr(win, "_save_settings", lambda: None)
+    win._schedule_common_summary_write([alpha])
+    assert started.wait(2.0)
+    win._schedule_common_summary_write([beta])
+    threading.Timer(0.1, release.set).start()
+    assert win.close() is True
+    assert calls == [["alpha"], ["beta"]]
+    out = tmp_path / "_shared" / "PROGRESS.md"
+    assert out.exists()
+    assert "**beta**" in out.read_text(encoding="utf-8")
+
+
+def test_common_summary_writer_drain_timeout_is_bounded(
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    alpha = ProjectProgress(
+        "alpha",
+        tmp_path / "alpha" / "docs" / "next_plan.md",
+        "# alpha\n",
+        updated=1.0,
+        source="next_plan",
+    )
+    started = threading.Event()
+    release = threading.Event()
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    original_write = app_mod.write_common_summary_items
+
+    def _fake_write(items: list[ProjectProgress], out_path: Path) -> str:
+        started.set()
+        release.wait(2.0)
+        return original_write(items, out_path)
+
+    monkeypatch.setattr(app_mod, "write_common_summary_items", _fake_write)
+    win._schedule_common_summary_write([alpha])
+    assert started.wait(2.0)
+    t0 = time.perf_counter()
+    win._drain_common_summary_write(timeout=0.05)
+    elapsed = time.perf_counter() - t0
+    assert elapsed < 0.5
+    release.set()
+    win._drain_common_summary_write()
+
+
+def test_common_summary_writer_recovers_after_write_exception(
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    alpha = ProjectProgress(
+        "alpha",
+        tmp_path / "alpha" / "docs" / "next_plan.md",
+        "# alpha\n",
+        updated=1.0,
+        source="next_plan",
+    )
+    beta = ProjectProgress(
+        "beta",
+        tmp_path / "beta" / "docs" / "next_plan.md",
+        "# beta\n",
+        updated=2.0,
+        source="next_plan",
+    )
+    calls: list[list[str]] = []
+    boom_once = True
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    original_write = app_mod.write_common_summary_items
+
+    def _fake_write(items: list[ProjectProgress], out_path: Path) -> str:
+        nonlocal boom_once
+        calls.append([item.name for item in items])
+        if boom_once:
+            boom_once = False
+            raise OSError("simulated write failure")
+        return original_write(items, out_path)
+
+    monkeypatch.setattr(app_mod, "write_common_summary_items", _fake_write)
+    win._schedule_common_summary_write([alpha])
+    deadline = time.time() + 2.0
+    while time.time() < deadline:
+        with win._common_summary_write_lock:
+            if not win._common_summary_write_active:
+                break
+        time.sleep(0.01)
+    with win._common_summary_write_lock:
+        assert win._common_summary_write_active is False
+        assert win._common_summary_writer_thread is None
+    win._schedule_common_summary_write([beta])
+    deadline = time.time() + 2.0
+    while time.time() < deadline:
+        with win._common_summary_write_lock:
+            if not win._common_summary_write_active:
+                break
+        time.sleep(0.01)
+    assert calls == [["alpha"], ["beta"]]
+    out = tmp_path / "_shared" / "PROGRESS.md"
+    assert out.exists()
+    assert "**beta**" in out.read_text(encoding="utf-8")
+
+
+def test_common_summary_writer_start_failure_resets_active(
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    alpha = ProjectProgress(
+        "alpha",
+        tmp_path / "alpha" / "docs" / "next_plan.md",
+        "# alpha\n",
+        updated=1.0,
+        source="next_plan",
+    )
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+
+    class _BoomThread:
+        def __init__(self, *args, **kwargs) -> None:
+            return None
+
+        def start(self) -> None:
+            raise RuntimeError("thread start blocked")
+
+    monkeypatch.setattr(app_mod.threading, "Thread", _BoomThread)
+    win._schedule_common_summary_write([alpha])
+    with win._common_summary_write_lock:
+        assert win._common_summary_write_active is False
+        assert win._common_summary_writer_thread is None
+
+
+def test_common_summary_writer_does_not_lose_pending_schedule_at_exit_boundary(
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    alpha = ProjectProgress(
+        "alpha",
+        tmp_path / "alpha" / "docs" / "next_plan.md",
+        "# alpha\n",
+        updated=1.0,
+        source="next_plan",
+    )
+    beta = ProjectProgress(
+        "beta",
+        tmp_path / "beta" / "docs" / "next_plan.md",
+        "# beta\n",
+        updated=2.0,
+        source="next_plan",
+    )
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    scheduled = threading.Event()
+    original_lock = win._common_summary_write_lock
+
+    class _HookedLock:
+        def __init__(self) -> None:
+            self.count = 0
+            self.triggered = False
+
+        def __enter__(self):
+            original_lock.acquire()
+            self.count += 1
+            if self.count == 2 and not self.triggered:
+                self.triggered = True
+
+                def _schedule_beta() -> None:
+                    win._schedule_common_summary_write([beta])
+                    scheduled.set()
+
+                threading.Thread(target=_schedule_beta, daemon=True).start()
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            original_lock.release()
+            return False
+
+    win._common_summary_write_lock = _HookedLock()  # type: ignore[assignment]
+    win._schedule_common_summary_write([alpha])
+    assert scheduled.wait(2.0)
+    deadline = time.time() + 2.0
+    while time.time() < deadline:
+        with original_lock:
+            if not win._common_summary_write_active and win._common_summary_write_pending is None:
+                break
+        time.sleep(0.01)
+    with original_lock:
+        assert win._common_summary_write_active is False
+        assert win._common_summary_write_pending is None
+        assert win._common_summary_writer_thread is None
+    out = tmp_path / "_shared" / "PROGRESS.md"
+    assert out.exists()
+    assert "**beta**" in out.read_text(encoding="utf-8")
+
+
+def test_common_summary_writer_finally_does_not_clobber_new_worker_registration(
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    alpha = ProjectProgress(
+        "alpha",
+        tmp_path / "alpha" / "docs" / "next_plan.md",
+        "# alpha\n",
+        updated=1.0,
+        source="next_plan",
+    )
+    beta = ProjectProgress(
+        "beta",
+        tmp_path / "beta" / "docs" / "next_plan.md",
+        "# beta\n",
+        updated=2.0,
+        source="next_plan",
+    )
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    win._drain_common_summary_write()
+    original_lock = win._common_summary_write_lock
+    beta_scheduled = threading.Event()
+    beta_started = threading.Event()
+    beta_release = threading.Event()
+    original_write = app_mod.write_common_summary_items
+
+    def _fake_write(items: list[ProjectProgress], out_path: Path) -> str:
+        if items and items[0].name == "beta":
+            beta_started.set()
+            beta_release.wait(2.0)
+        return original_write(items, out_path)
+
+    class _HookedLock:
+        def __init__(self) -> None:
+            self.count = 0
+            self.triggered = False
+
+        def __enter__(self):
+            original_lock.acquire()
+            self.count += 1
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            trigger = self.count == 3 and not self.triggered
+            if trigger:
+                self.triggered = True
+            original_lock.release()
+            if trigger:
+                win._schedule_common_summary_write([beta])
+                beta_scheduled.set()
+            return False
+
+    monkeypatch.setattr(app_mod, "write_common_summary_items", _fake_write)
+    win._common_summary_write_lock = _HookedLock()  # type: ignore[assignment]
+    win._schedule_common_summary_write([alpha])
+    assert beta_scheduled.wait(2.0)
+    assert beta_started.wait(2.0)
+    with original_lock:
+        assert win._common_summary_write_active is True
+        assert win._common_summary_writer_thread is not None
+    beta_release.set()
+    deadline = time.time() + 2.0
+    while time.time() < deadline:
+        with original_lock:
+            if not win._common_summary_write_active:
+                break
+        time.sleep(0.01)
 
 
 def test_progress_bar_reads_session_summary_on_rotate(
@@ -799,6 +1366,14 @@ def test_progress_bar_handles_missing_session_summary(
     assert win._read_session_summary() == ""
 
 
+def test_rotate_event_shows_ctx_na_when_unobservable(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    win = _make_window(tmp_path)
+    win._on_event("rotate", {"session_index": 1, "used_pct": None, "context_observable": False})
+    assert "rotate (ctx n/a)" in win.output.toPlainText()
+
+
 def test_model_label_updates_from_init_stream(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
     """画面に現在のモデルを表示する (init イベントの model)。effort 併記。"""
     win = _make_window(tmp_path)
@@ -806,6 +1381,50 @@ def test_model_label_updates_from_init_stream(qapp: QtWidgets.QApplication, tmp_
     win._on_stream({"kind": "init", "model": "claude-fable-5", "session_id": "abcd1234"})
     assert "model: claude-fable-5" in win.lbl_model.text()
     assert "effort=max" in win.lbl_model.text()
+
+
+def test_token_label_distinguishes_codex_cumulative_usage(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    win = _make_window(tmp_path)
+    win._set_tokens("claude", 1200, 340)
+    assert "tok in/out: 1200/340" in win.lbl_tokens.text()
+    win._set_tokens(
+        "codex", 5000000, 1000, cached=98000, reasoning=13,
+        usage_kind="cumulative", provider_version="codex-cli 0.test",
+    )
+    assert "累積tok in/cache/reason/out: 5000000/98000/13/1000 (ctx別)" in win.lbl_tokens.text()
+    assert "プロバイダ版: codex-cli 0.test" in win.lbl_tokens.toolTip()
+
+
+def test_cumulative_tooltip_is_provider_generic(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    win = _make_window(tmp_path)
+    win._set_tokens(
+        "openai-compat", 120, 30, cached=20, reasoning=3,
+        usage_kind="cumulative", provider_version="compat-cli 1.0",
+    )
+    assert "provider 管理の累積 usage" in win.lbl_tokens.toolTip()
+    assert "Codex" not in win.lbl_tokens.toolTip()
+    assert "プロバイダ版: compat-cli 1.0" in win.lbl_tokens.toolTip()
+
+
+def test_tokens_reset_on_session_start(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    win = _make_window(tmp_path)
+    win._set_tokens("codex", 5000000, 1000, provider_version="codex-cli 0.test")
+    win._on_event("session_start", {"session_id": "abcdef123456", "session_index": 1})
+    assert win.lbl_tokens.text() == "tok: -"
+    assert win.lbl_tokens.toolTip() == "直近ターンの token 情報。"
+
+
+def test_tokens_reset_on_start_and_finish(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    win = _make_window(tmp_path, max_sessions=1, delay=0.5)
+    win._set_tokens("codex", 5000000, 1000)
+    win.start_loop()
+    assert win.lbl_tokens.text() == "tok: -"
+    _run_until_finished(qapp, win)
+    assert win.lbl_tokens.text() == "tok: -"
 
 
 def test_subscription_cost_labeled_no_charge(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
@@ -848,11 +1467,86 @@ def test_render_slots_update_widgets(qapp: QtWidgets.QApplication, tmp_path: Pat
     win = _make_window(tmp_path)
     win._on_event("session_start", {"session_id": "abcdef123456", "session_index": 1})
     win._on_event("turn", {"turn": 1, "session_index": 1, "used_pct": 0.42, "total_cost": 0.06,
-                           "text": "hello from virtual", "error_kind": ""})
+                           "text": "hello from virtual", "error_kind": "",
+                           "provider": "claude", "input_tokens": 1200, "output_tokens": 340,
+                           "cached_input_tokens": 0, "reasoning_output_tokens": 0,
+                           "token_usage_kind": "instant"})
     assert "session 1" in win.lbl_session.text()
     assert win.ctx_bar.value() == 42
+    assert win.ctx_bar.styleSheet() == ""
     assert "0.0600" in win.lbl_cost.text()
+    assert "tok in/out: 1200/340" in win.lbl_tokens.text()
     assert "hello from virtual" in win.output.toPlainText()
+
+
+def test_turn_event_shows_codex_cumulative_tokens_with_cache(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    win = _make_window(tmp_path)
+    win._on_event("turn", {"turn": 1, "session_index": 1, "used_pct": 0.0, "total_cost": 0.0,
+                           "text": "done", "error_kind": "", "provider": "codex",
+                           "input_tokens": 5000000, "output_tokens": 1000,
+                           "context_observable": False,
+                           "context_observable_reason": "cumulative_only",
+                           "cached_input_tokens": 98000, "reasoning_output_tokens": 13,
+                           "token_usage_kind": "cumulative",
+                           "provider_version": "codex-cli 0.test"})
+    assert "累積tok in/cache/reason/out: 5000000/98000/13/1000 (ctx別)" in win.lbl_tokens.text()
+    assert "プロバイダ版: codex-cli 0.test" in win.lbl_tokens.toolTip()
+    assert "ctx n/a" in win.output.toPlainText()
+    assert "ctx n/a" in win.ctx_bar.format()
+    assert "transparent" in win.ctx_bar.styleSheet()
+    assert "累積 usage" in win.ctx_bar.toolTip()
+
+
+def test_gui_shows_cumulative_codex_tokens_from_orchestra_turn_event(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    class CodexRunner:
+        on_stream = None
+
+        def run_turn(self, *, prompt: str, session_id: str, resume: bool, cwd: Path) -> TurnResult:
+            return TurnResult(
+                session_id=session_id,
+                input_tokens=5_000_000,
+                output_tokens=1000,
+                context_tokens=0,
+                cost_usd=0.0,
+                text="done",
+                is_error=False,
+                error_kind="",
+                num_turns=1,
+                raw_exit=0,
+                context_observable=False,
+                context_observable_reason="cumulative_only",
+                cached_input_tokens=98_000,
+                reasoning_output_tokens=13,
+                token_usage_kind="cumulative",
+                provider_version="codex-cli 0.test",
+            )
+
+        def cancel(self) -> None:
+            pass
+
+    seen: list[tuple[str, dict]] = []
+    orch = OrchestraRunner(conductor=CodexRunner(), reviewers=[], lead=None, include_diff=False)
+    loop = SessionLoop(
+        runner=orch,
+        workdir=tmp_path,
+        ledger=Ledger(tmp_path / "ledger.jsonl"),
+        max_sessions=1,
+        on_event=lambda kind, data: seen.append((kind, data)),
+    )
+    loop.run()
+    turn_ev = next(d for k, d in seen if k == "turn")
+    win = _make_window(tmp_path)
+    win._on_event("turn", turn_ev)
+    assert "累積tok in/cache/reason/out: 5000000/98000/13/1000 (ctx別)" in win.lbl_tokens.text()
+    assert "プロバイダ版: codex-cli 0.test" in win.lbl_tokens.toolTip()
+    assert "ctx n/a" in win.output.toPlainText()
+    assert "ctx n/a" in win.ctx_bar.format()
+    assert "transparent" in win.ctx_bar.styleSheet()
+    assert "累積 usage" in win.ctx_bar.toolTip()
 
 
 def test_render_auth_required_message(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
@@ -1329,7 +2023,7 @@ def test_default_panel_is_claude_only(qapp: QtWidgets.QApplication, tmp_path: Pa
 def test_default_profile_wraps_with_claude_review(
     qapp: QtWidgets.QApplication, tmp_path: Path
 ) -> None:
-    """既定 (パネル=[claude]) で実 claude → 主奏者が OrchestraRunner、責任者=Claude。"""
+    """既定 (パネル=[claude]) で実 claude → 主奏者が OrchestraRunner、lead も Claude 系。"""
     win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
     win.chk_codex_first.setChecked(False)
     win.chk_real.setChecked(True)
@@ -1337,7 +2031,7 @@ def test_default_profile_wraps_with_claude_review(
     assert type(primary).__name__ == "OrchestraRunner"
     assert type(primary.conductor).__name__ == "ClaudeRunner"   # 指揮者=Claude (codex優先 OFF)
     assert [type(r).__name__ for r in primary.reviewers] == ["ClaudeRunner"]  # ダブルチェック許容
-    assert type(primary.lead).__name__ == "ClaudeRunner"        # 責任者=Claude (固定)
+    assert type(primary.lead).__name__ == "ClaudeRunner"        # Claude主なら lead も Claude 系
     assert primary.factchecker is None
 
 
@@ -1462,7 +2156,7 @@ def test_factchecker_dropped_when_key_missing(
 def test_panel_with_codex_first_conductor_is_codex(
     qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
 ) -> None:
-    """Codex優先 + パネル(Groq): 指揮者=Codex(無料) / レビュー=Groq → Claude token 不使用の分業。"""
+    """Codex優先 + パネル(Groq): 指揮者=Codex / lead も Codex系を優先し、Claude固定にしない。"""
     monkeypatch.setenv("GROQ_API_KEY", "sk-test")
     win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
     win.chk_real.setChecked(True)
@@ -1471,6 +2165,7 @@ def test_panel_with_codex_first_conductor_is_codex(
     primary, fallbacks = win._resolve_providers()
     assert type(primary).__name__ == "OrchestraRunner"
     assert type(primary.conductor).__name__ == "CodexRunner"
+    assert type(primary.lead).__name__ == "CodexRunner"
     assert "ClaudeRunner" in [type(f).__name__ for f in fallbacks]  # Claude は保険のまま
 
 
@@ -1505,12 +2200,57 @@ def test_factchecker_persists(qapp: QtWidgets.QApplication, tmp_path: Path) -> N
     assert win2.cmb_factcheck.currentData() == "perplexity"
 
 
-def test_lead_is_fixed_claude(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
-    """責任者 (lead) は常に Claude (固定)。"""
+def test_lead_prefers_claude_for_claude_conductor(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    """Claude主運用では lead も Claude 系を優先する。"""
     win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
-    lead = win._lead_runner()
+    primary, _ = win._resolve_providers()
+    conductor = primary.conductor if type(primary).__name__ == "OrchestraRunner" else primary
+    lead = win._lead_runner(conductor)
     assert type(lead).__name__ == "ClaudeRunner"
     assert lead.use_subscription is True
+
+
+def test_lead_prefers_codex_for_codex_conductor(
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch
+) -> None:
+    """Codex主運用では lead を Claude 固定にせず Codex を優先する。"""
+    _patch_which(monkeypatch, "codex")
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    win.chk_real.setChecked(True)
+    win.chk_codex_first.setChecked(True)
+    from llterm.host.codex_runner import CodexRunner
+    lead = win._lead_runner(CodexRunner())
+    assert type(lead).__name__ == "CodexRunner"
+
+
+def test_review_aggregate_and_signoff_show_dynamic_lead(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    win._render_review_event({"phase": "aggregate", "lead": "codex"})
+    win._render_review_event({"phase": "signoff", "lead": "groq", "approved": True})
+    shown = win.output.toPlainText()
+    assert "codex" in shown
+    assert "groq" in shown
+
+
+def test_review_aux_benched_shows_degraded_mode_line(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, settings_path=tmp_path / "s.json")
+    win._on_stream({
+        "kind": "review",
+        "phase": "aux_benched",
+        "runner": "claude",
+        "cooldown_turns": 3,
+        "error_kind": "rate_limited",
+        "conductor": "codex",
+        "review": True,
+    })
+    shown = win.output.toPlainText()
+    assert "claude" in shown
+    assert "codex" in shown
+    assert "rate_limited" in shown
 
 
 # ─── Gemini CLI 無料枠 期限通知 (GUI) ─────────────────────────────

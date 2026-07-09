@@ -15,6 +15,8 @@ from __future__ import annotations
 import html
 import shutil
 import sys
+import threading
+import traceback
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
@@ -35,6 +37,13 @@ from llterm.gui.virtual import VirtualClaudeRunner
 from llterm.gui.worker import LoopWorker
 from llterm.host import loop as loop_mod
 from llterm.host.loop import TurnRunner, _ensure_utf8_stdout
+from llterm.progress import (
+    ProjectProgress,
+    _default_fmt,
+    build_common_summary,
+    collect_progress,
+    write_common_summary_items,
+)
 
 if TYPE_CHECKING:
     from llterm.host.gemini_runner import GeminiRunner
@@ -154,6 +163,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._model_cli = model_default  # CLI 明示指定 (None = 未指定 → 保存値/既定に委ねる)
         self.loop_kw = dict(loop_kw)
         self.worker: LoopWorker | None = None
+        self._retired_workers: list[LoopWorker] = []  # 終了済み worker。安全な地点で deleteLater する
         # ctl queue consumer: Claude (emit CLI) が投函した inject-task を GUI 手動注入と同じ
         # 経路 (worker.inject) へ流す。走行中だけ QTimer で poll する (ccr→llterm 注入の欠落配線解消)。
         self._ctl_consumer: CtlConsumer | None = None
@@ -169,6 +179,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self._stopping = False  # graceful 停止要求中 (2 回目 Stop で force kill)
         self._busy_cursor = False  # 砂時計カーソル表示中か (set/restore のバランス管理)
         self._closing_after_stop = False  # × 終了確認で graceful 停止 → 完了後に閉じる予約
+        self._common_summary_write_lock = threading.Lock()
+        self._common_summary_write_active = False
+        self._common_summary_write_pending: list[ProjectProgress] | None = None
+        self._common_summary_writer_thread: threading.Thread | None = None
         # 選択ダイアログのファクトリ (テストはスタブを差し込む。既定 = 実 ChoiceDialog)。
         self._choice_dialog_factory: Callable[[object], object] | None = None
         self._choice_active = False  # ダイアログ表示中の再入防止 (連続検知で多重に出さない)
@@ -303,6 +317,7 @@ class MainWindow(QtWidgets.QMainWindow):
         status_row = QtWidgets.QHBoxLayout()
         status_row.addWidget(self.lbl_state)
         status_row.addWidget(self.lbl_model)
+        status_row.addWidget(self.lbl_tokens)
         status_row.addWidget(self.lbl_session)
         status_row.addWidget(self.ctx_bar, 1)
         status_row.addWidget(self.lbl_cost)
@@ -502,6 +517,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.lbl_state.setToolTip(t("gui.tip.state"))
         self.lbl_model = QtWidgets.QLabel("model: -")
         self.lbl_model.setToolTip(t("gui.tip.model"))
+        self.lbl_tokens = QtWidgets.QLabel(t("gui.tokens.idle"))
+        self.lbl_tokens.setToolTip(t("gui.tip.tokens"))
         self.lbl_session = QtWidgets.QLabel("session -/-  turn -")
         self.lbl_session.setToolTip(t("gui.tip.session"))
         self.ctx_bar = QtWidgets.QProgressBar()
@@ -551,14 +568,61 @@ class MainWindow(QtWidgets.QMainWindow):
         #   「実行中」= 上で組んだ _summary_panel。選択/実行中 project の SESSION_SUMMARY。
         #   「共通」  = 全 project の docs/next_plan.md を集約し、記録された最終更新時刻の
         #              新しい順に並べた横断ビュー。どれが直近かを時刻つきで判断できる。
-        self.common_view = QtWidgets.QPlainTextEdit()
-        self.common_view.setReadOnly(True)  # 読取専用 + 選択コピー可 (next_plan の文言を流用)
-        self.common_view.setPlaceholderText(t("gui.placeholder.common"))
-        self.common_view.setToolTip(t("gui.tip.common"))
-        self.common_view.setFont(mono)
+        self.common_panel = QtWidgets.QWidget()
+        common_box = QtWidgets.QVBoxLayout(self.common_panel)
+        common_box.setContentsMargins(0, 0, 0, 0)
+        self.common_tabs = QtWidgets.QTabWidget()
+        self.common_tabs.setDocumentMode(True)
+        self.common_view = self._make_common_text_view(mono)
+        self.common_tabs.addTab(self.common_view, t("gui.tab.common_all"))
+        common_box.addWidget(self.common_tabs, 1)
         self.summary_tabs = QtWidgets.QTabWidget()
         self.summary_tabs.addTab(self._summary_panel, t("gui.tab.live"))
-        self.summary_tabs.addTab(self.common_view, t("gui.tab.common"))
+        self.summary_tabs.addTab(self.common_panel, t("gui.tab.common"))
+
+    def _make_common_text_view(self, font: QtGui.QFont) -> QtWidgets.QPlainTextEdit:
+        view = QtWidgets.QPlainTextEdit()
+        view.setReadOnly(True)  # 読取専用 + 選択コピー可 (next_plan の文言を流用)
+        view.setPlaceholderText(t("gui.placeholder.common"))
+        view.setToolTip(t("gui.tip.common"))
+        view.setFont(font)
+        return view
+
+    def _render_common_project_text(self, item: ProjectProgress) -> str:
+        updated = _default_fmt(item.updated)
+        path = item.path.as_posix()
+        note = "" if item.updated_source == "header" else " (ファイル時刻)"
+        gap_line = (f"> format gaps: {', '.join(item.format_gaps)}\n" if item.format_gaps else "")
+        return (
+            f"# {item.name}\n"
+            f"> 更新: {updated}{note}\n"
+            f"> source: {item.source}\n"
+            f"> path: {path}\n"
+            f"{gap_line}\n"
+            f"{item.text.strip() or '(空)'}\n"
+        )
+
+    def _sync_common_project_tabs(self, items: list[ProjectProgress]) -> None:
+        current = self.common_tabs.currentIndex()
+        current_label = self.common_tabs.tabText(current) if current >= 0 else t("gui.tab.common_all")
+        while self.common_tabs.count() > 1:
+            widget = self.common_tabs.widget(1)
+            self.common_tabs.removeTab(1)
+            if widget is not None:
+                widget.deleteLater()
+        self.common_tabs.setTabText(0, t("gui.tab.common_all"))
+        ordered = sorted(items, key=lambda p: (p.updated, p.mtime), reverse=True)
+        for item in ordered:
+            view = self._make_common_text_view(self.common_view.font())
+            view.setPlainText(self._render_common_project_text(item))
+            idx = self.common_tabs.addTab(view, item.name)
+            self.common_tabs.setTabToolTip(idx, item.path.as_posix())
+        target = 0
+        for idx in range(self.common_tabs.count()):
+            if self.common_tabs.tabText(idx) == current_label:
+                target = idx
+                break
+        self.common_tabs.setCurrentIndex(target)
 
     def _build_settings_dialog(self) -> None:
         """設定系ウィジェットを別画面 (非モーダル QDialog + QScrollArea) に配置する。
@@ -722,7 +786,8 @@ class MainWindow(QtWidgets.QMainWindow):
           - Codex 主 (codex_first or 機械的テンプレ かつ codex 可用): ``(Codex, [Gemini?, Claude])``
             = 作業を無料の Codex に寄せ、Gemini を次の無料 agent、Claude を最後の保険に置く。
           - それ以外 (Claude 主): ``(Claude, [Codex?, Gemini?])`` = 可用な無料 agent を保険に。
-        - **Claude は常に primary か fallback に居る** (backbone) — chain は決して空にならない。
+        - Claude は「最後の保険」として優先候補に残すが、**必須 backbone ではない**。
+          代替奏者だけで回る構成を許し、Claude limit 中の llterm 継続性を優先する。
         """
         if self.runner_factory_override is not None:
             return self.runner_factory_override(), []
@@ -749,8 +814,8 @@ class MainWindow(QtWidgets.QMainWindow):
             primary = claude
             fallbacks = ([CodexRunner()] if codex_available else []) + ([gemini] if gemini else [])
         # オーケストラを組む: レビュー奏者パネル (複数・独立) or 真偽確認奏者が居れば、
-        # 主奏者を指揮者として OrchestraRunner で包む。責任者 (lead=Claude) がレビュー + 真偽確認を
-        # 取りまとめ → 統合指示 → 指揮者が修正。指揮者==lead==Claude でもブロックしない。
+        # 主奏者を指揮者として OrchestraRunner で包む。責任者 (lead) は自動選定:
+        # Codex 主運用では Codex を優先し、Claude limit 中でも llterm が止まらない構成を取る。
         # ★ final_signoff=False (2026-06-13 ユーザー指摘「レビューにレビューを重ねている」):
         #   lead の総合判断 (集約) が既に審判なので、修正後の再レビュー (sign-off) は冗長。
         #   1 ターンの AI 呼び出しを減らし、orchestra のレビュー所要時間を短縮する。
@@ -760,7 +825,7 @@ class MainWindow(QtWidgets.QMainWindow):
             from llterm.host.orchestra_runner import OrchestraRunner
             primary = OrchestraRunner(
                 conductor=primary, reviewers=reviewers, factchecker=factchecker,
-                lead=self._lead_runner(), apply_review=True, final_signoff=False)
+                lead=self._lead_runner(primary), apply_review=True, final_signoff=False)
         return primary, fallbacks
 
     def _gemini_runner(self) -> GeminiRunner | None:
@@ -891,10 +956,35 @@ class MainWindow(QtWidgets.QMainWindow):
             return fc if fc.key_available() else None
         return None
 
-    def _lead_runner(self) -> TurnRunner:
-        """責任者/総合判断 = Claude Code (固定)。レビュー取りまとめ + 最終 sign-off を担う。"""
-        from llterm.host.loop import ClaudeRunner
-        return ClaudeRunner(use_subscription=True, model=str(self.cmb_model.currentData() or ""))
+    def _lead_runner(self, conductor: TurnRunner) -> TurnRunner | None:
+        """責任者/総合判断 runner を自動選定する。
+
+        目的は「レビュー品質」と「Claude limit 下の継続性」の両立。優先順:
+        - 指揮者が Codex なら lead もまず Codex (Claude limit の代替運用を阻まない)
+        - 指揮者が Claude なら Claude
+        - それ以外は Claude → Codex → Gemini → OpenAICompat 群 の順で可用なもの
+
+        どれも作れなければ ``None``。その場合 OrchestraRunner は reviewer/factcheck の
+        単一所見フォールバックだけで進む (fail-safe)。
+        """
+        cls = type(conductor).__name__
+        if cls == "CodexRunner":
+            preferred = ("codex", "claude", "gemini", "gemini-api", "groq",
+                         "cerebras", "openrouter", "ollama")
+        elif cls == "ClaudeRunner":
+            preferred = ("claude", "codex", "gemini", "gemini-api", "groq",
+                         "cerebras", "openrouter", "ollama")
+        elif cls == "GeminiRunner":
+            preferred = ("gemini", "gemini-api", "codex", "claude", "groq",
+                         "cerebras", "openrouter", "ollama")
+        else:
+            preferred = ("claude", "codex", "gemini", "gemini-api", "groq",
+                         "cerebras", "openrouter", "ollama")
+        for key in preferred:
+            runner = self._make_reviewer_runner(key)
+            if runner is not None:
+                return runner
+        return None
 
     def _build_runner(self) -> TurnRunner:
         """このランの primary runner (= provider chain の先頭) を返す。"""
@@ -903,8 +993,15 @@ class MainWindow(QtWidgets.QMainWindow):
     # ---- 操作 ----
     @QtCore.Slot()
     def start_loop(self) -> None:
-        if self.worker is not None and self.worker.isRunning():
-            return
+        self._reap_retired_workers()
+        if self.worker is not None:
+            if self.worker.isRunning():
+                return
+            stale = self.worker
+            self.worker = None
+            if isinstance(stale, LoopWorker):
+                self._retire_worker(stale)
+                self._reap_retired_workers()
         workdir = self._selected_workdir()
         if workdir is None or not workdir.is_dir():
             self._append(t("gui.msg.no_project"), PALETTE["err"])
@@ -925,9 +1022,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self._max_sessions = loop_kw["max_sessions"]  # ステータス表示 (session N/max) 用
         self._run_workdir = workdir  # rotate 時に docs/SESSION_SUMMARY.md を読むため保持
         self.lbl_progress.setText(t("gui.progress.starting"))
+        self._reset_tokens()
         self._refresh_summary()  # 開始時に既存の handoff サマリを表示
         # rotate 閾値を ctx バーに反映 (走行中の状態が一目で分かるように)
-        self.ctx_bar.setFormat(f"ctx %p%  (rotate {int(round(self.spin_threshold.value() * 100))}%)")
+        self._set_ctx_observable(True)
         self.ctx_bar.setValue(0)
         max_cost = self.spin_maxcost.value()
         loop_kw["max_total_cost_usd"] = max_cost if max_cost > 0 else None
@@ -943,12 +1041,13 @@ class MainWindow(QtWidgets.QMainWindow):
 
             loop_kw["offload_hint"] = build_offload_hint()
         loop_kw["autonomy"] = self.chk_autonomy.isChecked()  # 承認確認不要トグル
+        loop_kw["projects_root"] = self.projects_root  # 共通進捗更新先を曖昧推定せず明示する
         # provider chain は _resolve_providers() が決定済み (Codex 優先/テンプレ別/フォールバック)。
         # 仮想モードや override では fallback_runners は空。
         ledger_path = workdir / ".llterm" / "loop_ledger.jsonl"
         self.worker = LoopWorker(
             runner=runner, workdir=workdir, ledger_path=ledger_path, loop_kw=loop_kw,
-            fallback_runners=fallback_runners,
+            fallback_runners=fallback_runners, parent=self,
         )
         self.worker.event.connect(self._on_event)
         self.worker.stream.connect(self._on_stream)  # ターン内リアルタイム表示
@@ -1220,10 +1319,33 @@ class MainWindow(QtWidgets.QMainWindow):
             self.stop_loop()  # graceful 停止 (handoff + 砂時計)
             return
         try:
+            self._drain_common_summary_write()
+            self._reap_retired_workers()
             self._save_settings()  # 最後の設定を次回起動時に復元する
         except Exception:  # noqa: BLE001
             pass
         event.accept()
+
+    def _retire_worker(self, worker: LoopWorker) -> None:
+        if worker not in self._retired_workers:
+            self._retired_workers.append(worker)
+
+    def _reap_retired_workers(self) -> None:
+        """終了済み worker を安全な地点 (新 run 開始前/close 時) で deleteLater する。"""
+        kept: list[LoopWorker] = []
+        deleted = False
+        for worker in self._retired_workers:
+            if worker.isRunning():
+                kept.append(worker)
+                continue
+            try:
+                worker.deleteLater()
+                deleted = True
+            except RuntimeError:
+                pass
+        self._retired_workers = kept
+        if deleted:
+            QtCore.QCoreApplication.sendPostedEvents(None, QtCore.QEvent.Type.DeferredDelete)
 
     # ---- ワーカーからのイベント (メインスレッドで実行) ----
     @QtCore.Slot(dict)
@@ -1233,6 +1355,11 @@ class MainWindow(QtWidgets.QMainWindow):
         ``subagent: True`` の項目は Task サブエージェント由来 — インデント + 灰色で
         メイン応答と区別し、二重表示防止カウンタ (_streamed_text) には数えない。
         """
+        sender = self.sender()
+        if sender is not None and sender is not self.worker:
+            if isinstance(sender, LoopWorker):
+                self._retire_worker(sender)
+            return
         kind = item.get("kind")
         sub = bool(item.get("subagent"))
         rev = bool(item.get("review"))  # レビュー奏者由来 (分業オーケストラ)
@@ -1304,11 +1431,26 @@ class MainWindow(QtWidgets.QMainWindow):
             else:
                 self._append(t("gui.stream.review_factcheck", checker=checker), PALETTE["rotate"])
             return
+        if phase == "aux_benched":
+            self._append(
+                t(
+                    "gui.stream.review_aux_benched",
+                    runner=str(item.get("runner") or "aux"),
+                    cooldown=str(item.get("cooldown_turns") or 0),
+                    error_kind=str(item.get("error_kind") or "error"),
+                    conductor=str(item.get("conductor") or "conductor"),
+                ),
+                PALETTE["err"],
+                bold=True,
+            )
+            return
         if phase == "aggregate":
-            self._append(t("gui.stream.review_aggregate"), PALETTE["rotate"], bold=True)
+            lead = str(item.get("lead") or "lead")
+            self._append(t("gui.stream.review_aggregate", lead=lead), PALETTE["rotate"], bold=True)
             return
         if phase == "signoff":
-            self._append(t("gui.stream.review_signoff"), PALETTE["rotate"], bold=True)
+            lead = str(item.get("lead") or "lead")
+            self._append(t("gui.stream.review_signoff", lead=lead), PALETTE["rotate"], bold=True)
             outcome = (t("gui.stream.review_signoff_approved") if item.get("approved")
                        else t("gui.stream.review_signoff_changes"))
             self._append(outcome, PALETTE["inject"] if item.get("approved") else PALETTE["err"])
@@ -1351,6 +1493,41 @@ class MainWindow(QtWidgets.QMainWindow):
         self.lbl_cost.setText(f"cost({self._cost_suffix}): ${amount:.4f}")
         self.lbl_cost.setStyleSheet(f"color:{PALETTE['err']};font-weight:bold"
                                     if self._cost_billed else "")
+
+    def _reset_tokens(self, *, reset_tooltip: bool = True) -> None:
+        self.lbl_tokens.setText(t("gui.tokens.idle"))
+        if reset_tooltip:
+            self.lbl_tokens.setToolTip(t("gui.tip.tokens"))
+
+    def _set_ctx_observable(self, observable: bool, reason: str = "") -> None:
+        rotate = int(round(self.spin_threshold.value() * 100))
+        if observable:
+            self.ctx_bar.setFormat(f"ctx %p%  (rotate {rotate}%)")
+            self.ctx_bar.setStyleSheet("")
+            self.ctx_bar.setToolTip(t("gui.tip.ctx"))
+        else:
+            self.ctx_bar.setFormat(t("gui.ctx.unobservable", rotate=rotate))
+            self.ctx_bar.setStyleSheet("QProgressBar::chunk { background: transparent; }")
+            key = "gui.tip.ctx.unobservable"
+            if reason == "cumulative_only":
+                key = "gui.tip.ctx.cumulative_only"
+            self.ctx_bar.setToolTip(t(key))
+
+    def _set_tokens(self, provider: str, inp: int, out: int, *, cached: int = 0,
+                    reasoning: int = 0, usage_kind: str = "instant",
+                    provider_version: str = "") -> None:
+        """直近ターンの token 情報を占有率とは別欄で表示する。"""
+        if provider == "codex" or usage_kind == "cumulative":
+            self.lbl_tokens.setText(
+                t("gui.tokens.codex", inp=inp, cached=cached, reasoning=reasoning, out=out)
+            )
+            tip = t("gui.tip.tokens.cumulative")
+        else:
+            self.lbl_tokens.setText(t("gui.tokens.normal", inp=inp, out=out))
+            tip = t("gui.tip.tokens")
+        if provider_version:
+            tip += "\n" + t("gui.tip.tokens.version", version=provider_version)
+        self.lbl_tokens.setToolTip(tip)
 
     def _set_busy_cursor(self, on: bool) -> None:
         """砂時計 (待機) カーソルの ON/OFF。set/restore のバランスを保つ。"""
@@ -1412,25 +1589,120 @@ class MainWindow(QtWidgets.QMainWindow):
         """共通タブを全 project の docs/next_plan.md 集約で再生成する。
 
         記録された最終更新時刻 (無ければ mtime) の新しい順に並ぶので、どの project が
-        直近に動いたかを時刻つきで判断できる。IO 失敗でも GUI を殺さない (fail-safe)。
+        直近に動いたかを時刻つきで判断できる。GUI は 1 回の snapshot から All / project 別
+        タブを描き、durable `_shared/PROGRESS.md` への commit は同じ本文を別スレッドで
+        best-effort 反映する。UI スレッドでは collect/render だけに留め、fsync は持ち込まない。
         """
-        from llterm.progress import build_common_summary, collect_progress
+        should_sync_file = False
         try:
-            text = build_common_summary(collect_progress(self.projects_root))
+            items = collect_progress(self.projects_root)
+            text = build_common_summary(items)
+            should_sync_file = True
         except OSError:
+            items = []
             text = ""
         bar = self.common_view.verticalScrollBar()
         pos = bar.value()
         self.common_view.setPlainText(text)
         bar.setValue(min(pos, bar.maximum()))  # 読んでいた位置を維持
+        self._sync_common_project_tabs(items)
+        if should_sync_file:
+            self._schedule_common_summary_write(items)
+
+    def _schedule_common_summary_write(self, items: list[ProjectProgress]) -> None:
+        """同一 snapshot の共通 summary を GUI 外スレッドで durable file へ反映する。
+
+        refresh 連打時は pending snapshot を最新 1 件へ coalesce し、GUI スレッドから
+        thread を無制限 spawn しない。
+        """
+        out_path = self.projects_root / "_shared" / "PROGRESS.md"
+        start_worker = False
+        with self._common_summary_write_lock:
+            self._common_summary_write_pending = list(items)
+            if not self._common_summary_write_active:
+                self._common_summary_write_active = True
+                start_worker = True
+
+        if not start_worker:
+            return
+
+        def _writer() -> None:
+            try:
+                while True:
+                    with self._common_summary_write_lock:
+                        pending = self._common_summary_write_pending
+                        self._common_summary_write_pending = None
+                    if pending is None:
+                        with self._common_summary_write_lock:
+                            if self._common_summary_write_pending is None:
+                                self._common_summary_write_active = False
+                                self._common_summary_writer_thread = None
+                                return
+                            continue
+                    try:
+                        write_common_summary_items(pending, out_path)
+                    except Exception as exc:  # noqa: BLE001
+                        print(f"llterm common summary writer failed: {exc}", file=sys.stderr, flush=True)
+                        traceback.print_exc(file=sys.stderr)
+            finally:
+                with self._common_summary_write_lock:
+                    if self._common_summary_writer_thread is threading.current_thread():
+                        self._common_summary_write_active = False
+                        self._common_summary_writer_thread = None
+
+        writer = threading.Thread(
+            target=_writer,
+            name="llterm-common-summary-writer",
+            daemon=True,
+        )
+        with self._common_summary_write_lock:
+            self._common_summary_writer_thread = writer
+        try:
+            writer.start()
+        except RuntimeError as exc:
+            with self._common_summary_write_lock:
+                if self._common_summary_writer_thread is writer:
+                    self._common_summary_write_active = False
+                    self._common_summary_writer_thread = None
+            print(f"llterm common summary writer start failed: {exc}", file=sys.stderr, flush=True)
+
+    def _drain_common_summary_write(self, timeout: float = 2.0) -> None:
+        """終了前に latest pending common summary を吐き切る。
+
+        通常 refresh では fsync を GUI スレッドへ持ち込まないが、close 終端だけは例外として
+        `timeout` の範囲で同期 flush を許す。ここを超えて詰まる write は best-effort で諦め、
+        bounded shutdown を優先する。
+        """
+        writer: threading.Thread | None = None
+        with self._common_summary_write_lock:
+            writer = self._common_summary_writer_thread
+        if writer is not None and writer.is_alive():
+            writer.join(timeout)
+        pending: list[ProjectProgress] | None = None
+        with self._common_summary_write_lock:
+            writer = self._common_summary_writer_thread
+            if (writer is None or not writer.is_alive()) and self._common_summary_write_pending is not None:
+                pending = self._common_summary_write_pending
+                self._common_summary_write_pending = None
+                self._common_summary_write_active = False
+                self._common_summary_writer_thread = None
+        if pending is not None:
+            write_common_summary_items(pending, self.projects_root / "_shared" / "PROGRESS.md")
 
     @QtCore.Slot(str, dict)
     def _on_event(self, kind: str, data: dict) -> None:
+        sender = self.sender()
+        if sender is not None and sender is not self.worker:
+            if isinstance(sender, LoopWorker):
+                self._retire_worker(sender)
+            return
         if kind == "session_start":
             idx = data.get("session_index")
             sid = str(data.get("session_id", ""))[:8]
             self.lbl_session.setText(self._session_label(idx))
             self.ctx_bar.setValue(0)  # 新セッションは fresh context = 0%
+            self._set_ctx_observable(True)
+            self._reset_tokens()
             self._append("\n" + t("gui.msg.session_start", label=self._session_label(idx), sid=sid),
                          PALETTE["session"], bold=True, ts=True)
             self._streamed_text = 0
@@ -1465,17 +1737,34 @@ class MainWindow(QtWidgets.QMainWindow):
             # これから claude に送る指令。時刻を出して「指令時 → 応答受信時」の経過を見せる。
             if data.get("injected"):
                 prompt = str(data.get("prompt") or "").strip()
-                self._append(t("gui.msg.task_injected", prompt=prompt),
+                key = ("gui.msg.task_injected_unreviewed"
+                       if data.get("review_mode") == "unreviewed"
+                       else "gui.msg.task_injected")
+                self._append(t(key, prompt=prompt),
                              PALETTE["inject"], bold=True, ts=True)
             else:
                 self._append(t("gui.msg.task_sent", turn=data.get("turn")), PALETTE["dim"], ts=True)
         elif kind == "turn":
-            pct = int(round(float(data.get("used_pct", 0.0)) * 100))
+            observable = bool(data.get("context_observable", True))
+            reason = str(data.get("context_observable_reason") or "")
+            used_pct = data.get("used_pct")
+            pct = int(round(float(used_pct) * 100)) if observable and used_pct is not None else 0
             self.ctx_bar.setValue(min(pct, 100))
+            self._set_ctx_observable(observable, reason)
             self._set_cost(float(data.get("total_cost", 0.0)))
+            self._set_tokens(
+                str(data.get("provider") or ""),
+                int(data.get("input_tokens") or 0),
+                int(data.get("output_tokens") or 0),
+                cached=int(data.get("cached_input_tokens") or 0),
+                reasoning=int(data.get("reasoning_output_tokens") or 0),
+                usage_kind=str(data.get("token_usage_kind") or "instant"),
+                provider_version=str(data.get("provider_version") or ""),
+            )
             self.lbl_session.setText(self._session_label(data.get("session_index"), data.get("turn")))
             err = data.get("error_kind")
-            head = t("gui.msg.turn_head", turn=data.get("turn"), pct=pct,
+            head_key = "gui.msg.turn_head" if observable else "gui.msg.turn_head_unobservable"
+            head = t(head_key, turn=data.get("turn"), pct=pct,
                      err_note=f"  ERR={err}" if err else "")
             self._append(head, PALETTE["err"] if err else PALETTE["turn"], bold=bool(err), ts=True)
             text = str(data.get("text") or "")
@@ -1491,8 +1780,10 @@ class MainWindow(QtWidgets.QMainWindow):
             if text and not err:
                 self._maybe_prompt_choice(text)
         elif kind == "rotate":
-            pct = int(round(float(data.get("used_pct", 0.0)) * 100))
-            self._append(t("gui.msg.rotate", pct=pct), PALETTE["rotate"], ts=True)
+            observable = bool(data.get("context_observable", True))
+            pct = int(round(float(data.get("used_pct", 0.0)) * 100)) if observable else 0
+            key = "gui.msg.rotate" if observable else "gui.msg.rotate_unobservable"
+            self._append(t(key, pct=pct), PALETTE["rotate"], ts=True)
             self._streamed_text = 0
             summary = self._read_session_summary()  # exit準備で更新された handoff を進捗に反映
             if summary:
@@ -1509,9 +1800,18 @@ class MainWindow(QtWidgets.QMainWindow):
     @QtCore.Slot(dict)
     def _on_finished(self, outcome: dict) -> None:
         reason = outcome.get("stop_reason")
+        sender = self.sender()
+        if sender is not self.worker:
+            if isinstance(sender, LoopWorker):
+                self._retire_worker(sender)
+            return  # stale queued outcome を現 run に誤適用しない
         self._set_busy_cursor(False)  # 砂時計を解除 (graceful 停止/記録の完了)
         self._stop_ctl_consumer()  # 走行終了で ctl ポーリングを止める
         self._stopping = False
+        if isinstance(sender, LoopWorker):
+            self._retire_worker(sender)
+        self.worker = None  # 終了済み worker を握り続けず、次の start で fresh QThread を張る
+        self._reset_tokens()
         self.lbl_state.setText(f"done: {reason}")
         self.btn_start.setEnabled(True)
         self.btn_stop.setEnabled(False)

@@ -83,6 +83,10 @@ MESSAGES: dict[str, dict[str, str]] = {
         "ja": "gemini が見つかりません (npm i -g @google/gemini-cli)",
         "en": "gemini was not found (npm i -g @google/gemini-cli)",
     },
+    "runner.gemini.timeout": {
+        "ja": "gemini ターンが制限時間を超過したため中断しました (応答が返りませんでした)",
+        "en": "The gemini turn timed out and was aborted (no response returned)",
+    },
     "runner.openai.no_key": {
         "ja": "{provider}: 環境変数 {env} に API キーが未設定です (fail-closed)",
         "en": "{provider}: API key env var {env} is not set (fail-closed)",
@@ -349,14 +353,15 @@ MESSAGES: dict[str, dict[str, str]] = {
     },
     "gui.tip.review_panel": {
         "ja": "分業オーケストラのレビュー奏者パネル。複数選択でき、各 AI が**独立に** git diff を"
-              "コードレビューする。責任者 (Claude) がそれらを取りまとめて総合判断 → 指揮者へ統合指示。"
+              "コードレビューする。責任者 (自動選定) がそれらを取りまとめて総合判断 → 指揮者へ統合指示。"
               "実装者と同じプロバイダを選んでも禁止しない (『ダブルチェック(同系)』とラベル表示)。"
-              "未導入/キー未設定の奏者は自動で無効。実 claude のみ有効。",
+              "未導入/キー未設定の奏者は自動で無効。limit/auth で落ちた補助役は自動 bench。実 claude のみ有効。",
         "en": "Review panel for the division-of-labor orchestra. Multi-select; each AI reviews the "
-              "git diff **independently**. The lead (Claude) aggregates them into an overall "
+              "git diff **independently**. The auto-selected lead aggregates them into an overall "
               "judgment → unified instructions to the conductor. Picking the same provider as the "
               "implementer is allowed (shown as 'double-check (same family)'). Unavailable players "
-              "(not installed / no key) are auto-disabled. Real claude only.",
+              "(not installed / no key) are auto-disabled, and aux players that hit limit/auth are "
+              "benched automatically. Real claude only.",
     },
     "gui.label.factcheck": {
         "ja": "真偽確認奏者:",
@@ -380,17 +385,18 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "Lead:",
     },
     "gui.lead.value": {
-        "ja": "Claude (責任者)",
-        "en": "Claude (lead)",
+        "ja": "自動選定",
+        "en": "Auto",
     },
     "gui.tip.lead": {
-        "ja": "責任者/総合判断は Claude Code に固定。レビュー奏者パネル各所見 + 真偽確認結果を"
-              "取りまとめ、重複排除した優先度付き修正指示を指揮者へ渡し、修正後に最終 sign-off で"
-              "ループを閉じる (レビューやりっぱなしを防ぐ)。",
-        "en": "The lead / overall judge is fixed to Claude Code. It aggregates each review-panel "
-              "finding plus the fact-check result, hands deduplicated prioritized fix instructions "
-              "to the conductor, and closes the loop with a final sign-off after fixes (so reviews "
-              "are never left dangling).",
+        "ja": "責任者/総合判断は自動選定。通常は指揮者と相性の良い奏者を使い、Codex 主運用では"
+              "Claude に固定せず limit 中でも llterm が継続できる構成を優先する。レビュー奏者パネル各所見 + "
+              "真偽確認結果を取りまとめ、重複排除した優先度付き修正指示を指揮者へ渡す。",
+        "en": "The lead / overall judge is auto-selected. Normally it picks a player compatible with "
+              "the conductor, and in Codex-led runs it avoids hard-wiring Claude so llterm can keep "
+              "running even while Claude is limited. It aggregates the review-panel findings plus "
+              "the fact-check result and hands deduplicated prioritized fix instructions to the "
+              "conductor.",
     },
     "gui.reviewer.none": {
         "ja": "(なし)",
@@ -451,6 +457,18 @@ MESSAGES: dict[str, dict[str, str]] = {
         "ja": "実行中の claude モデル (init イベントから取得) と effort",
         "en": "Running claude model (taken from the init event) and effort",
     },
+    "gui.tip.tokens": {
+        "ja": "直近ターンの token 情報。",
+        "en": "Token info for the latest turn.",
+    },
+    "gui.tip.tokens.cumulative": {
+        "ja": "直近ターンの token 情報。provider 管理の累積 usage は、瞬間占有と混同しないよう ctx% と別に表示する",
+        "en": "Token info for the latest turn. Provider-managed cumulative usage is shown separately from ctx% so it is not mistaken for instant occupancy.",
+    },
+    "gui.tip.tokens.version": {
+        "ja": "プロバイダ版: {version}",
+        "en": "provider version: {version}",
+    },
     "gui.tip.session": {
         "ja": "現在のセッション / 最大セッション と、セッション内ターン数",
         "en": "Current session / max sessions, and turn count within the session",
@@ -459,6 +477,14 @@ MESSAGES: dict[str, dict[str, str]] = {
         "ja": "現セッションのコンテキスト使用率。rotate 閾値に達すると新セッションへ畳む",
         "en": "Context usage of the current session. Folds into a new session "
               "when the rotate threshold is reached",
+    },
+    "gui.tip.ctx.unobservable": {
+        "ja": "この provider では瞬間の context 占有を観測できないため、ctx 使用率は表示しない",
+        "en": "This provider does not expose instantaneous context occupancy, so ctx usage is hidden",
+    },
+    "gui.tip.ctx.cumulative_only": {
+        "ja": "この provider は turn.completed の累積 usage しか返さず、瞬間の context 占有は観測できない",
+        "en": "This provider only returns cumulative turn.completed usage, not instantaneous context occupancy",
     },
     "gui.summary.title": {
         "ja": "進捗サマリ (SESSION_SUMMARY)",
@@ -471,6 +497,10 @@ MESSAGES: dict[str, dict[str, str]] = {
     "gui.tab.common": {
         "ja": "共通 (全 project)",
         "en": "Shared (all projects)",
+    },
+    "gui.tab.common_all": {
+        "ja": "All",
+        "en": "All",
     },
     "gui.placeholder.common": {
         "ja": "集約できる進捗 (各 project の docs/next_plan.md) がまだありません",
@@ -573,6 +603,18 @@ MESSAGES: dict[str, dict[str, str]] = {
     "gui.cost.virtual": {
         "ja": "仮想・課金なし",
         "en": "virtual, no charge",
+    },
+    "gui.tokens.idle": {
+        "ja": "tok: -",
+        "en": "tok: -",
+    },
+    "gui.tokens.normal": {
+        "ja": "tok in/out: {inp}/{out}",
+        "en": "tok in/out: {inp}/{out}",
+    },
+    "gui.tokens.codex": {
+        "ja": "累積tok in/cache/reason/out: {inp}/{cached}/{reasoning}/{out} (ctx別)",
+        "en": "cumulative tok in/cache/reason/out: {inp}/{cached}/{reasoning}/{out} (ctx separate)",
     },
     # ─── GUI: 実行モード / 状態文字列 ────────────────────────────────
     "gui.mode.real_billed": {
@@ -710,6 +752,10 @@ MESSAGES: dict[str, dict[str, str]] = {
         "ja": "▶ 注入タスク実行: {prompt}",
         "en": "▶ Executing injected task: {prompt}",
     },
+    "gui.msg.task_injected_unreviewed": {
+        "ja": "▶ 注入タスク実行(簡易経路): {prompt}",
+        "en": "▶ Executing injected task (fast path): {prompt}",
+    },
     "gui.msg.task_sent": {
         "ja": "▶ 指令送信 (turn {turn})",
         "en": "▶ Instruction sent (turn {turn})",
@@ -718,6 +764,10 @@ MESSAGES: dict[str, dict[str, str]] = {
         "ja": "[turn {turn}] 応答受信 ctx {pct}%{err_note}",
         "en": "[turn {turn}] response received ctx {pct}%{err_note}",
     },
+    "gui.msg.turn_head_unobservable": {
+        "ja": "[turn {turn}] 応答受信 ctx n/a (provider管理){err_note}",
+        "en": "[turn {turn}] response received ctx n/a (provider-managed){err_note}",
+    },
     "gui.msg.session_start": {
         "ja": "--- {label} 開始 ({sid}) ---",
         "en": "--- {label} started ({sid}) ---",
@@ -725,6 +775,14 @@ MESSAGES: dict[str, dict[str, str]] = {
     "gui.msg.rotate": {
         "ja": "--- rotate (ctx {pct}%) → exit準備 & 新セッションへ ---",
         "en": "--- rotate (ctx {pct}%) → exit prep & new session ---",
+    },
+    "gui.msg.rotate_unobservable": {
+        "ja": "--- rotate (ctx n/a) → exit準備 & 新セッションへ ---",
+        "en": "--- rotate (ctx n/a) → exit prep & new session ---",
+    },
+    "gui.ctx.unobservable": {
+        "ja": "ctx n/a  (rotate {rotate}%)",
+        "en": "ctx n/a  (rotate {rotate}%)",
     },
     "gui.msg.auth_required": {
         "ja": "⚠ 再ログインが必要です (claude /login)。認証後に Start で再開してください "
@@ -748,6 +806,10 @@ MESSAGES: dict[str, dict[str, str]] = {
         "ja": "── 📝 レビュー奏者 ({reviewer}) 失敗 — スキップして続行 ──",
         "en": "── 📝 reviewer ({reviewer}) failed — skipped, continuing ──",
     },
+    "gui.stream.review_aux_benched": {
+        "ja": "── ⚠️ 補助役 ({runner}) を {cooldown} ターン bench ({error_kind}) — {conductor} で継続 ──",
+        "en": "── ⚠️ benched aux player ({runner}) for {cooldown} turn(s) ({error_kind}) — continuing with {conductor} ──",
+    },
     "gui.stream.review_independent": {
         "ja": "・独立",
         "en": ", independent",
@@ -765,12 +827,12 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "── 🔎 fact-check player ({checker}) failed — skipped, continuing ──",
     },
     "gui.stream.review_aggregate": {
-        "ja": "── 🧑‍⚖️ Claude(責任者)がレビューを取りまとめ・総合判断 ──",
-        "en": "── 🧑‍⚖️ Claude (lead) aggregating reviews and judging ──",
+        "ja": "── 🧑‍⚖️ {lead}(責任者)がレビューを取りまとめ・総合判断 ──",
+        "en": "── 🧑‍⚖️ {lead} (lead) aggregating reviews and judging ──",
     },
     "gui.stream.review_signoff": {
-        "ja": "── ✅ Claude(責任者)が最終確認 ──",
-        "en": "── ✅ Claude (lead) final sign-off ──",
+        "ja": "── ✅ {lead}(責任者)が最終確認 ──",
+        "en": "── ✅ {lead} (lead) final sign-off ──",
     },
     "gui.stream.review_signoff_approved": {
         "ja": "── ✅ 最終確認: 承認 (ループを閉じる) ──",

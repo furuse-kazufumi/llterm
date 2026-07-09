@@ -21,9 +21,12 @@ from llterm.host.loop import (
     Ledger as _LedgerReExport,  # noqa: F401  (import 経路の健全性確認)
     SessionLoop,
     TurnResult,
+    is_query_like_injection,
     main,
     parse_stream_json,
+    supports_unreviewed_turns,
 )
+from llterm.host.orchestra_runner import OrchestraRunner
 
 
 class FakeRunner:
@@ -51,10 +54,22 @@ class FakeRunner:
             error_kind=str(spec.get("error_kind", "")),
             num_turns=1,
             raw_exit=int(spec.get("exit", 0)),
+            rate_limit_status=str(spec.get("status", "")),
+            rate_limit_resets_at=int(spec.get("resets_at", 0)),
         )
 
     def cancel(self) -> None:
         pass
+
+
+class UnreviewedFakeRunner(FakeRunner):
+    def __init__(self, script: list[dict] | None = None) -> None:
+        super().__init__(script)
+        self.unreviewed_calls: list[tuple[str, str, bool]] = []
+
+    def run_turn_unreviewed(self, *, prompt: str, session_id: str, resume: bool, cwd: Path) -> TurnResult:
+        self.unreviewed_calls.append((prompt, session_id, resume))
+        return self.run_turn(prompt=prompt, session_id=session_id, resume=resume, cwd=cwd)
 
 
 def _loop(runner: FakeRunner, tmp_path: Path, **kw: object) -> SessionLoop:
@@ -566,6 +581,40 @@ def test_claude_runner_cancel_before_start_is_sticky(tmp_path: Path) -> None:
     assert time.monotonic() - t0 < 1.0  # 子プロセスを spawn していない
 
 
+def test_claude_runner_idle_interrupt_does_not_poison_next_turn(tmp_path: Path) -> None:
+    runner = _scripted_claude_runner(tmp_path, None)
+    runner.interrupt()
+    res = runner.run_turn(prompt="p", session_id="s", resume=False, cwd=tmp_path)
+    assert res.is_error is False
+    assert res.error_kind == ""
+
+
+def test_claude_runner_interrupt_in_post_spawn_window_returns_interrupted_and_clears_proc(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from llterm.host import loop as loop_mod
+
+    fake = tmp_path / "fake_claude_interrupt.py"
+    fake.write_text(_HANGING_CHILD, encoding="utf-8")
+    proc_box: dict[str, object] = {}
+    original_popen = loop_mod.subprocess.Popen
+
+    def _hooked_popen(*args, **kwargs):
+        proc = original_popen(*args, **kwargs)
+        proc_box["proc"] = proc
+        runner.interrupt()  # Popen 後にフラグを立て、post-spawn 判定がそれを拾うことを固定する
+        return proc
+
+    runner = loop_mod.ClaudeRunner(timeout=60.0)
+    monkeypatch.setattr(runner, "_build_args", lambda **_: [__import__("sys").executable, str(fake)])
+    monkeypatch.setattr(loop_mod.subprocess, "Popen", _hooked_popen)
+    result = runner.run_turn(prompt="p", session_id="s", resume=False, cwd=tmp_path)
+    assert result.error_kind == "interrupted"
+    assert runner._proc is None
+    proc = proc_box["proc"]
+    proc.wait(timeout=2.0)  # type: ignore[union-attr]
+
+
 def test_exe_npm_shim_is_rejected_with_clear_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -659,6 +708,12 @@ def test_used_pct(tmp_path: Path) -> None:
 def test_used_pct_zero_window_safe(tmp_path: Path) -> None:
     loop = _loop(FakeRunner(), tmp_path, window_tokens=0)
     assert loop.used_pct(TurnResult("s", 0, 0, 999, 0.0, "", False, "", 1, 0)) == 0.0
+
+
+def test_context_state_normalizes_cumulative_unknown() -> None:
+    res = TurnResult("s", 1, 1, 0, 0.0, "", False, "", 1, 0,
+                     context_observable=False, token_usage_kind="cumulative")
+    assert SessionLoop.context_state(res) == "provider_managed_cumulative"
 
 
 # ─── rotate 判定 ─────────────────────────────────────────────────
@@ -848,6 +903,87 @@ def test_on_event_emits_progress(tmp_path: Path) -> None:
     assert kinds[-1] == "stopped"
     turn_ev = next(d for k, d in seen if k == "turn")
     assert turn_ev["used_pct"] == pytest.approx(0.75)
+    assert turn_ev["provider"] == "FakeRunner"
+    assert turn_ev["input_tokens"] == 150_000
+    assert turn_ev["output_tokens"] == 100
+    assert turn_ev["context_observable"] is True
+    assert turn_ev["context_state"] == "measured"
+    assert turn_ev["cached_input_tokens"] == 0
+    assert turn_ev["reasoning_output_tokens"] == 0
+    assert turn_ev["token_usage_kind"] == "instant"
+
+
+def test_provider_name_uses_orchestra_conductor() -> None:
+    class CodexRunner:
+        pass
+
+    class OrchestraRunner:
+        def __init__(self) -> None:
+            self.conductor = CodexRunner()
+
+    assert SessionLoop.provider_name(OrchestraRunner()) == "codex"
+
+
+def test_provider_name_prefers_runner_provider_label() -> None:
+    class OpenAICompatRunner:
+        def provider_label(self) -> str:
+            return "openai-compat:groq"
+
+    assert SessionLoop.provider_name(OpenAICompatRunner()) == "openai-compat:groq"
+
+
+def test_turn_event_preserves_cumulative_token_metadata_through_orchestra(tmp_path: Path) -> None:
+    class CodexRunner(FakeRunner):
+        def _provider_version(self) -> str:
+            return "codex-cli 0.test"
+
+    seen: list[tuple[str, dict]] = []
+    conductor = CodexRunner([{
+        "ctx": 0, "out": 1000, "text": "done",
+    }])
+
+    def _run_turn(*, prompt: str, session_id: str, resume: bool, cwd: Path) -> TurnResult:
+        conductor.calls.append((prompt, session_id, resume))
+        return TurnResult(
+            session_id=session_id,
+            input_tokens=5_000_000,
+            output_tokens=1000,
+            context_tokens=0,
+            cost_usd=0.0,
+            text="done",
+            is_error=False,
+            error_kind="",
+            num_turns=1,
+            raw_exit=0,
+            context_observable=False,
+            cached_input_tokens=98_000,
+            reasoning_output_tokens=200,
+            token_usage_kind="cumulative",
+            provider_version=conductor._provider_version(),
+        )
+
+    conductor.run_turn = _run_turn  # type: ignore[method-assign]
+    orch = OrchestraRunner(conductor=conductor, reviewers=[], lead=None, include_diff=False)
+    loop = SessionLoop(
+        runner=orch,
+        workdir=tmp_path,
+        ledger=Ledger(tmp_path / "ledger.jsonl"),
+        max_sessions=1,
+        on_event=lambda kind, data: seen.append((kind, data)),
+    )
+    loop.run()
+    turn_ev = next(d for k, d in seen if k == "turn")
+    assert turn_ev["provider"] == "codex"
+    assert turn_ev["input_tokens"] == 5_000_000
+    assert turn_ev["output_tokens"] == 1000
+    assert turn_ev["used_pct"] == pytest.approx(0.0)
+    assert turn_ev["context_observable"] is False
+    assert turn_ev["context_observable_reason"] == "cumulative_only"
+    assert turn_ev["context_state"] == "provider_managed_cumulative"
+    assert turn_ev["cached_input_tokens"] == 98_000
+    assert turn_ev["reasoning_output_tokens"] == 200
+    assert turn_ev["token_usage_kind"] == "cumulative"
+    assert turn_ev["provider_version"] == "codex-cli 0.test"
 
 
 def test_emits_task_event_with_prompt(tmp_path: Path) -> None:
@@ -878,6 +1014,59 @@ def test_injected_task_marked_in_event(tmp_path: Path) -> None:
     assert len(injected_tasks) == 1
     # 注入タスクが本体 (末尾に安全弁/監督などの指令が付く)
     assert injected_tasks[0]["prompt"].startswith("割り込みタスク X")
+
+
+def test_query_like_injection_detector_is_conservative() -> None:
+    assert is_query_like_injection("現在の進捗を要約して")
+    assert is_query_like_injection("What did you do? Give me a status summary.")
+    assert not is_query_like_injection("現在の進捗を要約して、その後 fix もして")
+    assert not is_query_like_injection("進捗を要約して、その後リファクタして")
+    assert not is_query_like_injection("summarize progress and then rename X")
+    assert not is_query_like_injection("status summary and review the diff")
+    assert not is_query_like_injection("現状をまとめて、バグも直して")
+    assert not is_query_like_injection("進捗ファイルを作り直す")
+    assert not is_query_like_injection("現在の進捗を見て、不要な項目を消す")
+    assert not is_query_like_injection("進捗を整理して")
+    assert not is_query_like_injection("このバグを修正して")
+    assert not is_query_like_injection("get_status 関数を書いて")
+    assert not is_query_like_injection("next_plan に追記して")
+
+
+def test_query_like_injection_uses_unreviewed_path_when_available(tmp_path: Path) -> None:
+    injected = ["現在の進捗を要約して"]
+    runner = UnreviewedFakeRunner()
+    loop = _loop(runner, tmp_path, window_tokens=200_000, threshold=0.70,
+                 max_sessions=1, max_turns_per_session=3,
+                 next_prompt=lambda: injected.pop(0) if injected else None)
+    loop.run()
+    work = [c for c in runner.unreviewed_calls if c[0] != DEFAULT_EXIT_PREP_PROMPT]
+    assert any(c[0].startswith("現在の進捗を要約して") for c in work)
+
+
+def test_mutating_injection_keeps_normal_reviewed_path(tmp_path: Path) -> None:
+    injected = ["現在の進捗を要約して、その後このバグも修正して"]
+    runner = UnreviewedFakeRunner()
+    loop = _loop(runner, tmp_path, window_tokens=200_000, threshold=0.70,
+                 max_sessions=1, max_turns_per_session=3,
+                 next_prompt=lambda: injected.pop(0) if injected else None)
+    loop.run()
+    work = [c for c in runner.unreviewed_calls if c[0] != DEFAULT_EXIT_PREP_PROMPT]
+    assert work == []
+
+
+def test_query_like_injection_without_unreviewed_support_stays_normal(tmp_path: Path) -> None:
+    injected = ["現在の進捗を要約して"]
+    seen: list[tuple[str, dict]] = []
+    runner = FakeRunner()
+    assert supports_unreviewed_turns(runner) is False
+    loop = _loop(runner, tmp_path, window_tokens=200_000, threshold=0.70,
+                 max_sessions=1, max_turns_per_session=3,
+                 next_prompt=lambda: injected.pop(0) if injected else None,
+                 on_event=lambda kind, data: seen.append((kind, data)))
+    loop.run()
+    injected_tasks = [d for k, d in seen if k == "task" and d.get("injected")]
+    assert len(injected_tasks) == 1
+    assert injected_tasks[0]["review_mode"] == "normal"
 
 
 def test_on_event_failure_does_not_kill_loop(tmp_path: Path) -> None:
@@ -928,6 +1117,27 @@ def _capture_cli_runner(tmp_path: Path, argv: list[str], monkeypatch) -> object:
     return captured["runner"]
 
 
+def _capture_cli_loop(tmp_path: Path, argv: list[str], monkeypatch) -> dict:
+    """main() を loop 実行直前で止め、構築された SessionLoop の主要引数を捕捉する。"""
+    import llterm.host.loop as loop_mod
+
+    captured: dict = {}
+
+    class _Stop(Exception):
+        pass
+
+    def _fake_run(self) -> object:
+        captured["runner"] = self.runner
+        captured["projects_root"] = self.projects_root
+        captured["workdir"] = self.workdir
+        raise _Stop
+
+    monkeypatch.setattr(loop_mod.SessionLoop, "run", _fake_run)
+    with pytest.raises(_Stop):
+        main(["--workdir", str(tmp_path), "--max-sessions", "1", *argv])
+    return captured
+
+
 def test_cli_default_runner_is_codex_when_available(tmp_path: Path, monkeypatch) -> None:
     """既定の自走奏者は Codex (2026-06-15 課金変更で Claude→Codex に既定変更)。codex 導入済み環境。"""
     import llterm.host.loop as loop_mod
@@ -956,6 +1166,26 @@ def test_cli_default_falls_back_to_claude_when_codex_missing(tmp_path: Path, mon
     monkeypatch.setattr(loop_mod.shutil, "which", lambda name: None)  # codex 未導入
     runner = _capture_cli_runner(tmp_path, [], monkeypatch)
     assert isinstance(runner, ClaudeRunner)  # Codex 不可用 → Claude backbone に倒れる
+
+
+def test_cli_projects_root_flag_overrides_default(tmp_path: Path, monkeypatch) -> None:
+    import llterm.host.loop as loop_mod
+
+    custom_root = tmp_path / "custom-root"
+    custom_root.mkdir()
+    monkeypatch.setattr(loop_mod.shutil, "which", lambda name: None)
+    captured = _capture_cli_loop(tmp_path, ["--projects-root", str(custom_root)], monkeypatch)
+    assert captured["projects_root"] == custom_root.resolve()
+
+
+def test_cli_projects_root_defaults_to_workdir_parent(tmp_path: Path, monkeypatch) -> None:
+    import llterm.host.loop as loop_mod
+
+    workdir = tmp_path / "alpha"
+    workdir.mkdir()
+    monkeypatch.setattr(loop_mod.shutil, "which", lambda name: None)
+    captured = _capture_cli_loop(workdir, [], monkeypatch)
+    assert captured["projects_root"] == tmp_path.resolve()
 
 
 def test_next_prompt_injection_is_high_priority(tmp_path: Path) -> None:
@@ -1057,6 +1287,255 @@ def test_exit_prep_uses_unreviewed_path_when_available(tmp_path: Path) -> None:
     loop = _loop(runner, tmp_path, window_tokens=200_000, threshold=0.70, max_sessions=1)
     loop.run()
     assert DEFAULT_EXIT_PREP_PROMPT in runner.unreviewed_calls  # exit準備は unreviewed 経路
+
+
+def test_rotate_updates_shared_progress_file(tmp_path: Path) -> None:
+    """rotate 後に _shared/PROGRESS.md を再生成し、共通進捗へ handoff を反映する。"""
+    alpha = tmp_path / "alpha"
+    beta = tmp_path / "beta"
+    (alpha / "docs").mkdir(parents=True)
+    (beta / "docs").mkdir(parents=True)
+    (alpha / "docs" / "next_plan.md").write_text(
+        "# alpha\n> 最終更新: 2026-06-13 15:42 JST\n", encoding="utf-8")
+    (beta / "docs" / "next_plan.md").write_text(
+        "# beta\n> 最終更新: 2026-06-13 15:41 JST\n", encoding="utf-8")
+    runner = FakeRunner([{"ctx": 150_000}])  # 75% で rotate
+    loop = SessionLoop(
+        runner=runner,
+        workdir=alpha,
+        ledger=Ledger(alpha / "ledger.jsonl"),
+        projects_root=tmp_path,
+        window_tokens=200_000,
+        threshold=0.70,
+        max_sessions=1,
+    )
+    loop.run()
+    out = tmp_path / "_shared" / "PROGRESS.md"
+    assert out.exists()
+    shown = out.read_text(encoding="utf-8")
+    assert "**alpha**" in shown and "**beta**" in shown
+
+
+def test_graceful_stop_updates_shared_progress_file(tmp_path: Path) -> None:
+    """graceful stop の handoff 後も _shared/PROGRESS.md を再生成する。"""
+    alpha = tmp_path / "alpha"
+    beta = tmp_path / "beta"
+    (alpha / "docs").mkdir(parents=True)
+    (beta / "docs").mkdir(parents=True)
+    (alpha / "docs" / "next_plan.md").write_text(
+        "# alpha\n> 最終更新: 2026-06-13 15:42 JST\n", encoding="utf-8")
+    (beta / "docs" / "next_plan.md").write_text(
+        "# beta\n> 最終更新: 2026-06-13 15:41 JST\n", encoding="utf-8")
+    calls = {"n": 0}
+
+    def should_stop() -> bool:
+        return calls["n"] >= 1
+
+    def on_event(kind: str, data: dict) -> None:
+        if kind == "turn":
+            calls["n"] += 1
+
+    loop = SessionLoop(
+        runner=FakeRunner(),
+        workdir=alpha,
+        ledger=Ledger(alpha / "ledger.jsonl"),
+        projects_root=tmp_path,
+        window_tokens=200_000,
+        threshold=0.70,
+        max_sessions=1,
+        max_turns_per_session=10,
+        should_stop=should_stop,
+        on_event=on_event,
+    )
+    outcome = loop.run()
+    assert outcome.stop_reason == "stopped"
+    out = tmp_path / "_shared" / "PROGRESS.md"
+    assert out.exists()
+    shown = out.read_text(encoding="utf-8")
+    assert "**alpha**" in shown and "**beta**" in shown
+
+
+def test_rotate_does_not_refresh_shared_progress_when_exit_prep_fails(tmp_path: Path) -> None:
+    alpha = tmp_path / "alpha"
+    beta = tmp_path / "beta"
+    (alpha / "docs").mkdir(parents=True)
+    (beta / "docs").mkdir(parents=True)
+    (alpha / "docs" / "next_plan.md").write_text(
+        "# alpha\n> 最終更新: 2026-06-13 15:42 JST\n", encoding="utf-8")
+    (beta / "docs" / "next_plan.md").write_text(
+        "# beta\n> 最終更新: 2026-06-13 15:41 JST\n", encoding="utf-8")
+    runner = FakeRunner([
+        {"ctx": 150_000},
+        {"is_error": True, "error_kind": "other"},
+        {"ctx": 1_000},
+    ])
+    loop = SessionLoop(
+        runner=runner,
+        workdir=alpha,
+        ledger=Ledger(alpha / "ledger.jsonl"),
+        projects_root=tmp_path,
+        window_tokens=200_000,
+        threshold=0.70,
+        max_sessions=2,
+    )
+    outcome = loop.run()
+    assert outcome.stop_reason == "exit_prep_failed"
+    assert len(runner.calls) == 2  # handoff failureで fail-closed 停止し、新セッションへ進まない
+    assert not (tmp_path / "_shared" / "PROGRESS.md").exists()
+
+
+def test_rotate_handoff_rate_limited_waits_and_retries_once(tmp_path: Path) -> None:
+    alpha = tmp_path / "alpha"
+    beta = tmp_path / "beta"
+    (alpha / "docs").mkdir(parents=True)
+    (beta / "docs").mkdir(parents=True)
+    (alpha / "docs" / "next_plan.md").write_text(
+        "# alpha\n> 最終更新: 2026-06-13 15:42 JST\n", encoding="utf-8")
+    (beta / "docs" / "next_plan.md").write_text(
+        "# beta\n> 最終更新: 2026-06-13 15:41 JST\n", encoding="utf-8")
+    now = {"t": 100.0}
+
+    def _sleep(sec: float) -> None:
+        now["t"] += sec
+
+    runner = FakeRunner([
+        {"ctx": 150_000},
+        {"is_error": True, "error_kind": "rate_limited", "resets_at": 101.0},
+        {"ctx": 1_000},
+    ])
+    loop = SessionLoop(
+        runner=runner,
+        workdir=alpha,
+        ledger=Ledger(alpha / "ledger.jsonl"),
+        projects_root=tmp_path,
+        window_tokens=200_000,
+        threshold=0.70,
+        max_sessions=1,
+        now_fn=lambda: now["t"],
+        sleep_fn=_sleep,
+    )
+    outcome = loop.run()
+    assert outcome.stop_reason == "max_sessions"
+    assert len(runner.calls) == 3  # work + handoff(rate_limited) + handoff(retry)
+    assert (tmp_path / "_shared" / "PROGRESS.md").exists()
+
+
+def test_rotate_handoff_rate_limited_retry_failure_stops_fail_closed(tmp_path: Path) -> None:
+    alpha = tmp_path / "alpha"
+    beta = tmp_path / "beta"
+    (alpha / "docs").mkdir(parents=True)
+    (beta / "docs").mkdir(parents=True)
+    (alpha / "docs" / "next_plan.md").write_text(
+        "# alpha\n> 最終更新: 2026-06-13 15:42 JST\n", encoding="utf-8")
+    (beta / "docs" / "next_plan.md").write_text(
+        "# beta\n> 最終更新: 2026-06-13 15:41 JST\n", encoding="utf-8")
+    now = {"t": 200.0}
+
+    def _sleep(sec: float) -> None:
+        now["t"] += sec
+
+    runner = FakeRunner([
+        {"ctx": 150_000},
+        {"is_error": True, "error_kind": "rate_limited", "resets_at": 201.0},
+        {"is_error": True, "error_kind": "rate_limited", "resets_at": 202.0},
+    ])
+    loop = SessionLoop(
+        runner=runner,
+        workdir=alpha,
+        ledger=Ledger(alpha / "ledger.jsonl"),
+        projects_root=tmp_path,
+        window_tokens=200_000,
+        threshold=0.70,
+        max_sessions=1,
+        now_fn=lambda: now["t"],
+        sleep_fn=_sleep,
+    )
+    outcome = loop.run()
+    assert outcome.stop_reason == "exit_prep_failed"
+    assert len(runner.calls) == 3
+    assert not (tmp_path / "_shared" / "PROGRESS.md").exists()
+
+
+def test_rotate_handoff_rate_limited_stop_during_wait_stops_without_progress(tmp_path: Path) -> None:
+    alpha = tmp_path / "alpha"
+    beta = tmp_path / "beta"
+    (alpha / "docs").mkdir(parents=True)
+    (beta / "docs").mkdir(parents=True)
+    (alpha / "docs" / "next_plan.md").write_text(
+        "# alpha\n> 最終更新: 2026-06-13 15:42 JST\n", encoding="utf-8")
+    (beta / "docs" / "next_plan.md").write_text(
+        "# beta\n> 最終更新: 2026-06-13 15:41 JST\n", encoding="utf-8")
+    now = {"t": 300.0}
+    stop = {"flag": False}
+
+    def _sleep(sec: float) -> None:
+        now["t"] += sec
+        stop["flag"] = True
+
+    runner = FakeRunner([
+        {"ctx": 150_000},
+        {"is_error": True, "error_kind": "rate_limited", "resets_at": 305.0},
+    ])
+    loop = SessionLoop(
+        runner=runner,
+        workdir=alpha,
+        ledger=Ledger(alpha / "ledger.jsonl"),
+        projects_root=tmp_path,
+        window_tokens=200_000,
+        threshold=0.70,
+        max_sessions=1,
+        now_fn=lambda: now["t"],
+        sleep_fn=_sleep,
+        should_stop=lambda: stop["flag"],
+    )
+    outcome = loop.run()
+    assert outcome.stop_reason == "stopped"
+    assert len(runner.calls) == 2
+    assert not (tmp_path / "_shared" / "PROGRESS.md").exists()
+
+
+def test_graceful_stop_does_not_refresh_shared_progress_when_handoff_fails(tmp_path: Path) -> None:
+    alpha = tmp_path / "alpha"
+    beta = tmp_path / "beta"
+    (alpha / "docs").mkdir(parents=True)
+    (beta / "docs").mkdir(parents=True)
+    (alpha / "docs" / "next_plan.md").write_text(
+        "# alpha\n> 最終更新: 2026-06-13 15:42 JST\n", encoding="utf-8")
+    (beta / "docs" / "next_plan.md").write_text(
+        "# beta\n> 最終更新: 2026-06-13 15:41 JST\n", encoding="utf-8")
+    calls = {"n": 0}
+
+    def should_stop() -> bool:
+        return calls["n"] >= 1
+
+    def on_event(kind: str, data: dict) -> None:
+        if kind == "turn":
+            calls["n"] += 1
+
+    loop = SessionLoop(
+        runner=FakeRunner([{}, {"is_error": True, "error_kind": "cancelled"}]),
+        workdir=alpha,
+        ledger=Ledger(alpha / "ledger.jsonl"),
+        projects_root=tmp_path,
+        window_tokens=200_000,
+        threshold=0.70,
+        max_sessions=1,
+        max_turns_per_session=10,
+        should_stop=should_stop,
+        on_event=on_event,
+    )
+    outcome = loop.run()
+    assert outcome.stop_reason == "stopped"
+    assert not (tmp_path / "_shared" / "PROGRESS.md").exists()
+
+
+def test_default_exit_prep_prompt_mentions_standard_next_plan_sections() -> None:
+    assert "docs/next_plan.md" in DEFAULT_EXIT_PREP_PROMPT
+    assert "YYYY-MM-DD HH:MM JST" in DEFAULT_EXIT_PREP_PROMPT
+    assert "## 現在地" in DEFAULT_EXIT_PREP_PROMPT
+    assert "## 直近の成果" in DEFAULT_EXIT_PREP_PROMPT
+    assert "## 次の一手" in DEFAULT_EXIT_PREP_PROMPT
+    assert "## 環境メモ" in DEFAULT_EXIT_PREP_PROMPT
 
 
 # ─── サブスク認証 (API キー env を外す) ───────────────────────────
