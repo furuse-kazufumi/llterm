@@ -405,6 +405,27 @@ class MainWindow(QtWidgets.QMainWindow):
             *self.chk_reviewers.values(),
         ]
 
+    def _make_version_label(self) -> QtWidgets.QLabel:
+        """ステータスバー右端の『バージョン / 最終更新日』ラベルを生成する。
+
+        日付・コミットの取得は fail-safe (git 不在でも例外を出さず日付だけ落とす)。
+        i18n 文字列組み立ても含めて何が起きても UI を殺さないよう握りつぶす。
+        """
+        try:
+            date = updated_date()
+            commit = commit_hash() or "-"
+            if date:
+                text = t("gui.version.label", version=__version__, date=date)
+            else:
+                text = t("gui.version.label_nodate", version=__version__)
+            tip = t("gui.version.tip", version=__version__, date=(date or "-"),
+                    commit=commit, path=str(Path(__file__).resolve().parents[1]))
+        except Exception:  # noqa: BLE001 — バージョン表示は絶対に UI を落とさない
+            text, tip = f"v{__version__}", f"llterm v{__version__}"
+        label = QtWidgets.QLabel(text)
+        label.setToolTip(tip)
+        return label
+
     def _create_widgets(self, *, initial_workdir: Path | None, real_default: bool,
                         rad_default: bool, offload_default: bool, autonomy_default: bool,
                         codex_first_default: bool, reviewers_default: list[str],
