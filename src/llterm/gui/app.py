@@ -346,6 +346,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.lbl_progress.setToolTip(t("gui.tip.progress"))
         self.statusBar().addWidget(self.lbl_progress, 1)
 
+        # バージョン / 最終更新日 — ステータスバー右端に常設 (常に見えて邪魔にならない)。
+        # 「今どのビルドが動いているか」を確認できるように version + 更新日を出す。
+        # 日付は git HEAD のコミット日 (無ければ __init__.py の mtime)。ホバーで詳細。
+        self.lbl_version = self._make_version_label()
+        self.statusBar().addPermanentWidget(self.lbl_version)
+
         # ── Settings ダイアログ (別画面・非モーダル・強参照で保持) ─────
         self._build_settings_dialog()
 
