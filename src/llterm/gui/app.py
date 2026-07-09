@@ -24,7 +24,8 @@ from typing import TYPE_CHECKING
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from llterm import rad, templates
+from llterm import __version__, rad, templates
+from llterm.version import commit_hash, updated_date
 from llterm.ctl.consumer import CtlConsumer
 from llterm.ctl.ledger import Ledger
 from llterm.ctl.queue import CtlQueue
