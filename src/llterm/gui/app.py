@@ -262,7 +262,7 @@ class MainWindow(QtWidgets.QMainWindow):
                   reviewers_default: list[str] | None = None,
                   factcheck_default: str = "",
                   summary_raw_default: bool = False) -> None:
-        self.setWindowTitle(t("gui.window.title"))
+        self.setWindowTitle(f"{t('gui.window.title')} — v{__version__}")
         icon = find_app_icon()
         if icon is not None:
             self.setWindowIcon(icon)  # タイトルバー/タスクバーのアイコン
