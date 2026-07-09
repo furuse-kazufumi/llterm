@@ -570,6 +570,19 @@ MESSAGES: dict[str, dict[str, str]] = {
         "ja": "進捗: -",
         "en": "Progress: -",
     },
+    # ステータスバー右端に常設する『バージョン / 最終更新日』。
+    "gui.version.label": {
+        "ja": "v{version} · 更新 {date}",
+        "en": "v{version} · updated {date}",
+    },
+    "gui.version.label_nodate": {
+        "ja": "v{version}",
+        "en": "v{version}",
+    },
+    "gui.version.tip": {
+        "ja": "llterm v{version}\n最終更新日: {date}\ncommit: {commit}\npath: {path}",
+        "en": "llterm v{version}\nLast updated: {date}\ncommit: {commit}\npath: {path}",
+    },
     "gui.progress.prefix": {
         "ja": "進捗",
         "en": "Progress",
