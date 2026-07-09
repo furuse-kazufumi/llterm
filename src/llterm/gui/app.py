@@ -914,13 +914,26 @@ class MainWindow(QtWidgets.QMainWindow):
         Gemini CLI の個人無料枠は GEMINI_CLI_FREE_TIER_END (2026-06-18) で停止する。期限が
         間近/超過していて、かつ Gemini CLI を使う見込み (gemini が PATH にある自動可用 /
         レビュー奏者=Gemini CLI) のときだけ通知する。移行先 = Gemini API (provider 'gemini-api')。
+
+        ただし **GEMINI_API_KEY が使えるなら CLI 失効は無害なので通知しない** (誤検知抑止):
+        レビュー奏者 "gemini" は :meth:`_make_reviewer_runner` が gemini-api へ自動ルートし、
+        自動チェーンの Gemini CLI 奏者は失効後 :meth:`_gemini_runner` が自動除外する。つまり
+        キーがあれば「死んだ CLI に実際に当たる経路」が無い = もう移行済み → 黙る。
         """
+        from llterm.host.gemini_runner import gemini_cli_free_tier_status
+        from llterm.host.openai_compat_runner import OpenAICompatRunner
+
+        status, days = gemini_cli_free_tier_status()
+        if status == "ok":
+            return ""  # 期限まで余裕 = 黙る
+        # Gemini API へ移行済み (キーあり) なら CLI 失効は影響しない → 通知しない。
+        if OpenAICompatRunner(provider="gemini-api").key_available():
+            return ""
+        # ここから先はキー無し = 本当に CLI に依存しうる場合だけ通知 (GEMINI_API_KEY 取得を促す)。
         reviewer_is_gemini_cli = self.chk_reviewers["gemini"].isChecked()
         uses_cli = (shutil.which("gemini") is not None) or reviewer_is_gemini_cli
         if not uses_cli:
             return ""
-        from llterm.host.gemini_runner import gemini_cli_free_tier_status
-        status, days = gemini_cli_free_tier_status()
         if status == "expired":
             return t("gui.msg.gemini_cli_expired", days=-days)
         if status == "soon":
