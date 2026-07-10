@@ -493,22 +493,32 @@ class CodexRunner:
         stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
         stderr_thread.start()
 
-        out_lines: list[str] = []
+        # 読取を daemon スレッドへ隔離し、cancel/interrupt/timeout 後は pipe が閉じなくても
+        # 有界で諦める (子ツリーを kill しても孫が stdout を握って EOF が来ない異常時の
+        # 永久ブロックを排除。2026-07-10 のハング = 強制停止しても止まらず GUI 強制終了しか
+        # 無かった事象の根本対処。詳細は loop._consume_stdout_bounded)。
+        out_lines, reader_done = _consume_stdout_bounded(
+            proc,
+            notify=self._notify_stream,
+            kill=self._kill,
+            stop_requested=lambda: timed_out.is_set() or self._is_stop_signalled(),
+        )
         try:
-            assert proc.stdout is not None
-            for line in proc.stdout:
-                out_lines.append(line)
-                self._notify_stream(line)
-            try:
-                proc.wait(timeout=30)
-            except subprocess.TimeoutExpired:
-                self._kill(proc)
+            if reader_done:
                 try:
-                    proc.wait(timeout=10)
+                    proc.wait(timeout=30)
+                except subprocess.TimeoutExpired:
+                    self._kill(proc)
+                    try:
+                        proc.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        pass
+            else:
+                self._kill(proc)  # best-effort 再送 (孤児 reader は諦め済み)
+                try:
+                    proc.wait(timeout=_KILL_ABANDON_GRACE)
                 except subprocess.TimeoutExpired:
                     pass
-        except (OSError, ValueError):
-            self._kill(proc)
         finally:
             watchdog.cancel()
             stderr_thread.join(timeout=5)
