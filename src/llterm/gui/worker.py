@@ -58,14 +58,25 @@ class LoopWorker(QtCore.QThread):
         force=False (graceful, 既定): 実行中ターンは kill せず、現ターン完了後に作業記録
         (handoff) を 1 回残してから停止する。
         force=True: 全 runner の実行中ターンをツリーごと即 kill して停止する (記録なし)。
+
+        force の cancel() は内部で ``taskkill /F /T`` を同期実行するため、GUI (メインスレッド)
+        から直接呼ぶと taskkill 完了まで UI がブロックする (Stop 連打で悪化)。別 daemon スレッドへ
+        逃がし、UI スレッドは即座に返す。
         """
         self._stop.set()
         if force:
-            for r in (self._runner, *self._fallback_runners):
-                try:
-                    r.cancel()
-                except Exception:  # noqa: BLE001
-                    pass
+            threading.Thread(
+                target=self._cancel_all_runners,
+                name="llterm-force-cancel",
+                daemon=True,
+            ).start()
+
+    def _cancel_all_runners(self) -> None:
+        for r in (self._runner, *self._fallback_runners):
+            try:
+                r.cancel()
+            except Exception:  # noqa: BLE001
+                pass
 
     def inject(self, text: str, *, emergency: bool = False) -> None:
         """タスクを注入する。
