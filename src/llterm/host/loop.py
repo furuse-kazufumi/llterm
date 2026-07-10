@@ -808,22 +808,33 @@ class ClaudeRunner:
         stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
         stderr_thread.start()
 
-        out_lines: list[str] = []
+        # 行単位リアルタイム読み (communicate() 全ブロックは廃止済)。読取は daemon スレッドへ
+        # 隔離し、cancel/interrupt/timeout 後は pipe が閉じなくても有界で諦める (子ツリーを
+        # kill しても孫が stdout を握って EOF が来ない異常時の永久ブロックを構造的に排除)。
+        out_lines, reader_done = _consume_stdout_bounded(
+            proc,
+            notify=self._notify_stream,
+            kill=self._kill,
+            stop_requested=lambda: timed_out.is_set() or self._is_stop_signalled(),
+        )
         try:
-            assert proc.stdout is not None
-            for line in proc.stdout:  # 行単位リアルタイム読み — communicate() の全ブロックを廃止
-                out_lines.append(line)
-                self._notify_stream(line)
-            try:
-                proc.wait(timeout=30)  # stdout を閉じても居座る異常な子に timeout まで付き合わない
-            except subprocess.TimeoutExpired:
+            if reader_done:
+                try:
+                    proc.wait(timeout=30)  # stdout を閉じても居座る異常な子に timeout まで付き合わない
+                except subprocess.TimeoutExpired:
+                    self._kill(proc)
+                    try:
+                        proc.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        pass
+            else:
+                # pipe が EOF に達しない異常 (孫が stdout を握って生存) → 孤児 reader は諦め済み。
+                # ここも待たずに best-effort kill だけ再送し、有界で切り上げる。
                 self._kill(proc)
                 try:
-                    proc.wait(timeout=10)
+                    proc.wait(timeout=_KILL_ABANDON_GRACE)
                 except subprocess.TimeoutExpired:
                     pass
-        except (OSError, ValueError):
-            self._kill(proc)
         finally:
             watchdog.cancel()
             stderr_thread.join(timeout=5)
