@@ -313,6 +313,47 @@ def test_codex_runner_idle_interrupt_does_not_poison_next_turn(tmp_path: Path) -
     assert res.provider_version == "codex-cli 0.test"
 
 
+_HANGING_CODEX = '''\
+import json, time
+print(json.dumps({"type": "thread.started", "thread_id": "hang-thread"}), flush=True)
+time.sleep(60)
+'''
+
+
+def test_codex_runner_cancel_returns_even_if_pipe_never_closes(tmp_path: Path) -> None:
+    """子ツリーを kill しても stdout が EOF に達しない異常でも cancel() 後 run_turn は有界で返る。
+
+    回帰テスト (2026-07-10): taskkill /F /T しても孫が継承済みの stdout ハンドルを握って生存
+    すると read ループに EOF が来ず永久ブロック → 強制停止を連打しても止まらず GUI をプロセス
+    ごと強制終了するしか無かった。_kill を無力化して pipe が閉じないケースを模擬する。
+    """
+    started = threading.Event()
+    runner = _scripted_codex(tmp_path, lambda item: started.set(), body=_HANGING_CODEX)
+    runner.timeout = 60.0
+    runner._kill = lambda proc: None  # type: ignore[method-assign]
+    results: list = []
+
+    def _run() -> None:
+        results.append(runner.run_turn(prompt="p", session_id="s", resume=False, cwd=tmp_path))
+
+    th = threading.Thread(target=_run)
+    th.start()
+    proc = None
+    try:
+        assert started.wait(20)
+        proc = runner._proc  # 後始末用 (finally で None 化される前に掴む)
+        runner.cancel()
+        th.join(20)  # 修正前は子の 60s sleep 完了までブロック → join 失敗
+        assert not th.is_alive(), "cancel 後も run_turn が返らない (pipe ハングが解消していない)"
+        assert results[0].error_kind == "cancelled"
+    finally:
+        if proc is not None:
+            try:
+                proc.kill()
+            except Exception:  # noqa: BLE001
+                pass
+
+
 def test_provider_version_not_found_is_cached_once(monkeypatch: pytest.MonkeyPatch) -> None:
     runner = CodexRunner()
     calls = 0
