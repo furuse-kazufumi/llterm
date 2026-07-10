@@ -549,6 +549,11 @@ class CodexRunner:
             self._thread_id = res.session_id
         return res
 
+    def _is_stop_signalled(self) -> bool:
+        """走行中ターンを畳むべき停止シグナル (cancel/interrupt) が立っているか。"""
+        with self._lock:
+            return self._cancelled or self._interrupted
+
     def cancel(self) -> None:
         """Codex ターンをプロセスツリーごと安全に kill する (恒久・sticky)。"""
         with self._lock:
