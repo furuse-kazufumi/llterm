@@ -524,6 +524,60 @@ DEFAULT_MODEL = "claude-opus-4-8"
 # redirect していても console window が毎ターン可視表示される (実機確認済) — これで抑止する。
 _NO_WINDOW = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 
+# 停止シグナル (cancel/interrupt/timeout) 後、子ツリーを kill しても stdout の EOF が来ない
+# 異常時に、孤児 reader スレッドを諦めるまでの猶予秒数。normal な EOF はこの前に来るので
+# 通常経路には影響しない。詳細は _consume_stdout_bounded の docstring。
+_KILL_ABANDON_GRACE = 5.0
+
+
+def _consume_stdout_bounded(
+    proc: subprocess.Popen,
+    *,
+    notify: Callable[[str], None],
+    kill: Callable[[subprocess.Popen], None],
+    stop_requested: Callable[[], bool],
+    grace: float = _KILL_ABANDON_GRACE,
+) -> tuple[list[str], bool]:
+    """``proc.stdout`` を daemon スレッドで行単位に読み、集めた行と「読み切ったか」を返す。
+
+    正常時は EOF まで読み切って ``(out_lines, True)`` を返す (旧実装の
+    ``for line in proc.stdout`` と同じ結果)。``stop_requested()`` が True になったら
+    ``kill(proc)`` でツリー kill を試み、``grace`` 秒だけ EOF (=pipe クローズ) を待ってから、
+    閉じなければ孤児 reader を **諦めて** ``(out_lines, False)`` を返す。
+
+    これが 2026-07-10 のハング (Stop/強制停止を連打しても止まらず GUI 強制終了しか無かった)
+    の根本対処: 子ツリーを ``taskkill /F /T`` しても、再親付け/デタッチされた孫が継承済みの
+    stdout write ハンドルを握って生存すると read 端に EOF が来ず、``for line in proc.stdout``
+    が**永久ブロック**していた。読取を daemon スレッドへ隔離し有界猶予で諦めることで、
+    たとえ pipe が閉じなくても run_turn が有界時間で必ず返る (孤児 reader はプロセス終了時に
+    OS が回収する)。呼び出し側は返り値 False のとき out_lines を parse に使ってはならない。
+    """
+    out_lines: list[str] = []
+    done = threading.Event()
+
+    def _read() -> None:
+        try:
+            assert proc.stdout is not None
+            for line in proc.stdout:
+                out_lines.append(line)
+                notify(line)
+        except (OSError, ValueError):
+            pass
+        finally:
+            done.set()
+
+    reader = threading.Thread(target=_read, name="llterm-stdout-reader", daemon=True)
+    reader.start()
+
+    killed = False
+    while not done.wait(0.1):
+        if not killed and stop_requested():
+            kill(proc)  # pipe が閉じれば reader は即 EOF で done.set() する
+            killed = True
+            done.wait(grace)  # 猶予内に EOF が来れば回収、来なければ孤児 reader を諦める
+            break
+    return out_lines, done.is_set()
+
 
 def _subscription_env() -> dict[str, str]:
     """claude.ai サブスク認証 (OAuth) を使わせるため API キー系 env を外して返す。
