@@ -855,6 +855,11 @@ class ClaudeRunner:
         exit_code = proc.returncode if proc.returncode is not None else -1
         return parse_stream_json("".join(out_lines), exit_code=exit_code, stderr="".join(err_buf))
 
+    def _is_stop_signalled(self) -> bool:
+        """走行中ターンを畳むべき停止シグナル (cancel/interrupt) が立っているか。"""
+        with self._lock:
+            return self._cancelled or self._interrupted
+
     def cancel(self) -> None:
         """claude ターンをプロセスツリーごと安全に kill する (Stop / 終了用)。
 
