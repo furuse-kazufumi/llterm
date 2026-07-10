@@ -571,6 +571,41 @@ def test_claude_runner_cancel_kills_running_turn(tmp_path: Path) -> None:
     assert results[0].error_kind == "cancelled"
 
 
+def test_claude_runner_cancel_returns_even_if_pipe_never_closes(tmp_path: Path) -> None:
+    """子ツリーを kill しても stdout が EOF に達しない異常でも cancel() 後 run_turn は有界で返る。
+
+    回帰テスト (2026-07-10): codex/claude の子を taskkill /F /T しても、再親付け/デタッチされた
+    孫が継承済みの stdout ハンドルを握って生存すると read ループに EOF が来ず永久ブロック →
+    Stop/強制停止を連打しても止まらず GUI をプロセスごと強制終了するしか無かった。ここでは
+    _kill を無力化して「ツリー kill しても pipe が閉じない」状況を再現する。
+    """
+    started = threading.Event()
+    runner = _scripted_claude_runner(tmp_path, lambda item: started.set(),
+                                     script_body=_HANGING_CHILD, timeout=60.0)
+    # kill を無力化 = taskkill してもツリーが死なず pipe が閉じないケースの模擬。
+    runner._kill = lambda proc: None  # type: ignore[method-assign]
+    results: list = []
+
+    def _run() -> None:
+        results.append(runner.run_turn(prompt="p", session_id="s", resume=False, cwd=tmp_path))
+
+    th = threading.Thread(target=_run)
+    th.start()
+    try:
+        assert started.wait(20)  # 実行中 (子が起動し stream が届いた) 同期点
+        proc = runner._proc  # 後始末用に実プロセスを掴む (run_turn の finally で None 化される前)
+        runner.cancel()
+        th.join(20)  # 修正前は子の 60s sleep 完了までブロック → join 失敗
+        assert not th.is_alive(), "cancel 後も run_turn が返らない (pipe ハングが解消していない)"
+        assert results[0].error_kind == "cancelled"
+    finally:
+        if proc is not None:  # type: ignore[possibly-undefined]
+            try:
+                proc.kill()  # 無力化した _kill の代わりに孤児の子を実際に落とす
+            except Exception:  # noqa: BLE001
+                pass
+
+
 def test_claude_runner_cancel_before_start_is_sticky(tmp_path: Path) -> None:
     """ターン境界レース: 起動前に届いた cancel は消失せず、新しい子を起動しない。"""
     runner = _scripted_claude_runner(tmp_path, None)
