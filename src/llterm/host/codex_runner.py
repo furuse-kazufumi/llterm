@@ -33,10 +33,12 @@ from pathlib import Path
 
 from llterm.host.loop import (
     _AUTH_SIGNALS,
+    _KILL_ABANDON_GRACE,
     _NO_WINDOW,
     _RATE_LIMIT_SIGNALS,
     TurnResult,
     _as_int,
+    _consume_stdout_bounded,
     _short,
     _tool_use_detail,
 )
