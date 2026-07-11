@@ -287,8 +287,8 @@ class OrchestraRunner:
         # 3. パネル各 reviewer が独立に批評 (best-effort / stateless)。
         panel: list[tuple[str, str]] = []  # (label, text) of 非空・非エラー
         for i, rev_runner in enumerate(self.reviewers):
-            if self._is_cancelled():
-                break
+            if self._is_cancelled() or self._is_interrupted():
+                break  # Stop / 緊急注入 → パネル残りを走らせず即抜ける (応答性)
             if not self._aux_enabled(rev_runner):
                 continue
             label = runner_label(rev_runner)
