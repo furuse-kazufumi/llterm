@@ -1350,6 +1350,8 @@ class SessionLoop:
                     self._emit("provider_unavailable", session_id=sid,
                                provider=self.provider_name(active), detail=detail)
                     if self._select_available(self.now_fn(), exclude=active_idx) is not None:
+                        if injected:
+                            pending_reinject = injected_text  # 切替で在庫注入を捨てない
                         break  # → 外側ループが次の利用可能プロバイダで新セッション開始
                     return self._finish(
                         "provider_unavailable", sessions, turns, total_cost,
