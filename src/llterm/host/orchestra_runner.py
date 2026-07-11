@@ -291,6 +291,21 @@ class OrchestraRunner:
                               reasoning_output_tokens=res.reasoning_output_tokens,
                               token_usage_kind=res.token_usage_kind,
                               provider_version=res.provider_version)
+        # Stop がレビュー中に来た場合: 以降の集約/修正/sign-off をせず即 cancelled を返す。
+        # 返さないと指揮者の success 結果が返り、loop が『成功ターン』として扱い停止が次ターンまで
+        # 遅れる (+ GUI/ledger に誤って成功と出る)。interrupted のミラー。
+        if self._is_cancelled():
+            return TurnResult(res.session_id or session_id, res.input_tokens, res.output_tokens,
+                              res.context_tokens, total_cost, "", True, "cancelled",
+                              max(1, total_turns), -1, context_window=res.context_window,
+                              context_observable=res.context_observable,
+                              context_observable_reason=res.context_observable_reason,
+                              rate_limit_status=res.rate_limit_status,
+                              rate_limit_resets_at=res.rate_limit_resets_at,
+                              cached_input_tokens=res.cached_input_tokens,
+                              reasoning_output_tokens=res.reasoning_output_tokens,
+                              token_usage_kind=res.token_usage_kind,
+                              provider_version=res.provider_version)
 
         # 4. 真偽確認奏者 (あれば): 実装報告 + diff の事実主張を裏取り (best-effort / stateless)。
         factcheck_text = ""

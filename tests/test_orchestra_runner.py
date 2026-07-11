@@ -455,3 +455,74 @@ def test_reviewers_list_uses_indexed_session_ids(tmp_path: Path) -> None:
     orch = OrchestraRunner(conductor=c, reviewers=[r0], lead=None, include_diff=False)
     orch.run_turn(prompt="p", session_id="abc", resume=False, cwd=tmp_path)
     assert r0.calls[0]["session_id"] == "abc-review0"
+
+
+# ─── deep-dive 監査で見つけたロバスト性の回帰 ─────────────────────
+
+
+def test_fix_turn_other_error_keeps_successful_implementation(tmp_path: Path) -> None:
+    """任意の review-fix ターンが 'other' 失敗 (timeout 等) でも成功済み実装を error 化しない。
+
+    回帰: final=fix 無条件で、fix の other 失敗が全体を is_error 化 → loop が consec_err を積み
+    3 連続で circuit_open。実装は毎回成功しているのに自走が止まっていた。
+    """
+    orch, c, r = _orch(
+        conductor_results=[_tr("実装した", cost=1.0),
+                           _tr("", cost=0.5, is_error=True, error_kind="other")],
+        reviewer_results=[_tr("- バグを直せ", cost=0.0)],
+    )
+    res = orch.run_turn(prompt="p", session_id="s", resume=False, cwd=tmp_path)
+    assert len(c.calls) == 2          # 実装 + fix (fix ターンは走る)
+    assert res.is_error is False      # ★ 全体は成功のまま
+    assert res.error_kind == ""
+    assert res.text == "実装した"      # 実装結果を保持
+    assert res.cost_usd == 1.5        # cost は合算 (1.0 + 0.5)
+
+
+def test_fix_turn_rate_limited_still_propagates(tmp_path: Path) -> None:
+    """fix ターンの rate_limited は伝播する (other 以外は loop が正しく扱う)。"""
+    orch, c, r = _orch(
+        conductor_results=[_tr("実装", cost=1.0),
+                           _tr("", is_error=True, error_kind="rate_limited")],
+        reviewer_results=[_tr("- 直せ")],
+    )
+    res = orch.run_turn(prompt="p", session_id="s", resume=False, cwd=tmp_path)
+    assert res.error_kind == "rate_limited"
+
+
+def test_cancel_during_review_returns_cancelled_not_success(tmp_path: Path) -> None:
+    """Stop がレビュー中に来たら指揮者の成功でなく cancelled を返す (loop が即停止できる)。"""
+    class CancellingReviewer(FakeRunner):
+        orch: OrchestraRunner | None = None
+
+        def run_turn(self, *, prompt: str, session_id: str, resume: bool, cwd: Path) -> TurnResult:
+            assert self.orch is not None
+            self.orch.cancel()  # レビュー中に Stop
+            return super().run_turn(prompt=prompt, session_id=session_id, resume=resume, cwd=cwd)
+
+    c = FakeRunner([_tr("実装", cost=1.0)])
+    r = CancellingReviewer([_tr("- 直せ")])
+    orch = OrchestraRunner(conductor=c, reviewer=r, include_diff=False)
+    r.orch = orch
+    res = orch.run_turn(prompt="p", session_id="s", resume=False, cwd=tmp_path)
+    assert res.error_kind == "cancelled"  # ★ 成功でなく cancelled
+    assert len(c.calls) == 1              # 集約/修正せず即返す (fix ターン無し)
+
+
+def test_capture_diff_uses_no_window_creationflag(tmp_path: Path, monkeypatch) -> None:
+    """_capture_diff は console 明滅防止の creationflags=_NO_WINDOW で git を呼ぶ (Windows)。"""
+    import llterm.host.orchestra_runner as om
+
+    captured: dict = {}
+
+    class _P:
+        stdout = ""
+
+    def _fake_run(*_a: object, **k: object) -> object:
+        captured.update(k)
+        return _P()
+
+    monkeypatch.setattr(om.subprocess, "run", _fake_run)
+    orch = OrchestraRunner(conductor=FakeRunner([]), reviewer=FakeRunner([]), include_diff=True)
+    orch._capture_diff(tmp_path)
+    assert captured.get("creationflags") == om._NO_WINDOW
