@@ -1583,3 +1583,30 @@ def test_progress_main_scaffold_requires_explicit_target(tmp_path: Path, capsys)
     out = capsys.readouterr().out
     assert rc == 2
     assert "PROJECT" in out or "all" in out
+
+
+def test_summary_file_matches_non_utf8_is_failsafe(tmp_path: Path) -> None:
+    """非 UTF-8 で外部保存された PROGRESS.md でも例外を投げず False を返す (fail-safe 契約)。
+
+    回帰: 従来 `except OSError` のみで、UnicodeDecodeError (ValueError 系) が escape し、
+    rotate の _refresh_common_progress 経由で自走ループを殺していた。
+    """
+    f = tmp_path / "PROGRESS.md"
+    f.write_bytes(b"\x82\xa0\x82\xa2")  # cp932 (Shift-JIS)「あい」= 非 UTF-8
+    assert progress_mod._summary_file_matches(f, "whatever") is False
+
+
+def test_read_common_summary_meta_non_dict_returns_none(tmp_path: Path) -> None:
+    """sidecar meta が有効 JSON でも非 dict ([] 等) なら None (obj.get の AttributeError 回避)。"""
+    out = tmp_path / "_shared" / "PROGRESS.md"
+    out.parent.mkdir(parents=True)
+    progress_mod._common_summary_meta_path(out).write_text("[]", encoding="utf-8")
+    assert progress_mod._read_common_summary_meta(out) is None
+
+
+def test_read_common_summary_meta_non_utf8_returns_none(tmp_path: Path) -> None:
+    """meta が非 UTF-8 でも None (read の UnicodeDecodeError を握る)。"""
+    out = tmp_path / "_shared" / "PROGRESS.md"
+    out.parent.mkdir(parents=True)
+    progress_mod._common_summary_meta_path(out).write_bytes(b"\x82\xa0")
+    assert progress_mod._read_common_summary_meta(out) is None

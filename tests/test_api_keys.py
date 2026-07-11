@@ -120,3 +120,15 @@ def test_non_dict_toplevel_returns_empty(tmp_path, monkeypatch) -> None:
 def test_default_path_constant() -> None:
     """既定パスは D:/api-keys.json (ユーザー鍵束)。"""
     assert DEFAULT_API_KEYS_FILE == pathlib.Path("D:/api-keys.json")
+
+
+def test_malformed_env_name_is_failsafe(tmp_path, monkeypatch) -> None:
+    """env 名に不正文字 (NUL 等) を含む鍵があっても例外を投げず、他の鍵は読み込む (fail-safe)。"""
+    keys_file = tmp_path / "api-keys.json"
+    _write_json(keys_file, {"BAD\x00KEY": "v", "GOOD_KEY": "g"})
+    monkeypatch.setenv(API_KEYS_FILE_ENV, str(keys_file))
+    monkeypatch.delenv("GOOD_KEY", raising=False)
+    loaded = load_api_keys_into_env()  # 例外を投げない
+    import os
+    assert "GOOD_KEY" in loaded and os.environ.get("GOOD_KEY") == "g"
+    assert "BAD\x00KEY" not in loaded  # 不正キーはスキップ

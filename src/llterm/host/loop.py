@@ -1158,7 +1158,10 @@ class SessionLoop:
         """
         if self.projects_root is None:
             return
-        refresh_common_summary_for_project(self.workdir, projects_root=self.projects_root)
+        try:
+            refresh_common_summary_for_project(self.workdir, projects_root=self.projects_root)
+        except Exception:  # noqa: BLE001 — 共通進捗の更新失敗で自走ループを止めない (fail-safe)
+            pass
 
     def run(self) -> Outcome:
         sessions = 0
