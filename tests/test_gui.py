@@ -80,6 +80,41 @@ def _run_until_finished(qapp: QtWidgets.QApplication, win: MainWindow, timeout_m
     qapp.processEvents()  # 残った queued slot (on_event / on_finished) を流し切る
 
 
+def test_autopush_triggers_on_rotate_when_enabled(
+    qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """auto-push トグル ON なら rotate イベントで走行中 workdir の push が起動される。"""
+    win = _make_window(tmp_path)
+    win._run_workdir = tmp_path
+    calls: list = []
+    monkeypatch.setattr(win, "_auto_push", lambda wd: calls.append(wd))
+    win.chk_autopush.setChecked(True)
+    win._on_event("rotate", {"used_pct": 0.8, "context_observable": True})
+    assert calls == [tmp_path]  # rotate で push がトリガされた
+
+
+def test_autopush_noop_when_disabled_or_no_workdir(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    """OFF、または workdir 未設定なら push プロセスを起動しない (opt-in / fail-safe)。"""
+    win = _make_window(tmp_path)
+    win.chk_autopush.setChecked(False)
+    win._auto_push(tmp_path)  # OFF → 何もしない
+    assert win._push_proc is None
+    win.chk_autopush.setChecked(True)
+    win._auto_push(None)  # workdir 無し → 何もしない
+    assert win._push_proc is None
+
+
+def test_autopush_setting_persists(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
+    """auto-push トグルは設定に保存され、再起動時に復元される。"""
+    win = _make_window(tmp_path)
+    win.chk_autopush.setChecked(True)
+    win._save_settings()
+    win2 = _make_window(tmp_path)  # 同じ settings_path から復元
+    assert win2.chk_autopush.isChecked() is True
+
+
 # ─── ctl queue consumer (Claude/emit → worker.inject) ────────────
 
 
