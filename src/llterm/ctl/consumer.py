@@ -134,8 +134,11 @@ class CtlConsumer:
         self, cmd: CtlCommand, *, ok: bool, kind: str, result: dict[str, object], text: str = ""
     ) -> None:
         if self._ledger is not None:
-            self._ledger.append(event=kind, cmd_id=cmd.id, action=cmd.action,
-                                detail=(text or cmd.reason)[:200])
+            try:
+                self._ledger.append(event=kind, cmd_id=cmd.id, action=cmd.action,
+                                    detail=(text or cmd.reason)[:200])
+            except Exception:  # noqa: BLE001 — ledger 書込み失敗で tick を殺さない (finish は続行)
+                pass  # 監査は results/ 側にも残る。ここで raise すると poll 済み cmd が inflight に残留
         try:
             self._q.finish(cmd, ok=ok, result=result)
         except OSError:
