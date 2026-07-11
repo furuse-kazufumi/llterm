@@ -329,12 +329,22 @@ class OrchestraRunner:
             if not fr.is_error and fr.text.strip():
                 factcheck_text = fr.text
 
+        # factcheck 中に来た interrupt/cancel を取りこぼさない (aggregate/fix へ進む前に畳む)。
+        stop = self._stop_checkpoint(res, session_id, total_cost, total_turns)
+        if stop is not None:
+            return stop
+
         # 5. 責任者が集約 (取りまとめ + 総合判断)。actionable な統合指示を得る。
         # _aggregate は (指示文, 追加コスト, 追加ターン) を返す
         instr_text, agg_cost, agg_turns = self._aggregate(
             res.text, diff, panel, factcheck_text, session_id, cwd)
         total_cost += agg_cost
         total_turns += agg_turns
+
+        # aggregate 中に来た interrupt/cancel を取りこぼさない (fix/sign-off へ進む前に畳む)。
+        stop = self._stop_checkpoint(res, session_id, total_cost, total_turns)
+        if stop is not None:
+            return stop
 
         final = res
         fixed = False

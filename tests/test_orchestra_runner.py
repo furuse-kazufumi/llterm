@@ -526,3 +526,42 @@ def test_capture_diff_uses_no_window_creationflag(tmp_path: Path, monkeypatch) -
     orch = OrchestraRunner(conductor=FakeRunner([]), reviewer=FakeRunner([]), include_diff=True)
     orch._capture_diff(tmp_path)
     assert captured.get("creationflags") == om._NO_WINDOW
+
+
+def test_interrupt_during_factcheck_surfaces_interrupted(tmp_path: Path) -> None:
+    """factcheck 中に来た緊急注入を取りこぼさず interrupted を返す (旧: 集約/修正が走り success 誤返)。"""
+    class InterruptingFactchecker(FakeRunner):
+        orch: OrchestraRunner | None = None
+
+        def run_turn(self, *, prompt: str, session_id: str, resume: bool, cwd: Path) -> TurnResult:
+            assert self.orch is not None
+            self.orch.interrupt()
+            return super().run_turn(prompt=prompt, session_id=session_id, resume=resume, cwd=cwd)
+
+    c = FakeRunner([_tr("実装", cost=1.0)])
+    r = FakeRunner([_tr("LGTM")])  # fix なし。factchecker が中断
+    fc = InterruptingFactchecker([_tr("事実OK")])
+    orch = OrchestraRunner(conductor=c, reviewers=[r], factchecker=fc, lead=None, include_diff=False)
+    fc.orch = orch
+    res = orch.run_turn(prompt="p", session_id="s", resume=False, cwd=tmp_path)
+    assert res.error_kind == "interrupted"  # ★ factcheck 中の中断を取りこぼさない
+
+
+def test_interrupt_during_panel_breaks_early(tmp_path: Path) -> None:
+    """パネルの reviewer0 で緊急注入が来たら reviewer1 を走らせず即 interrupted (旧: 全員走ってから)。"""
+    class InterruptingReviewer0(FakeRunner):
+        orch: OrchestraRunner | None = None
+
+        def run_turn(self, *, prompt: str, session_id: str, resume: bool, cwd: Path) -> TurnResult:
+            assert self.orch is not None
+            self.orch.interrupt()
+            return super().run_turn(prompt=prompt, session_id=session_id, resume=resume, cwd=cwd)
+
+    c = FakeRunner([_tr("実装")])
+    r0 = InterruptingReviewer0([_tr("- x")])
+    r1 = FakeRunner([_tr("- y")])
+    orch = OrchestraRunner(conductor=c, reviewers=[r0, r1], lead=None, include_diff=False)
+    r0.orch = orch
+    res = orch.run_turn(prompt="p", session_id="s", resume=False, cwd=tmp_path)
+    assert res.error_kind == "interrupted"
+    assert len(r1.calls) == 0  # ★ reviewer1 は走らない (早期 break)
