@@ -57,14 +57,18 @@ class CtlQueue:
             try:
                 raw = path.read_text(encoding="utf-8")
                 cmd = CtlCommand.from_json(raw)
-            except (ParseError, OSError, UnicodeDecodeError) as e:
-                # 読めない/解釈できないエントリで tick を殺さない (レビュー finding medium)
+            except (ParseError, UnicodeDecodeError) as e:
+                # 解釈できない = 恒久的に壊れている → 隔離 (fail-closed・監査に痕跡を残す)。
                 self._quarantine(path, e)
+                continue
+            except OSError:
+                # OSError は一時的の可能性 (Windows 共有違反 / AV ロック / poll と削除の競合)。
+                # 隔離すると正当タスクを失うため、隔離せず次 tick で再試行する (tick は殺さない)。
                 continue
             try:
                 path.rename(self.inflight / path.name)
-            except OSError as e:
-                self._quarantine(path, e)
+            except OSError:
+                # rename 失敗も transient (別 consumer が先取り等) → 隔離せず次 tick で再試行。
                 continue
             return cmd
         return None
