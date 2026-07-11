@@ -369,6 +369,11 @@ class GeminiRunner:
             self._notify_stream(json.dumps({"type": "response", "text": res_with_sid.text}))
         return res_with_sid
 
+    def _is_stop_signalled(self) -> bool:
+        """走行中ターンを畳むべき停止シグナル (cancel/interrupt) が立っているか。"""
+        with self._lock:
+            return self._cancelled or self._interrupted
+
     def cancel(self) -> None:
         """Gemini ターンをプロセスツリーごと安全に kill する (恒久・sticky)。"""
         with self._lock:
