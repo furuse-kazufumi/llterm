@@ -197,6 +197,8 @@ class MainWindow(QtWidgets.QMainWindow):
         rad_default = rad_default or bool(saved.get("rad", False))
         offload_default = bool(saved.get("offload", True))  # 既定 ON = 必要なら自動オフロード
         autonomy_default = bool(saved.get("autonomy", False))
+        # 自動 push トグルの復元既定 (既定 OFF = opt-in)。_build_controls で chk_autopush に流す。
+        self._autopush_default = bool(saved.get("autopush", False))
         # codex_first 既定: 保存値があればそれ。無ければ codex が導入済みなら True
         # (= 既定で Codex を主奏者にする)。理由 (2026-06-15 Anthropic 課金変更): claude -p 等の
         # ヘッドレス自律利用はサブスク枠から分離され API 実費課金 (繰越なし) になったため、
