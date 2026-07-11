@@ -469,9 +469,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.chk_autonomy.setToolTip(t("gui.tip.autonomy"))
         self.chk_codex_first = QtWidgets.QCheckBox(t("gui.check.codex_first"))
         self.chk_codex_first.setToolTip(t("gui.tip.codex_first"))
+        self.chk_autopush = QtWidgets.QCheckBox(t("gui.check.autopush"))
+        self.chk_autopush.setToolTip(t("gui.tip.autopush"))
         for cb, val in ((self.chk_real, real_default), (self.chk_rad, rad_default),
                         (self.chk_offload, offload_default), (self.chk_autonomy, autonomy_default),
-                        (self.chk_codex_first, codex_first_default)):
+                        (self.chk_codex_first, codex_first_default),
+                        (self.chk_autopush, self._autopush_default)):
             with QtCore.QSignalBlocker(cb):
                 cb.setChecked(val)
 
