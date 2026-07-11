@@ -94,18 +94,27 @@ def promote(
     既存 live は破棄前に必ずバックアップする (make_backup) = 上書き事故を防ぐ fail-safe。
     staging が無ければ RadError (live を壊さない)。
     """
+    if not _DOMAIN_RE.fullmatch(domain):
+        # パス区切り / `..` を含む分野名は docs_root 外を破壊しうる → 昇格しない (fail-closed)
+        raise RadError(t("rad.invalid_domain", domain=domain))
     stg = staging_dir(domain, docs_root)
     live = live_dir(domain, docs_root)
     if not stg.is_dir():
         raise RadError(t("rad.staging_missing", staging=stg))
+    # 破壊的 FS 操作 (rename/rmtree/move) の生の OSError を RadError に正規化する。
+    # docstring/呼び出し側 (GUI _do_promote は RadError のみ catch) の fail-closed 契約を全経路で満たし、
+    # ふつうの権限/ロック/クロスデバイスエラーで GUI を殺さない。
     backup: Path | None = None
-    if live.exists():
-        if make_backup:
-            backup = _free_backup(live)
-            live.rename(backup)
-        else:
-            shutil.rmtree(live)
-    shutil.move(str(stg), str(live))
+    try:
+        if live.exists():
+            if make_backup:
+                backup = _free_backup(live)
+                live.rename(backup)
+            else:
+                shutil.rmtree(live)
+        shutil.move(str(stg), str(live))
+    except OSError as exc:
+        raise RadError(t("rad.promote_failed", error=exc)) from exc
     return PromoteResult(domain=domain, live=live, backup=backup)
 
 
