@@ -39,7 +39,10 @@ class CtlQueue:
         if any(p.name.endswith(f"-{cmd.id}.json") or p.stem == cmd.id
                for p in self.qdir.glob("*.json")):
             raise FileExistsError(f"duplicate command id: {cmd.id}")
-        seq = f"{time.monotonic_ns():020d}"
+        # FIFO 用の連番 prefix は **プロセス間で比較可能** な wall-clock ns を使う。
+        # emit は毎回別プロセスなので monotonic_ns (基準点がプロセス依存・仕様上プロセス間
+        # 比較不可) では複数 producer 間の順序が保証されない。time_ns は UTC 基準で比較可能。
+        seq = f"{time.time_ns():020d}"
         path = self.qdir / f"{seq}-{cmd.id}.json"
         # アトミック書込み: 一時名 (glob("*.json") が拾わない .json.tmp) に書き切ってから
         # os.replace で最終名へ。これで consumer の poll が「書込み途中」を読んで正当タスクを
