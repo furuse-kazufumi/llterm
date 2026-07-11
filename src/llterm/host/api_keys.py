@@ -86,6 +86,9 @@ def load_api_keys_into_env(path: pathlib.Path | None = None) -> list[str]:
     for key, value in data.items():
         if not isinstance(key, str) or not isinstance(value, str):
             continue  # dict/list/数値/None は env に載せられないのでスキップ
-        os.environ.setdefault(key, value)  # 既存 env を上書きしない (明示設定が勝つ)
+        try:
+            os.environ.setdefault(key, value)  # 既存 env を上書きしない (明示設定が勝つ)
+        except (ValueError, OSError):
+            continue  # env 名に不正文字 ('='/NUL 等) → その鍵だけ捨てる (fail-safe 契約を守る)
         loaded.append(key)
     return loaded
