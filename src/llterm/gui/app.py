@@ -684,6 +684,7 @@ class MainWindow(QtWidgets.QMainWindow):
         form.addRow(self.chk_rad)
         form.addRow(self.chk_offload)
         form.addRow(self.chk_codex_first)
+        form.addRow(self.chk_autopush)
         # 数値設定。
         form.addRow(t("gui.label.threshold"), self.spin_threshold)
         form.addRow(t("gui.label.window_tokens"), self.spin_window)
