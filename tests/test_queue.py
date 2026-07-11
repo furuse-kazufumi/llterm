@@ -40,6 +40,45 @@ def test_poll_transient_oserror_is_not_quarantined(tmp_path: Path, monkeypatch) 
     assert not list((tmp_path / ".llterm" / "rejected").glob("*"))  # 隔離されない
 
 
+def test_recover_inflight_requeues_unfinished(tmp_path: Path):
+    """poll→finish 間クラッシュで inflight に残った未完了タスクを queue へ戻し再処理可能にする。"""
+    q = _mk(tmp_path)
+    q.submit(CtlCommand(id="ctl-a", action="rotate", reason="r"))
+    got = q.poll()  # → inflight へ移動
+    assert got is not None and got.id == "ctl-a"
+    assert not list((tmp_path / ".llterm" / "queue").glob("*.json"))  # queue は空
+    assert q.recover_inflight() == 1
+    assert not list((tmp_path / ".llterm" / "inflight").glob("*.json"))  # inflight 掃けた
+    assert list((tmp_path / ".llterm" / "queue").glob("*ctl-a*"))       # queue へ戻った
+    again = q.poll()
+    assert again is not None and again.id == "ctl-a"                    # 再処理できる
+
+
+def test_recover_inflight_skips_completed(tmp_path: Path):
+    """results に完了記録がある残骸は戻さず掃除する (二重実行の防止)。"""
+    q = _mk(tmp_path)
+    q.submit(CtlCommand(id="ctl-b", action="rotate", reason="r"))
+    q.poll()  # → inflight/<seq>-ctl-b.json
+    # finish の results 書込みだけ済んで inflight unlink 前に落ちた状態を模擬
+    (tmp_path / ".llterm" / "results" / "ctl-b.json").write_text(
+        '{"id":"ctl-b","ok":true}', encoding="utf-8")
+    assert q.recover_inflight() == 0                                    # 完了済み → 戻さない
+    assert not list((tmp_path / ".llterm" / "inflight").glob("*.json"))  # 残骸を掃除
+    assert not list((tmp_path / ".llterm" / "queue").glob("*.json"))
+
+
+def test_prune_results_caps_growth(tmp_path: Path):
+    """results/ は新しい keep 件に保たれる (長時間運用の無制限成長を防ぐ)。"""
+    q = _mk(tmp_path)
+    for i in range(8):
+        q.submit(CtlCommand(id=f"ctl-{i}", action="rotate", reason="r"))
+        cmd = q.poll()
+        assert cmd is not None
+        q.finish(cmd, ok=True, result="x")
+    q._prune_results(keep=3)
+    assert len(list((tmp_path / ".llterm" / "results").glob("*.json"))) == 3
+
+
 def test_poll_consumes_in_order_and_moves_to_inflight(tmp_path: Path):
     q = _mk(tmp_path)
     q.submit(CtlCommand(id="ctl-a", action="query-state", reason="r"))
