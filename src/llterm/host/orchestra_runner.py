@@ -35,7 +35,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from llterm.host.loop import TurnResult, TurnRunner
+from llterm.host.loop import _NO_WINDOW, TurnResult, TurnRunner
 
 _DIFF_MAX_CHARS = 4000   # レビューに添える git diff の上限 (プロンプト肥大を防ぐ)
 _REVIEW_MAX_CHARS = 4000  # 指揮者へ渡すレビュー/集約本文の上限
