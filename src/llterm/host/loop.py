@@ -561,7 +561,7 @@ def _consume_stdout_bounded(
             for line in proc.stdout:
                 out_lines.append(line)
                 notify(line)
-        except (OSError, ValueError):
+        except (OSError, ValueError, TypeError):  # 壊れた stdout でも reader を殺さない
             pass
         finally:
             done.set()
