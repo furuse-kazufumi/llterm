@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import shutil
 import sys
 from dataclasses import dataclass
@@ -21,6 +22,10 @@ from llterm.i18n import t
 
 RAD_DOCS_ROOT = Path("D:/docs")
 RAPTOR_LIBEXEC = Path("D:/tools/raptor/libexec")
+
+# domain は破壊的な promote() で live/staging のパスに補間される。パス区切りや `..` を含めない
+# 安全な文字集合に限定し、docs_root 外への rmtree/move (path traversal) を fail-closed で防ぐ。
+_DOMAIN_RE = re.compile(r"[A-Za-z0-9_-]+")
 
 
 class RadError(RuntimeError):
