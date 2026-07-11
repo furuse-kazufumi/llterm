@@ -76,7 +76,7 @@ def test_promote_no_backup_replaces(tmp_path: Path) -> None:
 
 def test_promote_invalid_domain_rejected(tmp_path: Path) -> None:
     """パス区切り/`..`/空白/空 を含む分野名は昇格せず RadError (traversal 防止・fail-closed)。"""
-    for bad in ("../evil", "a/b", "..", "a b", "", "x\y"):
+    for bad in ("../evil", "a/b", "..", "a b", "", "x\\y"):
         with pytest.raises(RadError):
             promote(bad, docs_root=tmp_path)
 
