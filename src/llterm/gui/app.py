@@ -782,6 +782,7 @@ class MainWindow(QtWidgets.QMainWindow):
             "offload": self.chk_offload.isChecked(),
             "autonomy": self.chk_autonomy.isChecked(),
             "codex_first": self.chk_codex_first.isChecked(),
+            "autopush": self.chk_autopush.isChecked(),
             "reviewers": self._selected_reviewer_keys(),
             "factchecker": self.cmb_factcheck.currentData(),
             "summary_raw": self.chk_summary_raw.isChecked(),
