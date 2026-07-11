@@ -41,8 +41,13 @@ class CtlQueue:
             raise FileExistsError(f"duplicate command id: {cmd.id}")
         seq = f"{time.monotonic_ns():020d}"
         path = self.qdir / f"{seq}-{cmd.id}.json"
-        path.write_text(json.dumps(cmd.to_dict(), ensure_ascii=False, indent=1),
-                        encoding="utf-8")
+        # アトミック書込み: 一時名 (glob("*.json") が拾わない .json.tmp) に書き切ってから
+        # os.replace で最終名へ。これで consumer の poll が「書込み途中」を読んで正当タスクを
+        # ParseError で quarantine する race を排除する。
+        tmp = self.qdir / f".{seq}-{cmd.id}.json.tmp"
+        tmp.write_text(json.dumps(cmd.to_dict(), ensure_ascii=False, indent=1),
+                       encoding="utf-8")
+        os.replace(tmp, path)
         return path
 
     # ---- consumer 側 (llterm host) ----
