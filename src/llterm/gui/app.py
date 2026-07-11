@@ -1396,6 +1396,49 @@ class MainWindow(QtWidgets.QMainWindow):
         if deleted:
             QtCore.QCoreApplication.sendPostedEvents(None, QtCore.QEvent.Type.DeferredDelete)
 
+    # ---- 自動 push (auto-push トグル) ----
+    def _auto_push(self, workdir: Path | None) -> None:
+        """auto-push トグルが ON なら workdir の現在ブランチを origin へ best-effort で push する。
+
+        QProcess で非同期実行するため UI を固めない。前回 push が走行中なら多重起動しない。
+        push は破壊的になり得るが、ユーザーが明示的にトグルを ON にした場合のみ行う (opt-in)。
+        失敗しても GUI/ループに波及させない (fail-safe)。
+        """
+        if workdir is None or not self.chk_autopush.isChecked():
+            return
+        if (self._push_proc is not None
+                and self._push_proc.state() != QtCore.QProcess.ProcessState.NotRunning):
+            return  # 前回 push がまだ走行中 → 多重 push しない
+        proc = QtCore.QProcess(self)
+        proc.setWorkingDirectory(str(workdir))
+        proc.setProgram("git")
+        proc.setArguments(["push"])
+        proc.finished.connect(self._on_push_finished)
+        proc.errorOccurred.connect(self._on_push_error)
+        self._push_proc = proc
+        self._append(t("gui.msg.autopush_start", workdir=workdir.name), PALETTE["dim"], ts=True)
+        proc.start()
+
+    @QtCore.Slot(int, QtCore.QProcess.ExitStatus)
+    def _on_push_finished(self, exit_code: int, _status: QtCore.QProcess.ExitStatus) -> None:
+        proc = self._push_proc
+        if proc is None:
+            return
+        err = bytes(proc.readAllStandardError().data()).decode("utf-8", "replace").strip()
+        if exit_code == 0:
+            self._append(t("gui.msg.autopush_ok"), PALETTE["inject"], ts=True)
+        else:
+            self._append(t("gui.msg.autopush_fail", detail=(err[:200] or f"exit {exit_code}")),
+                         PALETTE["err"], ts=True)
+        self._push_proc = None
+
+    @QtCore.Slot(QtCore.QProcess.ProcessError)
+    def _on_push_error(self, _err: QtCore.QProcess.ProcessError) -> None:
+        if self._push_proc is not None:
+            self._append(t("gui.msg.autopush_fail", detail="git 起動失敗 (PATH 不在?)"),
+                         PALETTE["err"], ts=True)
+            self._push_proc = None
+
     # ---- ワーカーからのイベント (メインスレッドで実行) ----
     @QtCore.Slot(dict)
     def _on_stream(self, item: dict) -> None:
