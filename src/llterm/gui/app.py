@@ -1916,6 +1916,9 @@ class MainWindow(QtWidgets.QMainWindow):
         if self._closing_after_stop:
             self._closing_after_stop = False
             self.close()  # × 終了確認で予約された閉じる操作を、記録完了後に実行
+        else:
+            # ループ終了時に最終状態を push (× 終了中は窓を閉じるので push しない — QProcess 孤児化回避)。
+            self._auto_push(self._run_workdir)
 
 
 def main(argv: list[str] | None = None) -> int:
