@@ -281,6 +281,9 @@ def test_gemini_timeout_waits_again_after_kill(tmp_path: Path, monkeypatch: pyte
         def read(self) -> str:
             return ""
 
+        def __iter__(self):  # gemini は _consume_stdout_bounded で行イテレーションする
+            return iter(())
+
     class _FakeErr:
         def __iter__(self):
             return iter(())
