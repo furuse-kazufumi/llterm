@@ -17,6 +17,29 @@ def test_submit_creates_queue_file(tmp_path: Path):
     assert json.loads(files[0].read_text(encoding="utf-8"))["id"] == "ctl-1"
 
 
+def test_submit_is_atomic_no_temp_leftover(tmp_path: Path):
+    """submit はアトミック (temp→os.replace)。中間 .tmp を残さず最終 .json だけ残る。"""
+    q = _mk(tmp_path)
+    q.submit(CtlCommand(id="ctl-1", action="rotate", reason="r"))
+    qdir = tmp_path / ".llterm" / "queue"
+    assert len(list(qdir.glob("*.json"))) == 1
+    assert not list(qdir.glob("*.tmp"))  # 中間ファイルが残らない
+
+
+def test_poll_transient_oserror_is_not_quarantined(tmp_path: Path, monkeypatch) -> None:
+    """読取中の一時的 OSError (共有違反等) は隔離せず、正当タスクを queue に残す (次 tick 再試行)。"""
+    q = _mk(tmp_path)
+    q.submit(CtlCommand(id="ctl-x", action="rotate", reason="r"))
+
+    def _flaky_read(self: Path, *a: object, **k: object) -> str:
+        raise OSError("transiently locked")
+
+    monkeypatch.setattr(Path, "read_text", _flaky_read)
+    assert q.poll() is None  # 読めない → 取り出さない
+    assert list((tmp_path / ".llterm" / "queue").glob("*ctl-x*"))  # queue に残る
+    assert not list((tmp_path / ".llterm" / "rejected").glob("*"))  # 隔離されない
+
+
 def test_poll_consumes_in_order_and_moves_to_inflight(tmp_path: Path):
     q = _mk(tmp_path)
     q.submit(CtlCommand(id="ctl-a", action="query-state", reason="r"))
