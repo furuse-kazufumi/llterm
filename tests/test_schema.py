@@ -29,6 +29,20 @@ def test_missing_id_rejected():
         CtlCommand.from_json(raw)
 
 
+def test_path_traversal_or_unsafe_id_rejected():
+    """id はパスに補間されるため、区切り/`..`/glob メタ文字/空白/長すぎは fail-closed で拒否。"""
+    for bad in ("../evil", "a/b", "..", ".", "x\\y", "a*b", "a b", "", "z" * 129):
+        raw = json.dumps({"id": bad, "action": "rotate", "reason": "x"})
+        with pytest.raises(ParseError, match="id"):
+            CtlCommand.from_json(raw)
+
+
+def test_safe_id_accepted():
+    """emit 生成形式 (ctl-YYYYMMDDTHHMMSS-XXXX) 等の安全な id は通る。"""
+    raw = json.dumps({"id": "ctl-20260711T084530-ab12", "action": "rotate", "reason": "x"})
+    assert CtlCommand.from_json(raw).id == "ctl-20260711T084530-ab12"
+
+
 def test_missing_reason_rejected():
     # 監査必須: reason 無しは fail-closed で拒否
     raw = json.dumps({"id": "ctl-3", "action": "rotate"})
