@@ -1353,7 +1353,11 @@ class MainWindow(QtWidgets.QMainWindow):
         """
         if self.worker is not None and self.worker.isRunning():
             if self._closing_after_stop:
-                event.ignore()  # 既に graceful 停止中 — 二重ダイアログを出さない
+                # 再入 (× 2 回目): graceful 停止が完了しない (ターンが長い/ハング) → 強制停止に
+                # 格上げして確実に閉じられるようにする (窓が閉じられないままになるのを防ぐ)。
+                # force stop はターンをツリー kill し、loop 終了 → _on_finished が close() する。
+                self.worker.request_stop(force=True)
+                event.ignore()
                 return
             reply = QtWidgets.QMessageBox.question(
                 self, t("gui.dialog.close.title"), t("gui.dialog.close.body"),
@@ -1369,11 +1373,28 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         try:
             self._drain_common_summary_write()
+            self._join_running_retired_workers()  # 走行中 retired worker を止め切ってから窓を壊す
             self._reap_retired_workers()
             self._save_settings()  # 最後の設定を次回起動時に復元する
         except Exception:  # noqa: BLE001
             pass
         event.accept()
+
+    def _join_running_retired_workers(self) -> None:
+        """close 時、まだ走行中の retired worker を force stop + join してから窓を壊す。
+
+        LoopWorker は parent=self の QThread なので、走行中に window が destroy されると
+        Qt が『QThread: Destroyed while thread is still running』で abort する。Start→終了→Start の
+        高速反復で「retired だが run() 未 return」の worker が残る窓で close されると起きるため、
+        確実に終わらせる (bounded wait; 万一終わらなくても best-effort で先へ進む)。
+        """
+        for worker in list(self._retired_workers):
+            if worker.isRunning():
+                try:
+                    worker.request_stop(force=True)
+                    worker.wait(3000)
+                except Exception:  # noqa: BLE001
+                    pass
 
     def _retire_worker(self, worker: LoopWorker) -> None:
         if worker not in self._retired_workers:
