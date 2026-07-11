@@ -8,7 +8,13 @@ spec (llterm_spec_2026_06_06.md §4) の制御コマンド。設計規律:
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
+
+# id はファイルパス (queue/inflight/results の <...>.json) に補間されるため、パス区切りや
+# `..`・glob メタ文字を含めない安全な文字集合に限定する (fail-closed / path traversal 防止)。
+# emit 生成 id は `ctl-YYYYMMDDTHHMMSS-XXXX` = 本集合に収まる。
+_ID_RE = re.compile(r"[A-Za-z0-9_-]{1,128}")
 
 ALLOWED_ACTIONS: tuple[str, ...] = (
     "rotate", "set-effort", "inject-task", "fork-session", "query-state", "shutdown",
