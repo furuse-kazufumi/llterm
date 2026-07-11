@@ -104,6 +104,14 @@ MESSAGES: dict[str, dict[str, str]] = {
         "ja": "staging が存在しません: {staging}",
         "en": "staging does not exist: {staging}",
     },
+    "rad.invalid_domain": {
+        "ja": "不正な分野名です (英数字・_・- のみ可): {domain}",
+        "en": "invalid domain (only letters/digits/_/- allowed): {domain}",
+    },
+    "rad.promote_failed": {
+        "ja": "昇格に失敗しました (live は保持): {error}",
+        "en": "promote failed (live preserved): {error}",
+    },
     # ─── テンプレ registry (GUI コンボボックス表示) ───────────────────
     "template.general.label": {
         "ja": "汎用自走",
