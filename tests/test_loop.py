@@ -380,6 +380,27 @@ def test_provider_switch_on_rate_limit(tmp_path: Path) -> None:
     assert len(fallback.calls) >= 1  # fallback が 1 ターン以上走った
 
 
+def test_provider_switch_does_not_consume_session_budget(tmp_path: Path) -> None:
+    """max_sessions=1 でも、初手 rate_limited による fallback 切替は fallback を必ず走らせる。
+
+    回帰: provider switch を 1 セッション消費と数えていたため、max_sessions=1 では primary が
+    初手 rate_limited になると切替だけで max_sessions に達し fallback が 1 ターンも走らず停止した
+    (ユーザー方針「ループを止めない」に反する早期停止)。switch はセッションを消費しない。
+    """
+    primary = FakeRunner([{"is_error": True, "error_kind": "rate_limited"}])
+    fallback = FakeRunner([{"ctx": 150_000}])  # 切替先が成功 → rotate → max_sessions
+    loop = SessionLoop(
+        runner=primary, fallback_runners=(fallback,), workdir=tmp_path,
+        ledger=Ledger(tmp_path / "l.jsonl"),
+        window_tokens=200_000, threshold=0.70, max_sessions=1,
+        now_fn=lambda: 0.0, sleep_fn=lambda s: None,
+    )
+    outcome = loop.run()
+    assert len(fallback.calls) >= 1  # ★ 切替先が実際に 1 ターン以上走った (旧実装では 0 だった)
+    assert outcome.stop_reason == "max_sessions"
+    assert outcome.sessions == 1  # rotate 1 回 = 1 セッション (switch は数えない)
+
+
 def test_no_fallback_waits_and_resumes(tmp_path: Path) -> None:
     """fallback が無ければ従来どおり resetsAt まで待って同プロバイダで再開する。"""
     runner = FakeRunner([{"is_error": True, "error_kind": "rate_limited"}, {"ctx": 150_000}])
