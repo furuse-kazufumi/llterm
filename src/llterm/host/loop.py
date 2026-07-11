@@ -1206,7 +1206,9 @@ class SessionLoop:
             # ユーザー指摘 2026-06-13「注入の優先度は高くあるべき」への対処。
             injected = False
             injected_text: str | None = None
-            got = self._take_injection()
+            # 切替で退避した注入があれば最優先で消費し、無ければ通常どおりキューから取る。
+            got = pending_reinject or self._take_injection()
+            pending_reinject = None
             if got:
                 opener, injected, injected_text = got, True, got
             prompt = self._apply_directives(self._augment(opener))  # 安全弁/autonomy は毎ターン動的評価
