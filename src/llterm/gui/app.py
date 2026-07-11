@@ -1209,8 +1209,17 @@ class MainWindow(QtWidgets.QMainWindow):
         """
         root = workdir / ".llterm"
         ledger = Ledger(root / "loop_ledger.jsonl")  # ループと同じ監査 ledger に相乗り
+        queue = CtlQueue(root, ledger=ledger)
+        try:
+            # クラッシュ復旧: 前回 poll→finish 間で落ちて inflight に残った未完了タスクを
+            # queue へ戻し、飢餓を解消する (完了済み残骸は掃除)。失敗しても走行を妨げない。
+            recovered = queue.recover_inflight()
+            if recovered:
+                self._append(t("gui.msg.ctl_recovered", n=recovered), PALETTE["rotate"], ts=True)
+        except Exception:  # noqa: BLE001
+            pass
         self._ctl_consumer = CtlConsumer(
-            CtlQueue(root, ledger=ledger),
+            queue,
             inject=self._ctl_inject,
             running=lambda: self.worker is not None and self.worker.isRunning(),
             announce=self._ctl_announce,
