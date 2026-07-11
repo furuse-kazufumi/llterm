@@ -735,6 +735,10 @@ MESSAGES: dict[str, dict[str, str]] = {
         "ja": "× [ctl拒否] 未対応 action '{action}' は実行しません  ({cid})",
         "en": "× [ctl reject] unsupported action '{action}' not executed  ({cid})",
     },
+    "gui.msg.ctl_recovered": {
+        "ja": "↻ [ctl復旧] 前回未完了の inject-task {n} 件を queue へ戻しました",
+        "en": "↻ [ctl recover] requeued {n} unfinished inject-task(s) from a prior crash",
+    },
     "gui.msg.ctl_error": {
         "ja": "× [ctl失敗] 注入処理でエラー  ({cid})",
         "en": "× [ctl error] failure during injection  ({cid})",
