@@ -1424,7 +1424,7 @@ class MainWindow(QtWidgets.QMainWindow):
         proc = self._push_proc
         if proc is None:
             return
-        err = proc.readAllStandardError().data().decode("utf-8", "replace").strip()
+        err = str(proc.readAllStandardError().data(), "utf-8", "replace").strip()
         if exit_code == 0:
             self._append(t("gui.msg.autopush_ok"), PALETTE["inject"], ts=True)
         else:
