@@ -324,8 +324,18 @@ class OrchestraRunner:
                 prompt=self._fix_prompt(instr_text), session_id=session_id, resume=True, cwd=cwd)
             total_cost += fix.cost_usd
             total_turns += fix.num_turns
-            final = fix  # 修正後の状態 (context_tokens/text/error) を最終結果に反映
-            fixed = True
+            if fix.is_error and fix.error_kind == "other":
+                # review-fix は任意の品質ゲート。その "other" 失敗 (timeout 等) で成功済みの
+                # 実装結果 (res) を捨てて全体を error にすると、loop が consec_err を積み 3 連続で
+                # circuit_open → 実装は毎回成功しているのに自走が止まる。実装は保持し、fix 失敗は
+                # イベントで可視化するに留める (ユーザー方針: ループを止めない)。rate_limited/auth/
+                # interrupted/cancelled/unavailable は loop が正しく扱うのでそのまま伝播させる。
+                self._emit({"kind": "review", "phase": "fix_failed",
+                            "detail": (fix.text or fix.error_kind or "")[:200]})
+                # final は res のまま / fixed も False のまま (fix は適用されなかった → sign-off しない)
+            else:
+                final = fix  # 修正後の状態 (context_tokens/text/error) を最終結果に反映
+                fixed = True
 
         # 7. 最終 sign-off (責任者がループを閉じる)。有界: 再修正はしない (最大 1 回)。
         if (self.final_signoff and self._aux_enabled(self.lead) and fixed
