@@ -1881,6 +1881,7 @@ class MainWindow(QtWidgets.QMainWindow):
             if summary:
                 self._set_progress(summary, prefix=t("gui.progress.handoff_prefix"))
             self._refresh_summary()  # 進捗サマリ パネルも最新 handoff に更新
+            self._auto_push(self._run_workdir)  # rotate = セッション境界 = 自然なコミット反映点
         elif kind == "stopped":
             self._append(
                 f"\n=== stopped: {data.get('stop_reason')} "
