@@ -1166,6 +1166,10 @@ class SessionLoop:
         total_cost = 0.0
         consec_err = 0
         prev_idx = -1
+        # provider 切替 (rate_limited / unavailable) の直前に実行中だった注入タスクを退避する。
+        # 退避しないと次セッション opener の _take_injection() が「次の」キュー項目を pop して
+        # 実行中だった注入が捨てられる (= 切替時の注入飢餓)。次セッションで最優先に消費する。
+        pending_reinject: str | None = None
 
         while self.max_sessions is None or sessions < self.max_sessions:
             if self._stop_requested():
