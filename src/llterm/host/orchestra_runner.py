@@ -172,6 +172,7 @@ class OrchestraRunner:
                 ["git", "-C", str(cwd), "--no-pager", "diff"],
                 capture_output=True, text=True, encoding="utf-8", errors="replace",
                 timeout=30, check=False,
+                creationflags=_NO_WINDOW,  # pythonw GUI 親が console 子を出すと毎ターン窓が明滅する
             )
         except (OSError, subprocess.SubprocessError):
             return ""
