@@ -401,6 +401,31 @@ def test_provider_switch_does_not_consume_session_budget(tmp_path: Path) -> None
     assert outcome.sessions == 1  # rotate 1 回 = 1 セッション (switch は数えない)
 
 
+def test_injection_preserved_across_provider_switch(tmp_path: Path) -> None:
+    """rate_limited で fallback へ切替した際、実行中だった注入タスクを捨てず次セッションで実行する。
+
+    回帰: 切替 break 後に次セッション opener が _take_injection() を呼ぶと「次の」キュー項目を
+    pop してしまい、実行中だった注入 (rate_limited で未完) が永久に失われていた。
+    """
+    calls = {"n": 0}
+
+    def nxt() -> str | None:
+        calls["n"] += 1
+        return "URGENT-TASK-XYZ" if calls["n"] == 1 else None
+
+    primary = FakeRunner([{"is_error": True, "error_kind": "rate_limited"}])
+    fallback = FakeRunner([{"ctx": 150_000}])
+    loop = SessionLoop(
+        runner=primary, fallback_runners=(fallback,), workdir=tmp_path,
+        ledger=Ledger(tmp_path / "l.jsonl"),
+        window_tokens=200_000, threshold=0.70, max_sessions=1,
+        now_fn=lambda: 0.0, sleep_fn=lambda s: None, next_prompt=nxt,
+    )
+    loop.run()
+    assert fallback.calls, "fallback が走らなかった"
+    assert "URGENT-TASK-XYZ" in fallback.calls[0][0]  # ★ 注入タスクが切替先で実行された (旧: 消失)
+
+
 def test_no_fallback_waits_and_resumes(tmp_path: Path) -> None:
     """fallback が無ければ従来どおり resetsAt まで待って同プロバイダで再開する。"""
     runner = FakeRunner([{"is_error": True, "error_kind": "rate_limited"}, {"ctx": 150_000}])
