@@ -308,38 +308,11 @@ class OrchestraRunner:
             if not rr.is_error and rr.text.strip():
                 panel.append((label, rr.text))
 
-        # 緊急注入がレビュー中に来た場合: 残りの集約/修正/sign-off を行わず即 interrupted を返す
-        # (loop はループを止めず注入を次ターンで消費する)。指揮者実装/修正フェーズ中の中断は
-        # 各 run_turn が "interrupted" を返して伝播するため、ここはレビュー中の取りこぼし防止。
-        with self._lock:
-            interrupted = self._interrupted
-        if interrupted:
-            return TurnResult(res.session_id or session_id, res.input_tokens, res.output_tokens,
-                              res.context_tokens, total_cost, "", True, "interrupted",
-                              max(1, total_turns), -1, context_window=res.context_window,
-                              context_observable=res.context_observable,
-                              context_observable_reason=res.context_observable_reason,
-                              rate_limit_status=res.rate_limit_status,
-                              rate_limit_resets_at=res.rate_limit_resets_at,
-                              cached_input_tokens=res.cached_input_tokens,
-                              reasoning_output_tokens=res.reasoning_output_tokens,
-                              token_usage_kind=res.token_usage_kind,
-                              provider_version=res.provider_version)
-        # Stop がレビュー中に来た場合: 以降の集約/修正/sign-off をせず即 cancelled を返す。
-        # 返さないと指揮者の success 結果が返り、loop が『成功ターン』として扱い停止が次ターンまで
-        # 遅れる (+ GUI/ledger に誤って成功と出る)。interrupted のミラー。
-        if self._is_cancelled():
-            return TurnResult(res.session_id or session_id, res.input_tokens, res.output_tokens,
-                              res.context_tokens, total_cost, "", True, "cancelled",
-                              max(1, total_turns), -1, context_window=res.context_window,
-                              context_observable=res.context_observable,
-                              context_observable_reason=res.context_observable_reason,
-                              rate_limit_status=res.rate_limit_status,
-                              rate_limit_resets_at=res.rate_limit_resets_at,
-                              cached_input_tokens=res.cached_input_tokens,
-                              reasoning_output_tokens=res.reasoning_output_tokens,
-                              token_usage_kind=res.token_usage_kind,
-                              provider_version=res.provider_version)
+        # 緊急注入 (interrupt) / Stop (cancel) がレビュー中に来たら、残りの集約/修正/sign-off を
+        # せず即それを返す (interrupt=注入を次ターンで消費 / cancel=停止)。_stop_checkpoint 参照。
+        stop = self._stop_checkpoint(res, session_id, total_cost, total_turns)
+        if stop is not None:
+            return stop
 
         # 4. 真偽確認奏者 (あれば): 実装報告 + diff の事実主張を裏取り (best-effort / stateless)。
         factcheck_text = ""
