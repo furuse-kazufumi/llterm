@@ -229,6 +229,43 @@ def test_gemini_timeout_returns_visible_reason(tmp_path: Path) -> None:
     assert res.text == t("runner.gemini.timeout")
 
 
+def test_gemini_cancel_returns_even_if_pipe_never_closes(tmp_path: Path) -> None:
+    """子ツリーを kill しても stdout が EOF に達しない異常でも cancel() 後 run_turn は有界で返る。
+
+    回帰: gemini は proc.stdout.read() で全出力をブロッキング読みするため、taskkill /F /T しても
+    孫が継承済みの stdout ハンドルを握って生存すると read() が永久ブロック → 強制停止しても
+    止まらなかった (claude/codex と同じ失敗クラス)。_kill を無力化して pipe が閉じないケースを模擬。
+    """
+    runner = _scripted_gemini(tmp_path, body=_SLEEP_GEMINI)
+    runner.timeout = 60.0
+    runner._kill = lambda proc: None  # type: ignore[method-assign]  # kill しても pipe が閉じない模擬
+    results: list = []
+
+    def _run() -> None:
+        results.append(runner.run_turn(prompt="p", session_id="s", resume=False, cwd=tmp_path))
+
+    th = threading.Thread(target=_run)
+    th.start()
+    proc = None
+    try:
+        for _ in range(400):  # 子が起動し _proc がセットされるまで待つ (最大 ~20s)
+            proc = runner._proc
+            if proc is not None:
+                break
+            time.sleep(0.05)
+        assert proc is not None
+        runner.cancel()
+        th.join(20)  # 修正前は子の 30s sleep 完了までブロック → join 失敗
+        assert not th.is_alive(), "cancel 後も run_turn が返らない (pipe ハングが解消していない)"
+        assert results[0].error_kind == "cancelled"
+    finally:
+        if proc is not None:
+            try:
+                proc.kill()  # 無力化した _kill の代わりに孤児の子を実際に落とす
+            except Exception:  # noqa: BLE001
+                pass
+
+
 def test_gemini_timeout_waits_again_after_kill(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     class _FakeIn:
         def write(self, _: str) -> None:
