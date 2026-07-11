@@ -27,3 +27,13 @@ def test_append_never_raises_on_bad_detail(tmp_path: Path):
     led.append(event="error", cmd_id="x", action="rotate", detail=object())
     rec = json.loads((tmp_path / "ledger.jsonl").read_text(encoding="utf-8"))
     assert "object" in rec["detail"]
+
+
+def test_append_never_raises_on_repr_failure(tmp_path: Path):
+    """detail の __repr__ が投げても append は例外を出さない (fail-safe: loop の append は未 try)。"""
+    class _BadRepr:
+        def __repr__(self) -> str:
+            raise RuntimeError("boom repr")
+
+    led = Ledger(tmp_path / "l.jsonl")
+    led.append(event="e", cmd_id="c", action="a", detail=_BadRepr())  # 例外を投げなければ合格

@@ -72,3 +72,24 @@ def test_promote_no_backup_replaces(tmp_path: Path) -> None:
     assert (live_dir("z", tmp_path) / "new.txt").exists()
     assert not (live_dir("z", tmp_path) / "old.txt").exists()
     assert res.backup is None
+
+
+def test_promote_invalid_domain_rejected(tmp_path: Path) -> None:
+    """パス区切り/`..`/空白/空 を含む分野名は昇格せず RadError (traversal 防止・fail-closed)。"""
+    for bad in ("../evil", "a/b", "..", "a b", "", "x\y"):
+        with pytest.raises(RadError):
+            promote(bad, docs_root=tmp_path)
+
+
+def test_promote_oserror_becomes_raderror(tmp_path: Path, monkeypatch) -> None:
+    """破壊的 FS 操作の生 OSError は RadError に正規化される (GUI は RadError のみ catch → 死なない)。"""
+    stg = staging_dir("robotics", tmp_path)
+    stg.mkdir(parents=True)
+    (stg / "INDEX.md").write_text("x", encoding="utf-8")
+
+    def _boom(*_a: object, **_k: object) -> None:
+        raise OSError("locked")
+
+    monkeypatch.setattr("llterm.rad.shutil.move", _boom)
+    with pytest.raises(RadError):
+        promote("robotics", docs_root=tmp_path)

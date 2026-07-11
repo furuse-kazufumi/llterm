@@ -24,5 +24,7 @@ class Ledger:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             with self.path.open("a", encoding="utf-8") as fh:
                 fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
-        except OSError:
-            pass  # 監査失敗で本処理を止めない (fail-safe)
+        except Exception:  # noqa: BLE001
+            # 監査失敗で本処理を止めない (fail-safe)。OSError だけでなく、detail の __repr__ や
+            # json.dumps が投げる TypeError 等も吸収する (loop の append は未 try のため escape=停止)。
+            pass
