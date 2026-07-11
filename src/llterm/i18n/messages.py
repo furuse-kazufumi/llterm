@@ -213,6 +213,30 @@ MESSAGES: dict[str, dict[str, str]] = {
         "ja": "Codex 優先",
         "en": "Codex first",
     },
+    "gui.check.autopush": {
+        "ja": "作業を自動 push",
+        "en": "Auto-push work",
+    },
+    "gui.tip.autopush": {
+        "ja": "ON: rotate (セッション境界) とループ終了時に、対象プロジェクトの現在ブランチを "
+              "git push で origin へ自動反映する (opt-in)。push は非同期・best-effort で、失敗しても "
+              "ループは止めない。OFF (既定): push しない。",
+        "en": "ON: automatically 'git push' the target project's current branch to origin at each rotate "
+              "(session boundary) and when the loop ends (opt-in). The push is async, best-effort, and never "
+              "stops the loop on failure. OFF (default): no push.",
+    },
+    "gui.msg.autopush_start": {
+        "ja": "自動 push 中: {workdir} …",
+        "en": "Auto-pushing: {workdir} …",
+    },
+    "gui.msg.autopush_ok": {
+        "ja": "✓ 自動 push 完了",
+        "en": "✓ Auto-push done",
+    },
+    "gui.msg.autopush_fail": {
+        "ja": "自動 push 失敗 (ループは継続): {detail}",
+        "en": "Auto-push failed (loop continues): {detail}",
+    },
     "gui.msg.gemini_cli_expiring": {
         "ja": "⚠ Gemini CLI の個人無料枠はあと {days} 日 (2026-06-18) で停止します。"
               "移行先 = レビュー奏者/無料奏者の『Gemini API』(GEMINI_API_KEY を "
