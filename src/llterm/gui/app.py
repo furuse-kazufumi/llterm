@@ -1691,14 +1691,10 @@ class MainWindow(QtWidgets.QMainWindow):
                         self._common_summary_write_active = False
                         self._common_summary_writer_thread = None
 
-        # 非 daemon: Python は終了時に非 daemon スレッドを join してから finalize するため、
-        # fsync 中にインタプリタ終了と競合して Windows access violation を起こす経路を断つ
-        # (daemon だと _drain の 2s タイムアウト超過時に書込み中のまま放置され finalize と競合)。
-        # _writer は pending を吐き切ると必ず return するので終了を妨げない。
         writer = threading.Thread(
             target=_writer,
             name="llterm-common-summary-writer",
-            daemon=False,
+            daemon=True,
         )
         with self._common_summary_write_lock:
             self._common_summary_writer_thread = writer
