@@ -80,6 +80,61 @@ def _run_until_finished(qapp: QtWidgets.QApplication, win: MainWindow, timeout_m
     qapp.processEvents()  # 残った queued slot (on_event / on_finished) を流し切る
 
 
+def test_close_reentry_escalates_to_force_stop(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    """graceful 停止中 (× 済) に再度 × を押すと強制停止へ格上げされる (窓が閉じない状態を防ぐ)。"""
+    win = _make_window(tmp_path)
+
+    class _FakeWorker:
+        def __init__(self) -> None:
+            self.force: bool | None = None
+
+        def isRunning(self) -> bool:
+            return True
+
+        def request_stop(self, *, force: bool = False) -> None:
+            self.force = force
+
+    fw = _FakeWorker()
+    win.worker = fw  # type: ignore[assignment]  # 走行中 worker を模擬
+    win._closing_after_stop = True  # 既に graceful 停止中
+    ev = QtGui.QCloseEvent()
+    win.closeEvent(ev)
+    assert fw.force is True  # 強制停止へ格上げ
+    assert not ev.isAccepted()  # 窓は閉じない (ignore)
+    win.worker = None  # cleanup fixture が fake を触らないよう解除
+
+
+def test_close_joins_running_retired_workers(
+    qapp: QtWidgets.QApplication, tmp_path: Path
+) -> None:
+    """close 時、走行中の retired worker を force stop + wait してから窓を壊す (abort 回避)。"""
+    win = _make_window(tmp_path)
+
+    class _FakeWorker:
+        def __init__(self) -> None:
+            self.forced = False
+            self.waited = False
+            self._running = True
+
+        def isRunning(self) -> bool:
+            return self._running
+
+        def request_stop(self, *, force: bool = False) -> None:
+            self.forced = force
+
+        def wait(self, _ms: int) -> bool:
+            self.waited = True
+            self._running = False
+            return True
+
+    fw = _FakeWorker()
+    win._retired_workers = [fw]  # type: ignore[list-item]
+    win._join_running_retired_workers()
+    assert fw.forced is True and fw.waited is True  # 止め切ってから窓を壊す
+
+
 def test_autopush_triggers_on_rotate_when_enabled(
     qapp: QtWidgets.QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
