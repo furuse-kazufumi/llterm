@@ -54,8 +54,9 @@ class CtlCommand:
             raise ParseError("top-level must be a json object")
 
         cmd_id = data.get("id")
-        if not isinstance(cmd_id, str) or not cmd_id:
-            raise ParseError("missing/invalid 'id'")
+        # 非空 str かつ安全な文字集合のみ (パス補間されるため path traversal を fail-closed で拒否)。
+        if not isinstance(cmd_id, str) or not _ID_RE.fullmatch(cmd_id):
+            raise ParseError("missing/invalid 'id' (must match [A-Za-z0-9_-]{1,128})")
         action = data.get("action")
         if action not in ALLOWED_ACTIONS:
             raise ParseError(f"unknown/missing 'action': {action!r}")
