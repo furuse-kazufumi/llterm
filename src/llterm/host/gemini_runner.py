@@ -310,20 +310,33 @@ class GeminiRunner:
         stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
         stderr_thread.start()
 
-        out = ""
+        # 読取を daemon スレッドへ隔離し、cancel/interrupt/timeout 後は pipe が閉じなくても
+        # 有界で諦める (子ツリーを kill しても孫が stdout を握って EOF が来ない異常時に
+        # proc.stdout.read() が永久ブロックするのを排除。claude/codex と同じ対処)。
+        # gemini は単一 JSON オブジェクト出力なので行ストリーム通知はしない (末尾で一括 notify)。
+        out_lines, reader_done = _consume_stdout_bounded(
+            proc,
+            notify=lambda _line: None,
+            kill=self._kill,
+            stop_requested=lambda: timed_out.is_set() or self._is_stop_signalled(),
+        )
+        out = "".join(out_lines)
         try:
-            assert proc.stdout is not None
-            out = proc.stdout.read()  # --output-format json は単一オブジェクト = 全読み
-            try:
-                proc.wait(timeout=30)
-            except subprocess.TimeoutExpired:
-                self._kill(proc)
+            if reader_done:
                 try:
-                    proc.wait(timeout=10)
+                    proc.wait(timeout=30)
+                except subprocess.TimeoutExpired:
+                    self._kill(proc)
+                    try:
+                        proc.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        pass
+            else:
+                self._kill(proc)  # best-effort 再送 (孤児 reader は諦め済み)
+                try:
+                    proc.wait(timeout=_KILL_ABANDON_GRACE)
                 except subprocess.TimeoutExpired:
                     pass
-        except (OSError, ValueError):
-            self._kill(proc)
         finally:
             watchdog.cancel()
             stderr_thread.join(timeout=5)
