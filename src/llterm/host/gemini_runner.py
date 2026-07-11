@@ -36,7 +36,14 @@ from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
-from llterm.host.loop import _NO_WINDOW, _RATE_LIMIT_SIGNALS, TurnResult, _as_int
+from llterm.host.loop import (
+    _KILL_ABANDON_GRACE,
+    _NO_WINDOW,
+    _RATE_LIMIT_SIGNALS,
+    TurnResult,
+    _as_int,
+    _consume_stdout_bounded,
+)
 from llterm.i18n import t
 
 # Gemini CLI 個人無料枠 (Google One/unpaid, OAuth) の提供停止日 (2026-06-18, Google 公式・延期なし)。
