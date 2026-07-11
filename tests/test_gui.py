@@ -14,7 +14,7 @@ import pytest
 pytest.importorskip("PySide6", reason="GUI テストは PySide6 が要る (pip install PySide6)")
 
 import llterm.gui.app as app_mod  # noqa: E402
-from PySide6 import QtCore, QtWidgets  # noqa: E402
+from PySide6 import QtCore, QtGui, QtWidgets  # noqa: E402
 
 from llterm import rad, templates  # noqa: E402
 from llterm.ctl.ledger import Ledger  # noqa: E402
