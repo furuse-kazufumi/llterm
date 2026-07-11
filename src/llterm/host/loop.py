@@ -1410,12 +1410,16 @@ class SessionLoop:
                     # rotate 地点で停止要求があれば、handoff (exit準備) 済みのまま停止する
                     if self._stop_requested():
                         return self._finish("stopped", sessions, turns, total_cost, "stop requested")
+                    # rotate = 1 セッション完了時のみ計上する。provider switch (rate_limited) /
+                    # unavailable による break はセッションを消費しない — 数えると小さな
+                    # max_sessions で fallback が 1 ターンも走れないまま max_sessions 停止する
+                    # (例: max_sessions=1 で primary が初手 rate_limited → 切替を 1 セッションと
+                    # 数え即終了)。ユーザー方針「ループを止めない」に沿う修正。
+                    sessions += 1
                     break  # → 新セッションへ rotate
 
                 prompt, injected, injected_text = self._continue_prompt()
                 resume = True  # 閾値未満: 同セッション継続
-
-            sessions += 1
 
         return self._finish("max_sessions", sessions, turns, total_cost,
                             f"reached max_sessions={self.max_sessions}")
