@@ -1317,6 +1317,8 @@ class SessionLoop:
                     # 別プロバイダが今すぐ使えるなら、セッション境界として切替 (fresh session で
                     # SESSION_SUMMARY を読み継続)。無ければ resetsAt まで待って同セッションを再試行。
                     if self._select_available(now, exclude=active_idx) is not None:
+                        if injected:
+                            pending_reinject = injected_text  # 切替で在庫注入を捨てない
                         break  # → 外側ループが次の利用可能プロバイダで新セッション開始
                     if not self._wait_until(res.rate_limit_resets_at):
                         return self._finish("stopped", sessions, turns, total_cost,
