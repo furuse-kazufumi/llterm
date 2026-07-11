@@ -195,6 +195,40 @@ class OrchestraRunner:
         with self._lock:
             return self._cancelled
 
+    def _is_interrupted(self) -> bool:
+        with self._lock:
+            return self._interrupted
+
+    def _stop_result(self, res: TurnResult, session_id: str, total_cost: float,
+                     total_turns: int, kind: str) -> TurnResult:
+        """指揮者結果 (res) の token/context メタを引き継ぐ停止 TurnResult を作る (interrupted/cancelled)。"""
+        return TurnResult(res.session_id or session_id, res.input_tokens, res.output_tokens,
+                          res.context_tokens, total_cost, "", True, kind,
+                          max(1, total_turns), -1, context_window=res.context_window,
+                          context_observable=res.context_observable,
+                          context_observable_reason=res.context_observable_reason,
+                          rate_limit_status=res.rate_limit_status,
+                          rate_limit_resets_at=res.rate_limit_resets_at,
+                          cached_input_tokens=res.cached_input_tokens,
+                          reasoning_output_tokens=res.reasoning_output_tokens,
+                          token_usage_kind=res.token_usage_kind,
+                          provider_version=res.provider_version)
+
+    def _stop_checkpoint(self, res: TurnResult, session_id: str, total_cost: float,
+                         total_turns: int) -> TurnResult | None:
+        """緊急 interrupt / Stop(cancel) が立っていれば対応する停止結果を返す (無ければ None)。
+
+        指揮者実装後の各フェーズ境界 (レビュー後 / factcheck 後 / aggregate 後) で呼び、残りの
+        集約/修正/sign-off を走らせず即畳む。interrupt を cancel より優先 (注入は「止めず次で
+        消費」= 継続扱い、cancel は停止)。これが無いと interrupt/cancel が factcheck/aggregate
+        フェーズで取りこぼされ、指揮者の success 結果が返る (応答性契約の違反)。
+        """
+        if self._is_interrupted():
+            return self._stop_result(res, session_id, total_cost, total_turns, "interrupted")
+        if self._is_cancelled():
+            return self._stop_result(res, session_id, total_cost, total_turns, "cancelled")
+        return None
+
     def _aux_enabled(self, runner: TurnRunner | None) -> bool:
         if runner is None:
             return False
