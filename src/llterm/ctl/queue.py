@@ -98,4 +98,48 @@ class CtlQueue:
         out = self.results / f"{cmd.id}.json"
         out.write_text(json.dumps({"id": cmd.id, "ok": ok, "result": result},
                                   ensure_ascii=False, indent=1), encoding="utf-8")
+        self._prune_results()  # 長時間運用で results/ が無制限に溜まらないよう新しい N 件に保つ
         return out
+
+    def recover_inflight(self) -> int:
+        """クラッシュ復旧: inflight/ に残った未完了コマンドを queue/ へ戻す (飢餓の解消)。
+
+        poll で inflight へ移した後 finish 前にプロセスが落ちると、その task は queue にも無く
+        二度と実行されない。起動時に本メソッドで queue へ戻し、次 poll で再処理させる。ただし
+        ``results/<id>.json`` が既にあれば完了済み → 戻さず残骸を掃除する (二重実行の防止)。
+        壊れた inflight 残骸は隔離する (fail-closed)。戻した件数を返す。
+
+        注意: finish 直前 (=副作用は起きたが results 未書込み) でのクラッシュは再実行され得るが、
+        『タスクを失わない』を『稀な二重実行』より優先する設計判断。
+        """
+        self._ensure()
+        recovered = 0
+        for path in sorted(self.inflight.glob("*.json")):
+            try:
+                cmd = CtlCommand.from_json(path.read_text(encoding="utf-8"))
+            except (ParseError, UnicodeDecodeError) as e:
+                self._quarantine(path, e)  # 壊れた残骸 → 隔離
+                continue
+            except OSError:
+                continue  # transient → 次回復旧で再試行
+            if (self.results / f"{cmd.id}.json").exists():
+                path.unlink(missing_ok=True)  # 完了済み残骸 → 掃除 (二重実行防止)
+                continue
+            try:
+                path.rename(self.qdir / path.name)  # 未完了 → queue へ戻す (seq prefix 維持で FIFO)
+                recovered += 1
+            except OSError:
+                pass
+        return recovered
+
+    def _prune_results(self, keep: int = 500) -> None:
+        """results/ を新しい keep 件に保つ (古い IPC 応答を掃除)。rejected/ は監査のため掃除しない。"""
+        try:
+            files = sorted(self.results.glob("*.json"), key=lambda p: p.stat().st_mtime)
+        except OSError:
+            return
+        for p in files[:-keep] if len(files) > keep else []:
+            try:
+                p.unlink(missing_ok=True)
+            except OSError:
+                pass
