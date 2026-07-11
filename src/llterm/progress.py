@@ -673,7 +673,9 @@ def _common_summary_tmp_path(out_path: Path) -> Path:
 def _summary_file_matches(out_path: Path, text: str) -> bool:
     try:
         return out_path.read_text(encoding="utf-8") == text
-    except OSError:
+    except (OSError, ValueError):
+        # ValueError = UnicodeDecodeError (非 UTF-8 で外部保存された PROGRESS.md 等)。
+        # fail-safe 契約 (IO 失敗を投げない) を守るため握って「不一致」扱いにする。
         return False
 
 
