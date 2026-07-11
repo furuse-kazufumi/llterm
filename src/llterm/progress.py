@@ -750,6 +750,8 @@ def _read_common_summary_meta(out_path: Path) -> tuple[tuple[str, float, float],
         obj = json.loads(_common_summary_meta_path(out_path).read_text(encoding="utf-8"))
     except (OSError, ValueError, TypeError, json.JSONDecodeError):
         return None
+    if not isinstance(obj, dict):
+        return None  # 有効 JSON でも非 dict ([]/数値/文字列) は malformed 扱い (obj.get の AttributeError 回避)
     raw = obj.get("snapshot")
     if not isinstance(raw, list):
         return None
