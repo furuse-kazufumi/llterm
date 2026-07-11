@@ -817,7 +817,7 @@ def _write_common_summary_text(
         if not _summary_file_matches(out_path, text):
             try:
                 current_text = out_path.read_text(encoding="utf-8")
-            except OSError:
+            except (OSError, ValueError):  # ValueError=UnicodeDecodeError (非 UTF-8 の既存ファイル)
                 current_text = ""
             current_snapshot = _read_common_summary_meta(out_path)
             current_epoch = _common_summary_latest_epoch(current_text)
