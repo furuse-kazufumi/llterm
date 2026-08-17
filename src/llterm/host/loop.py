@@ -1669,8 +1669,15 @@ def main(argv: list[str] | None = None) -> int:
         max_total_cost_usd=args.max_cost,
         rad_hint=DEFAULT_RAD_HINT if args.rad else "",
         offload_hint="" if args.no_offload else build_offload_hint(),
+        on_event=monitor.on_event,
+        should_stop=monitor.stop_signalled,
     )
-    outcome = loop.run()
+    outcome: Outcome | None = None
+    try:
+        outcome = loop.run()
+    finally:
+        monitor.finish(outcome)
+    assert outcome is not None
     print(
         f"\n=== llterm-loop outcome ===\n"
         f"stop: {outcome.stop_reason}\nsessions: {outcome.sessions}\n"
