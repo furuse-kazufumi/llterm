@@ -349,7 +349,7 @@ def test_template_feeds_resume_prompt(qapp: QtWidgets.QApplication, tmp_path: Pa
 
 
 def test_promote_via_gui_moves_staging_to_live(qapp: QtWidgets.QApplication, tmp_path: Path) -> None:
-    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, rad_docs_root=tmp_path)  # 実 D:/docs に触れない
+    win = MainWindow(projects_root=tmp_path, workdir=tmp_path, rad_docs_root=tmp_path)  # 実 C:/dev/docs に触れない
     stg = rad.staging_dir("robotics", tmp_path)
     stg.mkdir(parents=True)
     (stg / "INDEX.md").write_text("x", encoding="utf-8")

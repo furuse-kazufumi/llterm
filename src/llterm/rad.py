@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """RAD コーパス拡張のテンプレ + 公開ゲート (HITL)。
 
-拡張は **staging** (`D:/docs/<domain>_corpus_v2.staging/`) に書き、**live (共有 D:/docs) への
+拡張は **staging** (`C:/dev/docs/<domain>_corpus_v2.staging/`) に書き、**live (共有 C:/dev/docs) への
 昇格は人間の明示操作のみ** (``promote()`` は GUI の確認ダイアログ / ``llterm-rad publish`` からだけ
 呼ぶ)。自走ループは promote を絶対に呼ばない = 共有 RAD の上書き事故を構造的に防ぐ。
 
@@ -20,8 +20,8 @@ from pathlib import Path
 
 from llterm.i18n import t
 
-RAD_DOCS_ROOT = Path("D:/docs")
-RAPTOR_LIBEXEC = Path("D:/tools/raptor/libexec")
+RAD_DOCS_ROOT = Path("C:/dev/docs")
+RAPTOR_LIBEXEC = Path("C:/dev/tools/raptor/libexec")
 
 # domain は破壊的な promote() で live/staging のパスに補間される。パス区切りや `..` を含めない
 # 安全な文字集合に限定し、docs_root 外への rmtree/move (path traversal) を fail-closed で防ぐ。

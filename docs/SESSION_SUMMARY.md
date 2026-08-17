@@ -3,52 +3,54 @@
 > 自動生成: `libexec/raptor-auto-summary` (Stop hook)
 > 次回 ccr 起動時に CLAUDE.md SESSION START で自動的に読み取られる。
 
-- **最終更新**: 2026-07-11 11:26:57
+- **最終更新**: 2026-07-11 14:54:38
 - **プロジェクト**: `D:/projects/llterm`
 - **ブランチ**: `master`
 
 ## 直近の git log
 
 ```
+9ddc548 fix: rad.promote の path traversal/OSError escape + ledger の fail-safe 契約を修正
+3307c33 auto: test_rad.py 編集前 (2026-07-11 11:29)
+cc2734c auto: ledger.py 編集前 (2026-07-11 11:28)
+607a8b9 auto: rad.py 編集前 (2026-07-11 11:28)
+b2b9135 auto: rad.py 編集前 (2026-07-11 11:28)
+4f93db1 auto: messages.py 編集前 (2026-07-11 11:28)
 479aaae fix(orchestra): 緊急 interrupt/cancel を factcheck/aggregate/panel で取りこぼす問題を修正
 b60a384 auto: orchestra_runner.py 編集前 (2026-07-11 11:25)
 43d07e3 auto: orchestra_runner.py 編集前 (2026-07-11 11:25)
 596dbfc auto: orchestra_runner.py 編集前 (2026-07-11 11:24)
-2bbc582 auto: orchestra_runner.py 編集前 (2026-07-11 11:24)
-5c15fe9 fix(orchestra): optional fix ターン失敗でループ停止 + cancel 誤報告 + console明滅 を修正
-97dfc32 auto: orchestra_runner.py 編集前 (2026-07-11 10:44)
-65876b9 auto: orchestra_runner.py 編集前 (2026-07-11 10:44)
-138791b auto: orchestra_runner.py 編集前 (2026-07-11 10:44)
-7ce1af4 fix: progress.py の非UTF-8/非dict escape でループ停止 + api_keys 契約違反 を修正
 ```
 
 ## 現在の git status
 
 ```
-(clean)
+M docs/SESSION_SUMMARY.md
 ```
 
 ## 直近 2 時間に変更されたファイル
 
 ```
-11:26 .ruff_cache/0.15.12/16621690691240643191
-11:26 .ruff_cache/0.15.12/13894657270744885169
-11:26 .mypy_cache/3.11/cache.7.db
-11:26 .mypy_cache/3.11/cache.3.db
-11:25 tests/test_orchestra_runner.py
-11:25 src/llterm/host/orchestra_runner.py
-10:49 docs/SESSION_SUMMARY.md
-10:46 .mypy_cache/3.11/cache.13.db
-10:42 .mypy_cache/3.11/cache.15.db
-10:42 tests/test_progress.py
-10:42 tests/test_api_keys.py
-10:40 src/llterm/host/loop.py
-10:40 src/llterm/progress.py
-10:38 src/llterm/host/api_keys.py
-10:37 tests/test_consumer.py
+14:47 docs/SESSION_SUMMARY.md
 ```
 
 ---
 
 > このファイルは毎ターン自動上書きされます。**手動で書いた内容は失われます。**
 > 永続化したいメモは `docs/PROGRESS.md`、`docs/next_plan.md`、または `docs/NOTES.md` を使ってください。
+
+---
+
+## 2026-07-28 環境移行の追記 (Opus 5)
+
+**作業実体が `D:\` → `C:\dev\` へ移設された。** `D:\<X>` は `C:\dev\<X>` に読み替える。
+D: は USB 外付け SanDisk Extreme の exFAT で、所有者を記録できず git が全 repo で
+`dubious ownership` を出して停止していた (+ USB 接続で遅い)。内蔵 NVMe へ移して解決。
+
+- **`.venv` は再構築済み** (旧 venv は base Python の絶対パスを抱えていて起動不能だった)
+- `git config --global safe.directory '*'` の緩和は**解除済み** (NTFS なら不要)
+- コード内にハードコードされていた `D:\...` は置換済み
+- テストは移設後に全て通ることを確認済み
+
+詳細 = memory `project_pc_migration_2026_07_27` /
+`C:\dev\backup\REBOOT_TODO.md`

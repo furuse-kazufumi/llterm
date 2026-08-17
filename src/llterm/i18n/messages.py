@@ -189,8 +189,8 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "RAD reference",
     },
     "gui.tip.rad": {
-        "ja": "新規作業前に RAD コーパス (D:/docs/*_corpus_v2) を grep して研究接地する",
-        "en": "Greps the RAD corpus (D:/docs/*_corpus_v2) before new work to "
+        "ja": "新規作業前に RAD コーパス (C:/dev/docs/*_corpus_v2) を grep して研究接地する",
+        "en": "Greps the RAD corpus (C:/dev/docs/*_corpus_v2) before new work to "
               "ground it in prior research",
     },
     "gui.check.offload": {

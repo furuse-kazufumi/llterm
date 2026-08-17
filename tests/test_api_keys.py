@@ -2,7 +2,7 @@
 """api-keys.json → os.environ ローダ (fail-safe) の回帰テスト。
 
 os.environ を汚さないよう monkeypatch.setenv/delenv で隔離する。実ファイル
-(D:/api-keys.json) には触れず、tmp_path に書いた JSON を LLTERM_API_KEYS_FILE 経由で指す。
+(C:/dev/api-keys.json) には触れず、tmp_path に書いた JSON を LLTERM_API_KEYS_FILE 経由で指す。
 """
 from __future__ import annotations
 
@@ -118,8 +118,8 @@ def test_non_dict_toplevel_returns_empty(tmp_path, monkeypatch) -> None:
 
 
 def test_default_path_constant() -> None:
-    """既定パスは D:/api-keys.json (ユーザー鍵束)。"""
-    assert DEFAULT_API_KEYS_FILE == pathlib.Path("D:/api-keys.json")
+    """既定パスは C:/dev/api-keys.json (ユーザー鍵束)。"""
+    assert DEFAULT_API_KEYS_FILE == pathlib.Path("C:/dev/api-keys.json")
 
 
 def test_malformed_env_name_is_failsafe(tmp_path, monkeypatch) -> None:

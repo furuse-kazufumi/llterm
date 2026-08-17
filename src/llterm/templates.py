@@ -17,7 +17,7 @@ from pathlib import Path
 from llterm.i18n import t
 from llterm.rad import build_expand_prompt, expand_continue_prompt
 
-RAPTOR_PY = Path("D:/tools/raptor/raptor.py")
+RAPTOR_PY = Path("C:/dev/tools/raptor/raptor.py")
 
 
 @dataclass(frozen=True)

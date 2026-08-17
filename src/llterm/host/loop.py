@@ -144,7 +144,7 @@ SUPERVISED_DIRECTIVE = (
 
 DEFAULT_RAD_HINT = (
     "【RAD 研究接地】新規の設計・実装・調査に着手する前に、まず RAD コーパス "
-    "(D:/docs/<分野>_corpus_v2/ および D:/docs/hacker_corpus_v2/) を grep して "
+    "(C:/dev/docs/<分野>_corpus_v2/ および C:/dev/docs/hacker_corpus_v2/) を grep して "
     "既存手法・先行研究・差別化軸を確認せよ(車輪の再発明を防ぐ)。該当が無ければ通常どおり進めてよい。"
 )
 
@@ -1484,7 +1484,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--dry-run", action="store_true",
                         help="claude を呼ばず仮想 claude で配線確認 (課金ゼロ)")
     parser.add_argument("--rad", action="store_true",
-                        help="RAD コーパス研究接地を有効化 (新規作業前に D:/docs/*_corpus_v2 を grep)")
+                        help="RAD コーパス研究接地を有効化 (新規作業前に C:/dev/docs/*_corpus_v2 を grep)")
     parser.add_argument("--no-offload", action="store_true",
                         help="計算オフロード指令の自動注入を無効化 (既定は有効: 利用可能な "
                              "kaggle/gh/oci 等を検出し、重い計算を自律的に投げる指令を付ける)")

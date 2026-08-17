@@ -49,7 +49,7 @@ from llterm.progress import (
 if TYPE_CHECKING:
     from llterm.host.gemini_runner import GeminiRunner
 
-DEFAULT_PROJECTS_ROOT = Path("D:/projects")
+DEFAULT_PROJECTS_ROOT = Path("C:/dev/projects")
 _PROJECT_MARKERS = (".git", "pyproject.toml", "CLAUDE.md", "package.json", "Cargo.toml")
 _CTL_POLL_MS = 1500  # ctl queue を走行中にポーリングする間隔 (ms)
 
@@ -1953,7 +1953,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
 def main(argv: list[str] | None = None) -> int:
     _ensure_utf8_stdout()
-    # ローカル鍵束 (D:/api-keys.json 等) を env へ補完する。env 未設定でも JSON 由来の鍵で
+    # ローカル鍵束 (C:/dev/api-keys.json 等) を env へ補完する。env 未設定でも JSON 由来の鍵で
     # 奏者を可用化する (例: GEMINI_API_KEY 不在で gemini-api 奏者が除外される問題の解消)。
     # fail-safe (ファイル非存在/JSON 不正でも例外を投げない) なので無条件に呼んでよい。
     # runner 構築 (MainWindow → _resolve_providers) より前に呼ぶのが要点。
@@ -1966,7 +1966,7 @@ def main(argv: list[str] | None = None) -> int:
         description="llterm GUI: Claude Code 自走ループの窓口 (端末非依存)。既定は仮想 claude (課金ゼロ)。",
     )
     parser.add_argument("--projects-root", default=str(DEFAULT_PROJECTS_ROOT),
-                        help="コンボボックスに出すプロジェクトの親ディレクトリ (既定 D:/projects)")
+                        help="コンボボックスに出すプロジェクトの親ディレクトリ (既定 C:/dev/projects)")
     parser.add_argument("--workdir", default=None, help="初期選択するプロジェクト (任意)")
     parser.add_argument("--real", action="store_true",
                         help="起動時に『実 claude(サブスク認証)』を選択状態にする")

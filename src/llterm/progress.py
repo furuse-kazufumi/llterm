@@ -939,14 +939,14 @@ def refresh_common_summary_for_project(
 
 
 # 既定の集約ルートと出力先 (app.py の DEFAULT_PROJECTS_ROOT と一致させる)。
-DEFAULT_PROJECTS_ROOT = Path("D:/projects")
+DEFAULT_PROJECTS_ROOT = Path("C:/dev/projects")
 DEFAULT_OUT = DEFAULT_PROJECTS_ROOT / "_shared" / "PROGRESS.md"
 
 
 def main(argv: list[str] | None = None) -> int:
     """共通進捗サマリーを生成する CLI (スクリプトで自動更新するための入口)。
 
-    例: ``llterm-progress`` → ``D:/projects/_shared/PROGRESS.md`` を再生成。
+    例: ``llterm-progress`` → ``C:/dev/projects/_shared/PROGRESS.md`` を再生成。
     ``llterm-progress --stdout`` → 書かずに標準出力へ (プレビュー用)。
     """
     import argparse

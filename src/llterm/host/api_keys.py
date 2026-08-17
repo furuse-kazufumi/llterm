@@ -3,7 +3,7 @@
 
 llterm のオーケストラ奏者 (Groq / Cerebras / OpenRouter / Gemini API / Perplexity)
 は API キーを **環境変数**から取る (:class:`~llterm.host.openai_compat_runner.OpenAICompatRunner`
-の ``key_available()`` 参照)。一方ユーザーの鍵束は ``D:/api-keys.json`` の 1 ファイルに
+の ``key_available()`` 参照)。一方ユーザーの鍵束は ``C:/dev/api-keys.json`` の 1 ファイルに
 集約されている。GUI 起動時にこのローダを 1 回呼ぶことで、env に未設定でも JSON 由来の
 鍵で奏者を可用化する (例: ``GEMINI_API_KEY`` 不在で gemini-api 奏者が除外される問題の解消)。
 
@@ -22,7 +22,7 @@ import os
 import pathlib
 
 #: 既定の API キー JSON パス (``LLTERM_API_KEYS_FILE`` env で上書き可)。
-DEFAULT_API_KEYS_FILE = pathlib.Path("D:/api-keys.json")
+DEFAULT_API_KEYS_FILE = pathlib.Path("C:/dev/api-keys.json")
 
 #: パス解決に使う環境変数名。
 API_KEYS_FILE_ENV = "LLTERM_API_KEYS_FILE"

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""RAD 拡張テンプレ + 公開ゲートのテスト (tmp docs_root で安全に検証、実 D:/docs に触れない)。"""
+"""RAD 拡張テンプレ + 公開ゲートのテスト (tmp docs_root で安全に検証、実 C:/dev/docs に触れない)。"""
 from __future__ import annotations
 
 from pathlib import Path

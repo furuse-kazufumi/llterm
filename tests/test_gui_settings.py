@@ -31,7 +31,7 @@ def test_load_non_dict_returns_empty(tmp_path: Path) -> None:
 
 def test_save_load_roundtrip(tmp_path: Path) -> None:
     p = tmp_path / "sub" / "gui_settings.json"  # 親ディレクトリも自動作成される
-    data = {"workdir": "D:/projects/llterm", "real": True, "threshold": 0.55,
+    data = {"workdir": "C:/dev/projects/llterm", "real": True, "threshold": 0.55,
             "template": "rad_expand", "param": "ロボティクス"}
     assert save_settings(p, data) is True
     assert load_settings(p) == data
@@ -58,7 +58,7 @@ def test_consume_missing_returns_empty(tmp_path: Path) -> None:
 
 def test_write_then_consume_is_one_shot(tmp_path: Path) -> None:
     sp = tmp_path / "gui_settings.json"
-    brief = "D:/projects/llcore で feat/lm-recurrent を自律実行せよ。\n複数行可。"
+    brief = "C:/dev/projects/llcore で feat/lm-recurrent を自律実行せよ。\n複数行可。"
     assert write_startup_input(sp, brief) is True
     assert startup_input_path(sp).exists()
     # 1 回目: 内容を返し、ファイルは消費 (clear-on-load)

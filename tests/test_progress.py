@@ -794,7 +794,7 @@ def test_parse_session_summary_seed_extracts_metadata() -> None:
     text = (
         "# Session Summary\n"
         "- **最終更新**: 2026-05-10 10:19:11\n"
-        "- **プロジェクト**: `D:/projects/browser-use-project`\n"
+        "- **プロジェクト**: `C:/dev/projects/browser-use-project`\n"
         "- **ブランチ**: `master`\n"
         "## 2026-05-10 セッション総括\n"
         "- feature A を追加\n"
@@ -804,7 +804,7 @@ def test_parse_session_summary_seed_extracts_metadata() -> None:
     )
     seed = parse_session_summary_seed(text)
     assert seed.updated_label == "2026-05-10 10:19:11"
-    assert seed.project_label == "D:/projects/browser-use-project"
+    assert seed.project_label == "C:/dev/projects/browser-use-project"
     assert seed.review_target_label is None
     assert seed.branch_label == "master"
     assert seed.latest_heading == "2026-05-10 セッション総括"
@@ -821,7 +821,7 @@ def test_parse_session_summary_seed_does_not_reopen_metadata_after_preamble_text
         "# Session Summary\n"
         "- **最終更新**: 2026-05-10 10:19:11\n"
         "この要約は review continuation 用の前置き。\n"
-        "- **プロジェクト**: `D:/projects/stale-should-not-parse`\n"
+        "- **プロジェクト**: `C:/dev/projects/stale-should-not-parse`\n"
         "## 2026-05-10 セッション総括\n"
         "- feature A を追加\n"
     )
@@ -840,14 +840,14 @@ def test_parse_session_summary_seed_accepts_quoted_preamble_before_metadata() ->
         "> 次回 ccr 起動時に CLAUDE.md SESSION START で自動的に読み取られる。\n"
         "\n"
         "- **最終更新**: 2026-05-10 10:19:11\n"
-        "- **プロジェクト**: `D:/projects/browser-use-project`\n"
+        "- **プロジェクト**: `C:/dev/projects/browser-use-project`\n"
         "- **ブランチ**: `master`\n"
         "\n"
         "## 直近の git log\n"
     )
     seed = parse_session_summary_seed(text)
     assert seed.updated_label == "2026-05-10 10:19:11"
-    assert seed.project_label == "D:/projects/browser-use-project"
+    assert seed.project_label == "C:/dev/projects/browser-use-project"
     assert seed.branch_label == "master"
 
 
@@ -859,16 +859,16 @@ def test_parse_session_summary_seed_accepts_quoted_preamble_before_manual_metada
         "> 次回開始時は stale な自動要約ではなく、まず `docs/next_plan.md` を優先して読むこと。\n"
         "\n"
         "- **最終更新**: 2026-07-09\n"
-        "- **作業プロジェクト**: `D:/projects/onocollo-complete`\n"
-        "- **実レビュー対象**: `D:/projects/browser-use-project`\n"
+        "- **作業プロジェクト**: `C:/dev/projects/onocollo-complete`\n"
+        "- **実レビュー対象**: `C:/dev/projects/browser-use-project`\n"
         "\n"
         "## 今回の要点\n"
         "- note\n"
     )
     seed = parse_session_summary_seed(text)
     assert seed.updated_label == "2026-07-09"
-    assert seed.project_label == "D:/projects/onocollo-complete"
-    assert seed.review_target_label == "D:/projects/browser-use-project"
+    assert seed.project_label == "C:/dev/projects/onocollo-complete"
+    assert seed.review_target_label == "C:/dev/projects/browser-use-project"
 
 
 def test_parse_session_summary_seed_extracts_environment_notes() -> None:
@@ -924,8 +924,8 @@ def test_parse_session_summary_seed_accepts_next_steps_heading_suffix() -> None:
 def test_parse_session_summary_seed_accepts_concrete_next_step_heading() -> None:
     text = (
         "# Session Summary\n"
-        "- **作業プロジェクト**: `D:/projects/onocollo-complete`\n"
-        "- **実レビュー対象**: `D:/projects/browser-use-project`\n"
+        "- **作業プロジェクト**: `C:/dev/projects/onocollo-complete`\n"
+        "- **実レビュー対象**: `C:/dev/projects/browser-use-project`\n"
         "## 今回の要点\n"
         "- review target を確定\n"
         "## 次の具体的一手\n"
@@ -933,8 +933,8 @@ def test_parse_session_summary_seed_accepts_concrete_next_step_heading() -> None
         "2. false positive を除外する\n"
     )
     seed = parse_session_summary_seed(text)
-    assert seed.project_label == "D:/projects/onocollo-complete"
-    assert seed.review_target_label == "D:/projects/browser-use-project"
+    assert seed.project_label == "C:/dev/projects/onocollo-complete"
+    assert seed.review_target_label == "C:/dev/projects/browser-use-project"
     assert seed.latest_heading == "今回の要点"
     assert seed.finding_highlights == ()
     assert seed.exclusion_highlights == ()
@@ -944,7 +944,7 @@ def test_parse_session_summary_seed_accepts_concrete_next_step_heading() -> None
 def test_parse_session_summary_seed_extracts_finding_highlights() -> None:
     text = (
         "# Session Summary\n"
-        "- **作業プロジェクト**: `D:/projects/onocollo-complete`\n"
+        "- **作業プロジェクト**: `C:/dev/projects/onocollo-complete`\n"
         "## 今回の要点\n"
         "- live review target を確定\n"
         "## 確定 Findings\n"
@@ -964,7 +964,7 @@ def test_parse_session_summary_seed_extracts_finding_highlights() -> None:
 def test_parse_session_summary_seed_skips_findings_heading_for_latest_heading() -> None:
     text = (
         "# Session Summary\n"
-        "- **作業プロジェクト**: `D:/projects/onocollo-complete`\n"
+        "- **作業プロジェクト**: `C:/dev/projects/onocollo-complete`\n"
         "## 確定 Findings\n"
         "- `Critical`: finding 1\n"
         "## 今回の要点\n"
@@ -981,7 +981,7 @@ def test_parse_session_summary_seed_skips_findings_heading_for_latest_heading() 
 def test_parse_session_summary_seed_extracts_exclusion_highlights() -> None:
     text = (
         "# Session Summary\n"
-        "- **作業プロジェクト**: `D:/projects/onocollo-complete`\n"
+        "- **作業プロジェクト**: `C:/dev/projects/onocollo-complete`\n"
         "## 除外済みメモ\n"
         "- memo 1\n"
         "- memo 2\n"
@@ -994,7 +994,7 @@ def test_parse_session_summary_seed_extracts_exclusion_highlights() -> None:
 def test_parse_session_summary_seed_skips_exclusion_heading_for_latest_heading() -> None:
     text = (
         "# Session Summary\n"
-        "- **作業プロジェクト**: `D:/projects/onocollo-complete`\n"
+        "- **作業プロジェクト**: `C:/dev/projects/onocollo-complete`\n"
         "## 除外済みメモ\n"
         "- memo 1\n"
         "## 今回の要点\n"
@@ -1012,7 +1012,7 @@ def test_scaffold_next_plan_text_does_not_show_findings_as_latest_heading() -> N
     text = (
         "# Session Summary\n"
         "- **最終更新**: 2026-07-09 09:15:00\n"
-        "- **作業プロジェクト**: `D:/projects/onocollo-complete`\n"
+        "- **作業プロジェクト**: `C:/dev/projects/onocollo-complete`\n"
         "## 確定 Findings\n"
         "- `Critical`: finding 1\n"
         "- `High`: finding 2\n"
@@ -1152,14 +1152,14 @@ def test_parse_session_summary_seed_keeps_remaining_work_from_fullwidth_or_engli
 def test_parse_session_summary_seed_skips_noisy_git_headings_for_latest_heading() -> None:
     text = (
         "# Session Summary\n"
-        "- **プロジェクト**: `D:/projects/browser-use-project`\n"
+        "- **プロジェクト**: `C:/dev/projects/browser-use-project`\n"
         "## 直近の git log\n"
         "## 現在の git status\n"
         "## 直近 2 時間に変更されたファイル\n"
         "10:18 docs/SESSION_SUMMARY.md\n"
     )
     seed = parse_session_summary_seed(text)
-    assert seed.project_label == "D:/projects/browser-use-project"
+    assert seed.project_label == "C:/dev/projects/browser-use-project"
     assert seed.latest_heading is None
     assert seed.latest_bullets == ()
 
@@ -1168,7 +1168,7 @@ def test_scaffold_next_plan_text_creates_canonical_sections() -> None:
     text = (
         "# Session Summary\n"
         "- **最終更新**: 2026-05-10 10:19:11\n"
-        "- **プロジェクト**: `D:/projects/browser-use-project`\n"
+        "- **プロジェクト**: `C:/dev/projects/browser-use-project`\n"
         "- **ブランチ**: `master`\n"
         "## 2026-05-10 セッション総括\n"
         "- feature A を追加\n"
@@ -1256,16 +1256,16 @@ def test_scaffold_next_plan_text_uses_project_alias_and_concrete_next_step_headi
     text = (
         "# Session Summary\n"
         "- **最終更新**: 2026-07-09 09:15:00\n"
-        "- **作業プロジェクト**: `D:/projects/onocollo-complete`\n"
-        "- **実レビュー対象**: `D:/projects/browser-use-project`\n"
+        "- **作業プロジェクト**: `C:/dev/projects/onocollo-complete`\n"
+        "- **実レビュー対象**: `C:/dev/projects/browser-use-project`\n"
         "## 今回の要点\n"
         "- live review target を確定\n"
         "## 次の具体的一手\n"
         "1. findings を圧縮する\n"
     )
     out = scaffold_next_plan_text("onocollo-complete", text)
-    assert "`D:/projects/onocollo-complete`" in out
-    assert "実レビュー対象: `D:/projects/browser-use-project`" in out
+    assert "`C:/dev/projects/onocollo-complete`" in out
+    assert "実レビュー対象: `C:/dev/projects/browser-use-project`" in out
     assert "branch は `不明`" not in out
     assert "- live review target を確定" in out
     assert "- findings を圧縮する" in out
@@ -1275,7 +1275,7 @@ def test_scaffold_next_plan_text_carries_finding_highlights() -> None:
     text = (
         "# Session Summary\n"
         "- **最終更新**: 2026-07-09 09:15:00\n"
-        "- **作業プロジェクト**: `D:/projects/onocollo-complete`\n"
+        "- **作業プロジェクト**: `C:/dev/projects/onocollo-complete`\n"
         "## 今回の要点\n"
         "- live review target を確定\n"
         "## 確定 Findings\n"
@@ -1296,7 +1296,7 @@ def test_scaffold_next_plan_text_carries_exclusion_highlights() -> None:
     text = (
         "# Session Summary\n"
         "- **最終更新**: 2026-07-09 09:15:00\n"
-        "- **作業プロジェクト**: `D:/projects/onocollo-complete`\n"
+        "- **作業プロジェクト**: `C:/dev/projects/onocollo-complete`\n"
         "## 今回の要点\n"
         "- live review target を確定\n"
         "## 除外済みメモ\n"
@@ -1314,7 +1314,7 @@ def test_scaffold_next_plan_text_keeps_findings_when_latest_bullets_has_multiple
     text = (
         "# Session Summary\n"
         "- **最終更新**: 2026-07-09 09:15:00\n"
-        "- **作業プロジェクト**: `D:/projects/onocollo-complete`\n"
+        "- **作業プロジェクト**: `C:/dev/projects/onocollo-complete`\n"
         "## 今回の要点\n"
         "- summary 1\n"
         "- summary 2\n"
@@ -1335,8 +1335,8 @@ def test_scaffold_next_plan_text_handles_real_data_style_alias_heading_and_noise
     text = (
         "# Session Summary\n"
         "- **最終更新**: 2026-07-09 09:15:00\n"
-        "- **作業プロジェクト**： `D:/projects/onocollo-complete`\n"
-        "- **実レビュー対象**： `D:/projects/browser-use-project`\n"
+        "- **作業プロジェクト**： `C:/dev/projects/onocollo-complete`\n"
+        "- **実レビュー対象**： `C:/dev/projects/browser-use-project`\n"
         "## 直近の git log\n"
         "## 現在の git status\n"
         "## 直近 2 時間に変更されたファイル\n"
@@ -1349,14 +1349,14 @@ def test_scaffold_next_plan_text_handles_real_data_style_alias_heading_and_noise
         "1. findings を圧縮する\n"
     )
     seed = parse_session_summary_seed(text)
-    assert seed.project_label == "D:/projects/onocollo-complete"
-    assert seed.review_target_label == "D:/projects/browser-use-project"
+    assert seed.project_label == "C:/dev/projects/onocollo-complete"
+    assert seed.review_target_label == "C:/dev/projects/browser-use-project"
     assert seed.latest_heading == "今回の要点"
     assert seed.exclusion_highlights == ("memo 1",)
     assert seed.next_steps == ("findings を圧縮する",)
     out = scaffold_next_plan_text("onocollo-complete", text)
-    assert "`D:/projects/onocollo-complete`" in out
-    assert "実レビュー対象: `D:/projects/browser-use-project`" in out
+    assert "`C:/dev/projects/onocollo-complete`" in out
+    assert "実レビュー対象: `C:/dev/projects/browser-use-project`" in out
     assert "- 除外済みメモ: memo 1" in out
     assert "最新セクション見出し: `今回の要点`" in out
     assert "- findings を圧縮する" in out
@@ -1371,7 +1371,7 @@ def test_parse_session_summary_seed_keeps_bold_label_bullets_inside_sections() -
         "- **テスト**: 207 passed\n"
         "## 起動方法\n"
         "- **テンプレ(機能別)**: `general` / `rad_expand`\n"
-        "- **RAD 連携**: `D:/docs/*_corpus_v2` を grep してから着手\n"
+        "- **RAD 連携**: `C:/dev/docs/*_corpus_v2` を grep してから着手\n"
         "## 次にやるべきこと\n"
         "- zh/ko 訳を追加する\n"
     )
@@ -1385,7 +1385,7 @@ def test_parse_session_summary_seed_keeps_bold_label_bullets_inside_sections() -
     )
     assert seed.environment_notes == (
         "**テンプレ(機能別)**: `general` / `rad_expand`",
-        "**RAD 連携**: `D:/docs/*_corpus_v2` を grep してから着手",
+        "**RAD 連携**: `C:/dev/docs/*_corpus_v2` を grep してから着手",
     )
 
 
@@ -1399,7 +1399,7 @@ def test_scaffold_next_plan_text_keeps_bold_label_bullets_inside_sections() -> N
         "- **テスト**: 207 passed\n"
         "## 起動方法\n"
         "- **テンプレ(機能別)**: `general` / `rad_expand`\n"
-        "- **RAD 連携**: `D:/docs/*_corpus_v2` を grep してから着手\n"
+        "- **RAD 連携**: `C:/dev/docs/*_corpus_v2` を grep してから着手\n"
         "## 次にやるべきこと\n"
         "- zh/ko 訳を追加する\n"
     )
@@ -1408,7 +1408,7 @@ def test_scaffold_next_plan_text_keeps_bold_label_bullets_inside_sections() -> N
     assert "- **README**: README.en.md 完全英訳新設" in out
     assert "- **テスト**: 207 passed" in out
     assert "- **テンプレ(機能別)**: `general` / `rad_expand`" in out
-    assert "- **RAD 連携**: `D:/docs/*_corpus_v2` を grep してから着手" in out
+    assert "- **RAD 連携**: `C:/dev/docs/*_corpus_v2` を grep してから着手" in out
     assert "- zh/ko 訳を追加する" in out
 
 
@@ -1512,7 +1512,7 @@ def test_scaffold_next_plan_for_project_creates_file_without_overwriting(tmp_pat
         session_summary=(
             "# Session Summary\n"
             "- **最終更新**: 2026-05-10 10:19:11\n"
-            "- **プロジェクト**: `D:/projects/alpha`\n"
+            "- **プロジェクト**: `C:/dev/projects/alpha`\n"
             "- **ブランチ**: `main`\n"
         ),
     )
@@ -1551,7 +1551,7 @@ def test_scaffold_next_plan_for_project_prefers_actual_project_dir_over_stale_me
         session_summary=(
             "# Session Summary\n"
             "- **最終更新**: 2026-05-10 10:19:11\n"
-            "- **プロジェクト**: `D:/projects/stale-alpha`\n"
+            "- **プロジェクト**: `C:/dev/projects/stale-alpha`\n"
             "- **ブランチ**: `main`\n"
         ),
     )
@@ -1560,7 +1560,7 @@ def test_scaffold_next_plan_for_project_prefers_actual_project_dir_over_stale_me
     body = created.read_text(encoding="utf-8")
     expected = proj.as_posix()
     assert f"`{expected}`" in body
-    assert "D:/projects/stale-alpha/docs/SESSION_SUMMARY.md" not in body
+    assert "C:/dev/projects/stale-alpha/docs/SESSION_SUMMARY.md" not in body
     assert f"初期 scaffold 元: `{expected}/docs/SESSION_SUMMARY.md`" in body
 
 
