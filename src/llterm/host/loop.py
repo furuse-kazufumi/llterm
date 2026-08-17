@@ -1462,109 +1462,6 @@ class _DryRunner:
         pass
 
 
-class _HeadlessMonitor:
-    """headless ループの外部可観測性 (「動いているか / 進捗 / どう止めるか」の三重苦を解消)。
-
-    GUI を使わない ``py -m llterm.host.loop`` 起動でも、外から生存確認・進捗確認・停止を
-    できるようにする。コア ``SessionLoop`` は変更せず、既存フック ``on_event`` /
-    ``should_stop`` に配線するだけ (= GUI 経路は不変)。
-
-    - run-state ``<workdir>/.llterm/loop.run.json``: pid / mode / project / 起動時刻 /
-      現 session・turn・total_cost / heartbeat / status。status コマンドがこれを読んで
-      「生きているか (pid + heartbeat 経過)」「どこまで進んだか」を報告する。
-    - console: session_start / provider_switch / turn ごとに 1 行、人間が目視できる進捗を出す。
-    - STOP ``<workdir>/.llterm/STOP``: 存在すれば ``should_stop=True`` → run() が
-      **ターン/セッション境界で graceful 停止** (kill でなく協調停止 = handoff 保存も走る)。
-    """
-
-    def __init__(self, state_dir: Path, *, pid: int, mode: str, project: str,
-                 ledger_path: Path, max_sessions: int | None,
-                 max_cost: float | None) -> None:
-        self.state_dir = state_dir
-        self.run_state_path = state_dir / "loop.run.json"
-        self.stop_path = state_dir / "STOP"
-        self._state: dict[str, object] = {
-            "pid": pid, "mode": mode, "project": project,
-            "ledger": str(ledger_path),
-            "max_sessions": max_sessions, "max_cost": max_cost,
-            "started_at": _now_iso(), "started_epoch": time.time(),
-            "session": 0, "turn": 0, "total_cost": 0.0,
-            "heartbeat": _now_iso(), "heartbeat_epoch": time.time(),
-            "status": "running",
-        }
-
-    def _write(self) -> None:
-        try:
-            self.state_dir.mkdir(parents=True, exist_ok=True)
-            tmp = self.run_state_path.with_suffix(".json.tmp")
-            tmp.write_text(json.dumps(self._state, ensure_ascii=False, indent=2),
-                           encoding="utf-8")
-            os.replace(tmp, self.run_state_path)
-        except OSError:  # 可観測性の失敗で自走を殺さない (fail-safe)
-            pass
-
-    def start(self) -> None:
-        # 前回の残留 STOP を消費 (残っていると新規ループが即死する) → 起動を汚さない。
-        try:
-            self.stop_path.unlink()
-        except OSError:
-            pass
-        self._write()
-        print(f"[GraphLoop] loop started  pid={self._state['pid']} "
-              f"mode={self._state['mode']} project={self._state['project']}", flush=True)
-        print(f"[GraphLoop]   stop  : create {self.stop_path}  "
-              f"(launcher: -Mode stop)", flush=True)
-        print(f"[GraphLoop]   status: {self.run_state_path}", flush=True)
-
-    def on_event(self, kind: str, data: dict) -> None:
-        if kind == "session_start":
-            self._state["session"] = data.get("session_index", self._state["session"])
-            print(f"[GraphLoop] session #{self._state['session']} start", flush=True)
-        elif kind == "provider_switch":
-            print(f"[GraphLoop] provider → {data.get('provider', '?')}", flush=True)
-        elif kind == "turn":
-            self._state["session"] = data.get("session_index", self._state["session"])
-            self._state["turn"] = data.get("turn", self._state["turn"])
-            self._state["total_cost"] = round(float(data.get("total_cost", 0.0)), 4)
-            used = data.get("used_pct", 0.0)
-            err = data.get("error_kind") or "-"
-            try:
-                used_s = f"{float(used):.0%}"
-            except (TypeError, ValueError):
-                used_s = "n/a"
-            print(f"[GraphLoop] s{self._state['session']} t{self._state['turn']}  "
-                  f"ctx={used_s} cost=${self._state['total_cost']:.4f} err={err}",
-                  flush=True)
-        else:
-            return
-        self._state["heartbeat"] = _now_iso()
-        self._state["heartbeat_epoch"] = time.time()
-        self._write()
-
-    def stop_signalled(self) -> bool:
-        return self.stop_path.exists()
-
-    def finish(self, outcome: "Outcome | None") -> None:
-        self._state["status"] = "stopped" if outcome is None else "finished"
-        if outcome is not None:
-            self._state["stop_reason"] = outcome.stop_reason
-            self._state["session"] = outcome.sessions
-            self._state["turn"] = outcome.turns
-            self._state["total_cost"] = round(outcome.total_cost_usd, 4)
-        self._state["heartbeat"] = _now_iso()
-        self._state["heartbeat_epoch"] = time.time()
-        # run-state は「生きているループの印」なので終了時は消す (STOP も消費)。
-        for p in (self.run_state_path, self.stop_path):
-            try:
-                p.unlink()
-            except OSError:
-                pass
-
-
-def _now_iso() -> str:
-    return time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime())
-
-
 def main(argv: list[str] | None = None) -> int:
     _ensure_utf8_stdout()
     parser = argparse.ArgumentParser(
@@ -1644,17 +1541,6 @@ def main(argv: list[str] | None = None) -> int:
         print(t("cli.loop.unknown_template", template=args.template,
                 available=", ".join(_templates.keys())), file=sys.stderr)
         return 2
-    if args.dry_run:
-        mode = "dryrun"
-    elif runner.__class__.__name__ == "CodexRunner":
-        mode = "codex"
-    else:
-        mode = "claude"
-    monitor = _HeadlessMonitor(
-        workdir / ".llterm", pid=os.getpid(), mode=mode, project=workdir.name,
-        ledger_path=ledger_path, max_sessions=max_sessions, max_cost=args.max_cost,
-    )
-    monitor.start()
     loop = SessionLoop(
         runner=runner,
         workdir=workdir,
@@ -1669,15 +1555,8 @@ def main(argv: list[str] | None = None) -> int:
         max_total_cost_usd=args.max_cost,
         rad_hint=DEFAULT_RAD_HINT if args.rad else "",
         offload_hint="" if args.no_offload else build_offload_hint(),
-        on_event=monitor.on_event,
-        should_stop=monitor.stop_signalled,
     )
-    outcome: Outcome | None = None
-    try:
-        outcome = loop.run()
-    finally:
-        monitor.finish(outcome)
-    assert outcome is not None
+    outcome = loop.run()
     print(
         f"\n=== llterm-loop outcome ===\n"
         f"stop: {outcome.stop_reason}\nsessions: {outcome.sessions}\n"
