@@ -1644,6 +1644,17 @@ def main(argv: list[str] | None = None) -> int:
         print(t("cli.loop.unknown_template", template=args.template,
                 available=", ".join(_templates.keys())), file=sys.stderr)
         return 2
+    if args.dry_run:
+        mode = "dryrun"
+    elif runner.__class__.__name__ == "CodexRunner":
+        mode = "codex"
+    else:
+        mode = "claude"
+    monitor = _HeadlessMonitor(
+        workdir / ".llterm", pid=os.getpid(), mode=mode, project=workdir.name,
+        ledger_path=ledger_path, max_sessions=max_sessions, max_cost=args.max_cost,
+    )
+    monitor.start()
     loop = SessionLoop(
         runner=runner,
         workdir=workdir,
